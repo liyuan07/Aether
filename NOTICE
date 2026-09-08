@@ -1,13 +1,9 @@
 Aether · 以太
 Copyright (C) 2026 Li Yuan
 
-Aether incorporates the user's package counter, Clipboard and KeyPilot projects.
-Source commit identities are recorded in Docs/Sources.json.
-
 The timer and notch implementation is derived from Atoll (DynamicIsland),
 Copyright (C) 2024-2026 Atoll Contributors, including work derived from boring.notch.
 Their existing copyright notices are preserved in the relevant source files.
-Clipboard is Copyright (C) 2026 Li Yuan.
 
 Aether is distributed under GPL-3.0-or-later. See LICENSE for the GPL v3 text.
 Dependencies retain their own licenses: Defaults, MacroVisionKit, SkyLightWindow,

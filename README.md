@@ -1,38 +1,56 @@
 # Aether · 以太
 
-原生 macOS 菜单栏效率工具，将倒计时与护眼、剪贴板、快捷操作整合在一个应用中。完整功能在本机运行，不提供账号、云同步或剪贴板上传。
+Aether 是原生 macOS 菜单栏效率工具，提供计时与护眼、剪贴板管理和快捷操作。所有功能与数据均在本机运行，不提供账号、云同步或剪贴板上传。
 
-## 使用
+## 功能与使用
 
-运行 `sh LaunchAether.command`。脚本测试、构建 Release、签名并更新 `/Applications/Aether.app`；正式 Bundle ID 为 `com.liyuan.aether`。需要 macOS 14.6+、Xcode/Swift 6.2+，本地签名默认使用 `Ice Local Code Signing`，可通过 `AETHER_SIGNING_IDENTITY` 指定已有身份。
+- **计时与护眼**：倒计时、护眼提醒和刘海计时显示。
+- **剪贴板**：历史搜索、收藏、分组、内容详情及复制与粘贴。
+- **快捷操作**：自定义快捷键、按键映射、应用唤醒和快捷面板。
+- 左键点击菜单栏图标打开概览、剪贴板或快捷操作；点击外部或按 Esc 收起。
+- 按 ⇧⌘J 打开完整剪贴板窗口。自定义同组合动作优先，冲突在设置中说明。
+- 右键点击菜单栏图标打开控制中心、设置，或重新启动、退出应用。
+- 刘海用于显示计时状态，菜单栏图标用于打开操作面板。
 
-- 左键菜单栏叠片图标：概览、剪贴板、快捷操作；点击外部或 Esc 收起。
-- ⇧⌘J：完整剪贴板窗口；自定义同组合动作优先，冲突在设置中说明。
-- 右键：控制中心、设置、重新启动、退出。
-- 刘海延续原计时显示；不通过刘海打开面板。
-- 新身份需要单独授予辅助功能、输入监控权限。未授权时保留本地计时与剪贴板记录/复制；自动粘贴和全局映射依赖权限。
+自动粘贴和全局按键操作依赖相应的辅助功能、输入监控权限，可在设置的权限页检查。未授权时仍可使用本地计时及剪贴板记录、复制。
 
-## 工程
+## 本地构建与安装
 
-在 Xcode 中打开 `Aether.xcodeproj`，选 `Aether` scheme。应用装配在 `App`；独立模块和测试在 `Packages/AetherKit`。详见 [架构说明](Docs/Architecture.md)。
+需要 macOS 14.6 或更高版本，以及提供 Swift 6.2 或更高版本的 Xcode。首次获取依赖需要网络。
 
 ```sh
-swift test --package-path Packages/AetherKit
 sh LaunchAether.command
 ```
 
-应用与 Swift Package 使用仓库内锁定的依赖，安装日志在 `.build/logs`。首轮依赖获取需要网络，应用运行不依赖来源项目目录。不要直接运行 `.build` 内的应用，以免注册重复菜单栏入口。
+脚本依次运行测试、构建 Release、签名并安装到 `/Applications/Aether.app`，随后检查签名、可执行文件一致性和唯一正式进程。Bundle ID 为 `com.liyuan.aether`。构建和签名失败时不会替换正式安装，安装失败时会尝试恢复此前副本。
 
-## 迁移与回退
+本地签名默认使用钥匙串中的 `Ice Local Code Signing` 身份。其他开发环境可指定已有的代码签名身份：
 
-首次启动先检查旧应用是否仍在运行。请完成或停止旧倒计时/护眼，再正常退出旧应用；点击继续迁移。旧应用的内存中活动计时不会被复制。
+```sh
+AETHER_SIGNING_IDENTITY="你的代码签名身份" sh LaunchAether.command
+```
 
-剪贴板归档与图片/载荷、快捷键及应用配置、偏好复制到 `~/Library/Application Support/Aether/`。迁移使用同卷暂存、校验、原子目录移动与版本标记。原目录不删除，已完成的迁移不覆盖再次使用后产生的数据。
+测试和构建日志位于 `.build/logs/`。不要直接运行构建目录中的应用，以免产生重复实例。
 
-在 Aether 验证可用后，于系统登录项中移除 Clipboard、KeyPilot、package counter 的旧启动记录，并在旧应用设置中关闭登录启动，防止重新打开旧应用后再次注册。首次迁移默认保留任一旧应用开启登录启动的意图；三个均关闭则关闭。
+## 开发与维护
 
-回退时正常退出 Aether，在 Aether 通用设置关闭登录启动，再打开旧应用并恢复需要的旧登录项。旧数据独立保留；回退不会自动将 Aether 后续新增历史合并回旧应用。安装更新失败时安装脚本自动恢复此前的 Aether 正式副本。
+在 Xcode 中打开 `Aether.xcodeproj`，选择 `Aether` scheme。应用装配位于 `App/`，模块与测试位于 `Packages/AetherKit/`。
 
-## 来源与许可
+```sh
+swift test --package-path Packages/AetherKit
+git diff --check
+```
 
-来源版本见 [Sources.json](Docs/Sources.json)。本项目保留 Atoll/boring.notch、Clipboard 与 KeyPilot 的相关版权；整体以 GPL-3.0-or-later 发布，见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。目前只维护本地 Git，不发布远程仓库或 Release。
+- [项目约定](AGENTS.md)：架构边界、数据安全与交付要求。
+- [架构说明](Docs/Architecture.md)：模块职责、存储与交互协调。
+- [验收清单](Docs/Verification.md)：自动检查、正式安装和实机验证。
+
+## 本地数据
+
+应用数据位于 `~/Library/Application Support/Aether/`，剪贴板和快捷操作分别使用 `Clipboard/`、`Shortcuts/` 子目录。偏好由 Aether 自己的偏好域管理，登录启动统一在通用设置中控制。
+
+备份时先正常退出 Aether，并同时保留数据目录和相关偏好；只复制应用包不能备份历史与配置。数据格式变更必须保留原数据并支持失败重试，具体维护要求见架构说明。
+
+## 许可
+
+Aether 以 GPL-3.0-or-later 发布。完整许可见 [LICENSE](LICENSE)，版权与第三方声明见 [NOTICE](NOTICE)。应用包内同时包含许可证及第三方许可文本。
