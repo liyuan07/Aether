@@ -28,8 +28,9 @@ import TimerFeature
         guard let button = item.button else { return }
         if startup.ready { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
         let height = min(600, (button.window?.screen?.visibleFrame.height ?? 700) - 50)
-        popover.contentViewController = NSHostingController(rootView: ControlCenterView(startup: startup).frame(width: 420, height: max(350, height)))
-        popover.contentSize = NSSize(width: 420, height: max(350, height))
+        let width: CGFloat = 300
+        popover.contentViewController = NSHostingController(rootView: ControlCenterView(startup: startup).frame(width: width, height: max(350, height)))
+        popover.contentSize = NSSize(width: width, height: max(350, height))
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -92,7 +93,12 @@ private struct ControlCenterView: View {
                                 Label("常用开关", systemImage: "switch.2").font(.headline)
                                 ClipboardModule.shared.monitoringControl()
                                 ShortcutsModule.shared.controls()
-                            }.padding(14).background(.background, in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
                         }.padding(12)
                     }
                 }

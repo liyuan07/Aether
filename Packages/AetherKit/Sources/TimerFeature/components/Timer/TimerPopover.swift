@@ -481,7 +481,7 @@ private struct DurationStepper: View {
 
     var body: some View {
         Stepper(value: $value, in: range) {
-            HStack {
+            HStack(spacing: 2) {
                 Text(title)
                     .font(.system(size: 8.5, weight: .medium))
                 Spacer()
@@ -489,7 +489,7 @@ private struct DurationStepper: View {
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
             }
         }
-        .frame(width: 78)
+        .frame(minWidth: 60, maxWidth: .infinity)
     }
 }
 
