@@ -6,7 +6,7 @@ import SwiftUI
 final class ApplicationShortcutEventRouter {
     enum Phase { case pressed, released }
 
-    var onEvent: (@MainActor (String, Phase) -> Void)?
+    var onEvent: (@MainActor (String, Phase, ShortcutDisplayContext?) -> Void)?
     private let lock = NSLock()
     private var registeredKeyCodes = Set<UInt16>()
     private var activeKeyCodes = Set<UInt16>()
@@ -29,7 +29,8 @@ final class ApplicationShortcutEventRouter {
         else { return false }
         if !isRepeat {
             lock.withLock { _ = activeKeyCodes.insert(keyCode) }
-            Task { @MainActor [weak self] in self?.onEvent?(initial, .pressed) }
+            let display = ShortcutDisplayContext.capture()
+            Task { @MainActor [weak self] in self?.onEvent?(initial, .pressed, display) }
         }
         return true
     }
@@ -38,7 +39,7 @@ final class ApplicationShortcutEventRouter {
         guard let initial = ApplicationLetterKey.letter(for: keyCode),
               lock.withLock({ activeKeyCodes.remove(keyCode) != nil })
         else { return false }
-        Task { @MainActor [weak self] in self?.onEvent?(initial, .released) }
+        Task { @MainActor [weak self] in self?.onEvent?(initial, .released, nil) }
         return true
     }
 }
@@ -79,8 +80,9 @@ final class ApplicationLauncherController {
     private let holdDurationProvider: () -> TimeInterval
     private let setDefaultHandler: (String?, String) -> Void
     private let moveApplicationsHandler: (String, IndexSet, Int) -> Void
-    private let launchHandler: (RegisteredApplication) -> Void
+    private let launchHandler: (RegisteredApplication, ShortcutDisplayContext?) -> Void
     private var pendingInitial: String?
+    private var targetDisplay: ShortcutDisplayContext?
     private var holdTimer: Timer?
     private var displayedInitial: String?
     private var selectedIndex = 0
@@ -94,7 +96,7 @@ final class ApplicationLauncherController {
         holdDurationProvider: @escaping () -> TimeInterval,
         setDefaultHandler: @escaping (String?, String) -> Void,
         moveApplicationsHandler: @escaping (String, IndexSet, Int) -> Void,
-        launchHandler: @escaping (RegisteredApplication) -> Void
+        launchHandler: @escaping (RegisteredApplication, ShortcutDisplayContext?) -> Void
     ) {
         self.applicationsProvider = applicationsProvider
         self.defaultApplicationProvider = defaultApplicationProvider
@@ -102,7 +104,7 @@ final class ApplicationLauncherController {
         self.setDefaultHandler = setDefaultHandler
         self.moveApplicationsHandler = moveApplicationsHandler
         self.launchHandler = launchHandler
-        eventRouter.onEvent = { [weak self] initial, phase in self?.handle(initial: initial, phase: phase) }
+        eventRouter.onEvent = { [weak self] initial, phase, display in self?.handle(initial: initial, phase: phase, display: display) }
         navigationRouter.onCommand = { [weak self] command in self?.handle(command) }
     }
 
@@ -123,12 +125,13 @@ final class ApplicationLauncherController {
         panel = nil
     }
 
-    private func handle(initial: String, phase: ApplicationShortcutEventRouter.Phase) {
+    private func handle(initial: String, phase: ApplicationShortcutEventRouter.Phase, display: ShortcutDisplayContext?) {
         switch phase {
         case .pressed:
             guard panel?.isVisible != true else { return }
             holdTimer?.invalidate()
             pendingInitial = initial
+            targetDisplay = display
             let timer = Timer(timeInterval: holdDurationProvider(), repeats: false) { [weak self] _ in
                 Task { @MainActor in self?.showChooserIfNeeded(for: initial) }
             }
@@ -142,7 +145,7 @@ final class ApplicationLauncherController {
             holdTimer = nil
             guard panel?.isVisible != true else { return }
             if let application = defaultApplicationProvider(initial) {
-                launchHandler(application)
+                launchHandler(application, targetDisplay)
             } else {
                 showChooser(for: initial)
             }
@@ -166,7 +169,7 @@ final class ApplicationLauncherController {
             selectedIndex = 0
         }
 
-        let screen = NSScreen.main ?? NSScreen.screens.first
+        let screen = NSScreen.screens.first { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == targetDisplay?.displayID } ?? NSScreen.main ?? NSScreen.screens.first
         let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
         let width: CGFloat = 430
         let height = min(CGFloat(520), CGFloat(112 + applications.count * 58))
@@ -199,8 +202,9 @@ final class ApplicationLauncherController {
     }
 
     private func launch(_ application: RegisteredApplication) {
+        let display = targetDisplay
         dismiss()
-        launchHandler(application)
+        launchHandler(application, display)
     }
 
     private func setDefault(_ application: RegisteredApplication) {
@@ -249,6 +253,7 @@ final class ApplicationLauncherController {
         holdTimer = nil
         pendingInitial = nil
         displayedInitial = nil
+        targetDisplay = nil
         navigationRouter.setVisible(false)
         stopOutsideClickMonitoring()
         panel?.orderOut(nil)

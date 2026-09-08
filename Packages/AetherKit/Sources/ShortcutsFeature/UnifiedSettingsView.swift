@@ -67,6 +67,8 @@ private struct ApplicationShortcutSettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("轻按 Option+首字母打开默认应用；按住后从同首字母应用中选择")
                     .font(.callout).foregroundStyle(.secondary)
+                Text("普通窗口移到按键时鼠标所在屏幕；全屏窗口保持原位。需要辅助功能权限。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 18)

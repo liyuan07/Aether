@@ -11,7 +11,7 @@ private let shortcutEventTapCallback: CGEventTapCallBack = { _, type, event, use
 }
 
 final class GlobalShortcutEngine {
-    typealias ActionHandler = @MainActor (ShortcutAction) -> Void
+    typealias ActionHandler = @MainActor (ShortcutAction, ShortcutDisplayContext?) -> Void
     typealias KeyDownObserver = @MainActor () -> Void
     typealias InputSwitchKeyObserver = @MainActor () -> Void
     typealias GuideNavigationHandler = (UInt16, Bool) -> Bool
@@ -125,7 +125,7 @@ final class GlobalShortcutEngine {
             _ = stateLock.withLock { activeWindowLayoutsByKeyCode.removeValue(forKey: keyCode) }
             if let pendingAction {
                 Task { @MainActor [actionHandler] in
-                    actionHandler(pendingAction)
+                    actionHandler(pendingAction, nil)
                 }
             }
             return shouldSuppress ? nil : Unmanaged.passUnretained(event)
@@ -212,7 +212,7 @@ final class GlobalShortcutEngine {
             return (false, resolvedRule.trigger.action)
         }
         if !execution.waitsForKeyUp {
-            perform(execution.action)
+            perform(execution.action, display: ShortcutDisplayContext.capture(at: event.location))
         }
         return nil
     }
@@ -258,9 +258,9 @@ final class GlobalShortcutEngine {
         }
     }
 
-    private func perform(_ action: ShortcutAction) {
+    private func perform(_ action: ShortcutAction, display: ShortcutDisplayContext? = nil) {
         Task { @MainActor [actionHandler] in
-            actionHandler(action)
+            actionHandler(action, display)
         }
     }
 }

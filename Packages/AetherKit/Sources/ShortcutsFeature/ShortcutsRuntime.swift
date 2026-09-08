@@ -34,7 +34,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
             moveApplicationsHandler: { [weak model] initial, offsets, destination in
                 model?.moveApplications(for: initial, fromOffsets: offsets, toOffset: destination)
             },
-            launchHandler: { [weak executor] application in
+            launchHandler: { [weak executor] application, display in
                 executor?.execute(.application(
                     target: ApplicationTarget(
                         displayName: application.displayName,
@@ -42,7 +42,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
                         applicationPath: application.applicationPath
                     ),
                     mode: .activateExisting
-                ))
+                ), targetDisplay: display)
             }
         )
         let applicationCatalog = InstalledApplicationCatalog()
@@ -68,8 +68,8 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
             }
         )
         let engine = GlobalShortcutEngine(
-            actionHandler: { [weak executor] action in
-                executor?.execute(action)
+            actionHandler: { [weak executor] action, display in
+                executor?.execute(action, targetDisplay: display)
             },
             keyDownObserver: { [weak guide] in
                 guide?.keyPressed()

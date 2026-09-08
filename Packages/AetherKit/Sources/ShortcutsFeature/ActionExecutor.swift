@@ -5,8 +5,9 @@ import ShortcutCore
 @MainActor
 final class ActionExecutor {
     private let workspace = NSWorkspace.shared
+    private let windowMover = ApplicationWindowMover()
 
-    func execute(_ action: ShortcutAction) {
+    func execute(_ action: ShortcutAction, targetDisplay: ShortcutDisplayContext? = nil) {
         if case let .application(target, _) = action,
            let route = LegacyApplication.route(identifier: target.bundleIdentifier, path: target.applicationPath) {
             AppRouter.shared.send(route)
@@ -15,7 +16,7 @@ final class ActionExecutor {
 
         switch action {
         case let .application(target, mode):
-            openApplication(target, mode: mode)
+            openApplication(target, mode: mode, display: targetDisplay)
         case let .finderFolder(path):
             openFinder(path: path)
         case let .terminal(fallbackPath, useFrontmostFinder):
@@ -29,14 +30,26 @@ final class ActionExecutor {
         }
     }
 
-    private func openApplication(_ target: ApplicationTarget, mode: ApplicationOpenMode) {
-        let runningApplication = target.bundleIdentifier.flatMap {
+    private func openApplication(_ target: ApplicationTarget, mode: ApplicationOpenMode, display: ShortcutDisplayContext?) {
+        let resolvedURL = resolvedApplicationURL(for: target)
+        let identifier = resolvedURL.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? target.bundleIdentifier
+        if let display {
+            let key = identifier ?? resolvedURL?.standardizedFileURL.path ?? target.applicationPath
+            windowMover.start(key: key, display: display) {
+                if let identifier {
+                    return NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
+                }
+                guard let resolvedURL else { return nil }
+                return NSWorkspace.shared.runningApplications.first { $0.bundleURL?.standardizedFileURL == resolvedURL.standardizedFileURL }
+            }
+        }
+        let runningApplication = identifier.flatMap {
             NSRunningApplication.runningApplications(withBundleIdentifier: $0).first
         }
 
         if let runningApplication {
             if runningApplication.isHidden { runningApplication.unhide() }
-            ApplicationWindowRestorer.restoreMinimizedWindows(for: runningApplication)
+            if display == nil { ApplicationWindowRestorer.restoreMinimizedWindows(for: runningApplication) }
             if mode == .activateExisting, let applicationURL = resolvedApplicationURL(for: target) {
                 let configuration = NSWorkspace.OpenConfiguration()
                 configuration.activates = true

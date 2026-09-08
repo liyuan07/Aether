@@ -16,6 +16,7 @@ let package = Package(
         .target(name: "ClipboardFeature", dependencies: ["SharedSupport"]),
         .target(name: "TimerFeature", dependencies: ["SharedSupport", .product(name: "Defaults", package: "Defaults"), .product(name: "MacroVisionKit", package: "MacroVisionKit"), .product(name: "SkyLightWindow", package: "SkyLightWindow")]),
         .testTarget(name: "ShortcutCoreTests", dependencies: ["ShortcutCore"]),
+        .testTarget(name: "ShortcutsFeatureTests", dependencies: ["ShortcutsFeature"]),
         .testTarget(name: "TimerFeatureTests", dependencies: ["TimerFeature"]),
         .testTarget(name: "ClipboardFeatureTests", dependencies: ["ClipboardFeature"]),
         .testTarget(name: "SharedSupportTests", dependencies: ["SharedSupport"])
