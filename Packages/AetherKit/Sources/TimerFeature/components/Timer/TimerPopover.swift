@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Atoll (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
@@ -92,11 +93,7 @@ struct TimerPopover: View {
                 .animation(.smooth, value: timerManager.activePresetId)
         }
         .padding(12)
-        .frame(width: 280)
-        .background(
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                .cornerRadius(12)
-        )
+        .frame(maxWidth: .infinity)
         .onAppear {
             syncCustomDuration(with: customTimerDuration)
         }
@@ -107,13 +104,13 @@ struct TimerPopover: View {
 
     private var statusText: String {
         if timerManager.isOvertime {
-            return String(localized: "Overtime")
+            return "超时"
         } else if timerManager.isPaused {
-            return String(localized: "Paused")
+            return "已暂停"
         } else if timerManager.isTimerActive {
-            return String(localized: "Running")
+            return "运行中"
         } else {
-            return "Ready"
+            return "待开始"
         }
     }
 
@@ -133,7 +130,7 @@ struct TimerPopover: View {
         let duration = customDurationInSeconds
         guard duration > 0 else { return }
         withAnimation(.smooth) {
-            timerManager.startTimer(duration: duration, name: String(localized: "Custom Timer"))
+            timerManager.startTimer(duration: duration, name: "自定义倒计时")
         }
     }
 
@@ -170,7 +167,7 @@ private struct EyeCareStatusCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.07))
+        .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
     }
@@ -311,7 +308,7 @@ private struct HeaderView: View {
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "Timer"))
+                Text("倒计时")
                     .font(.system(size: 14, weight: .semibold))
                 Text(statusText)
                     .font(.system(size: 11, weight: .medium))
@@ -321,13 +318,13 @@ private struct HeaderView: View {
             Spacer()
 
             Button {
-                TimerInteractionPanelManager.shared.hide()
+                AppRouter.shared.send(.dismissPanels)
                 SettingsWindowController.shared.showWindow()
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12, weight: .semibold))
                     .frame(width: 26, height: 26)
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.secondary.opacity(0.06))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -367,7 +364,7 @@ private struct ActiveTimerSection: View {
             HStack(spacing: 8) {
                 if !timerManager.isOvertime {
                     Button(action: togglePause) {
-                        Label(timerManager.isPaused ? String(localized: "Resume") : String(localized: "Pause"), systemImage: timerManager.isPaused ? "play.fill" : "pause.fill")
+                        Label(timerManager.isPaused ? "继续" : "暂停", systemImage: timerManager.isPaused ? "play.fill" : "pause.fill")
                             .font(.system(size: 12, weight: .medium))
                             .labelStyle(.titleAndIcon)
                     }
@@ -376,7 +373,7 @@ private struct ActiveTimerSection: View {
                 }
 
                 Button(role: .destructive, action: stopTimer) {
-                    Label(String(localized: "Stop"), systemImage: "stop.fill")
+                    Label("停止", systemImage: "stop.fill")
                         .font(.system(size: 12, weight: .medium))
                         .labelStyle(.titleAndIcon)
                 }
@@ -386,7 +383,7 @@ private struct ActiveTimerSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.white.opacity(0.08))
+        .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .animation(.smooth, value: timerManager.isPaused)
     }
@@ -441,9 +438,9 @@ private struct CustomTimerSection: View {
         VStack(alignment: .leading, spacing: 8) {
             Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 8) {
                 GridRow {
-                    DurationStepper(title: String(localized: "Hours"), value: $hours, range: 0...23)
-                    DurationStepper(title: String(localized: "Minutes"), value: $minutes, range: 0...59)
-                    DurationStepper(title: String(localized: "Seconds"), value: $seconds, range: 0...59)
+                    DurationStepper(title: "小时", value: $hours, range: 0...23)
+                    DurationStepper(title: "分钟", value: $minutes, range: 0...59)
+                    DurationStepper(title: "秒", value: $seconds, range: 0...59)
                 }
             }
 
@@ -455,7 +452,7 @@ private struct CustomTimerSection: View {
                 Spacer()
 
                 Button(action: startAction) {
-                    Label("Start", systemImage: "play.fill")
+                    Label("开始", systemImage: "play.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .labelStyle(.titleAndIcon)
                 }
@@ -466,7 +463,7 @@ private struct CustomTimerSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.white.opacity(0.05))
+        .background(Color.secondary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
@@ -513,17 +510,17 @@ private struct PresetList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(String(localized: "Presets"))
+            Text("预设")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.leading, 4)
 
             if presets.isEmpty {
-                Text("Configure presets in Settings")
+                Text("在设置中添加常用预设")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.05))
+                    .background(Color.secondary.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             } else if presets.count <= Self.maximumVisiblePresets {
                 presetRows
@@ -590,7 +587,7 @@ private struct TimerPresetRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isActive ? preset.color.opacity(0.18) : Color.white.opacity(0.05))
+                    .fill(isActive ? preset.color.opacity(0.18) : Color.secondary.opacity(0.05))
             )
         }
         .buttonStyle(.plain)
@@ -599,7 +596,7 @@ private struct TimerPresetRow: View {
 
 #Preview {
     TimerPopover()
-        .frame(width: 280)
+        .frame(maxWidth: .infinity)
         .padding()
         .background(Color.black)
 }

@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan

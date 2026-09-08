@@ -1,3 +1,4 @@
+import SharedSupport
 import AppKit
 import CoreGraphics
 import ShortcutCore

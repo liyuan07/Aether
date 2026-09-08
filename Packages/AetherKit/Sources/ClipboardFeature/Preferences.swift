@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -23,7 +24,7 @@ enum PreferenceKeys {
     static let searchDebounceMilliseconds = "searchDebounceMilliseconds"
     static let lockedPanelTab = "lockedPanelTab"
 
-    static func registerDefaults(in defaults: UserDefaults = .standard) {
+    static func registerDefaults(in defaults: UserDefaults = AppEnvironment.clipboardDefaults) {
         defaults.register(defaults: [
             launchAtLogin: true,
             shortcutEnabled: true,
@@ -43,14 +44,14 @@ enum ClipboardSearchDebounce {
     static let supportedMilliseconds = 50...1_000
     static let stepMilliseconds = 50
 
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    static func isEnabled(in defaults: UserDefaults = AppEnvironment.clipboardDefaults) -> Bool {
         guard defaults.object(forKey: PreferenceKeys.searchDebounceEnabled) != nil else {
             return true
         }
         return defaults.bool(forKey: PreferenceKeys.searchDebounceEnabled)
     }
 
-    static func milliseconds(in defaults: UserDefaults = .standard) -> Int {
+    static func milliseconds(in defaults: UserDefaults = AppEnvironment.clipboardDefaults) -> Int {
         guard defaults.object(
             forKey: PreferenceKeys.searchDebounceMilliseconds
         ) != nil else {
@@ -74,7 +75,7 @@ enum ClipboardSearchDebounce {
 }
 
 enum ClipboardPanelTabLock {
-    static func tab(in defaults: UserDefaults = .standard) -> ClipboardTab? {
+    static func tab(in defaults: UserDefaults = AppEnvironment.clipboardDefaults) -> ClipboardTab? {
         guard let rawValue = defaults.string(
             forKey: PreferenceKeys.lockedPanelTab
         ), !rawValue.isEmpty else {
@@ -85,7 +86,7 @@ enum ClipboardPanelTabLock {
 
     static func set(
         _ tab: ClipboardTab?,
-        in defaults: UserDefaults = .standard
+        in defaults: UserDefaults = AppEnvironment.clipboardDefaults
     ) {
         defaults.set(tab?.rawValue ?? "", forKey: PreferenceKeys.lockedPanelTab)
     }
@@ -98,51 +99,6 @@ extension Notification.Name {
     static let clipboardAccessibilityDidChange = Notification.Name(
         "clipboardAccessibilityDidChange"
     )
-}
-
-@MainActor
-enum LaunchAtLoginController {
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
-    static var statusDescription: String {
-        switch SMAppService.mainApp.status {
-        case .enabled:
-            return "已启用"
-        case .requiresApproval:
-            return "需要在“系统设置 › 通用 › 登录项”中允许"
-        case .notRegistered:
-            return "未启用"
-        case .notFound:
-            return "当前应用位置不支持"
-        @unknown default:
-            return "未知状态"
-        }
-    }
-
-    @discardableResult
-    static func setEnabled(_ enabled: Bool) -> String? {
-        do {
-            if enabled {
-                if SMAppService.mainApp.status != .enabled {
-                    try SMAppService.mainApp.register()
-                }
-            } else if SMAppService.mainApp.status != .notRegistered {
-                try SMAppService.mainApp.unregister()
-            }
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    static func applyDefault() {
-        guard UserDefaults.standard.bool(forKey: PreferenceKeys.launchAtLogin) else {
-            return
-        }
-        _ = setEnabled(true)
-    }
 }
 
 @MainActor

@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -12,23 +13,19 @@ import AppKit
 import SwiftUI
 
 struct ClipboardSettingsView: View {
-    @AppStorage(PreferenceKeys.launchAtLogin)
-    private var launchAtLogin = true
-    @AppStorage(PreferenceKeys.shortcutEnabled)
+    @AppStorage(PreferenceKeys.shortcutEnabled, store: AppEnvironment.clipboardDefaults)
     private var shortcutEnabled = true
-    @AppStorage(PreferenceKeys.monitoringEnabled)
+    @AppStorage(PreferenceKeys.monitoringEnabled, store: AppEnvironment.clipboardDefaults)
     private var monitoringEnabled = true
-    @AppStorage(PreferenceKeys.historyLimit)
+    @AppStorage(PreferenceKeys.historyLimit, store: AppEnvironment.clipboardDefaults)
     private var historyLimit = 5_000
-    @AppStorage(PreferenceKeys.expirationDays)
+    @AppStorage(PreferenceKeys.expirationDays, store: AppEnvironment.clipboardDefaults)
     private var expirationDays = 30
-    @AppStorage(PreferenceKeys.searchDebounceEnabled)
+    @AppStorage(PreferenceKeys.searchDebounceEnabled, store: AppEnvironment.clipboardDefaults)
     private var searchDebounceEnabled = true
-    @AppStorage(PreferenceKeys.searchDebounceMilliseconds)
+    @AppStorage(PreferenceKeys.searchDebounceMilliseconds, store: AppEnvironment.clipboardDefaults)
     private var searchDebounceMilliseconds =
         ClipboardSearchDebounce.defaultMilliseconds
-    @State private var loginStatus = ""
-    @State private var loginError: String?
     @State private var accessibilityTrusted = false
 
     var body: some View {
@@ -38,7 +35,7 @@ struct ClipboardSettingsView: View {
                     .font(.system(size: 28))
                     .foregroundStyle(.blue)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Clipboard 设置")
+                    Text("剪贴板")
                         .font(.title2.weight(.semibold))
                     Text("本地、快速、独立的剪切板历史")
                         .font(.caption)
@@ -49,23 +46,6 @@ struct ClipboardSettingsView: View {
             GroupBox("常规") {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("记录剪切板历史", isOn: $monitoringEnabled)
-                    Toggle("登录时自动启动", isOn: $launchAtLogin)
-                    HStack {
-                        Text("登录项状态")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(loginStatus)
-                            .foregroundStyle(
-                                loginError == nil
-                                    ? Color.secondary
-                                    : Color.red
-                            )
-                    }
-                    if let loginError {
-                        Text(loginError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
                 }
                 .padding(8)
             }
@@ -160,7 +140,7 @@ struct ClipboardSettingsView: View {
             }
 
             HStack {
-                Text("Clipboard \(appVersion) · GPL-3.0-or-later")
+                Text("Aether 剪贴板 · GPL-3.0-or-later")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -171,19 +151,15 @@ struct ClipboardSettingsView: View {
             }
         }
         .padding(22)
-        .frame(width: 500)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             searchDebounceMilliseconds = ClipboardSearchDebounce.clamped(
                 searchDebounceMilliseconds
             )
             refreshStatus()
         }
-        .onChange(of: launchAtLogin) { _, enabled in
-            loginError = LaunchAtLoginController.setEnabled(enabled)
-            refreshStatus()
-        }
         .onChange(of: shortcutEnabled) { _, _ in
-            HotKeyManager.shared.refresh()
+            ClipboardModule.shared.refreshHotKey()
         }
         .onChange(of: monitoringEnabled) { _, _ in
             notifyPreferenceChange()
@@ -204,7 +180,6 @@ struct ClipboardSettingsView: View {
     }
 
     private func refreshStatus() {
-        loginStatus = LaunchAtLoginController.statusDescription
         accessibilityTrusted = AccessibilityController.isTrusted
     }
 
@@ -223,33 +198,7 @@ struct ClipboardSettingsView: View {
 }
 
 @MainActor
-final class SettingsWindowController: NSObject, NSWindowDelegate {
+final class SettingsWindowController {
     static let shared = SettingsWindowController()
-
-    private var window: NSWindow?
-
-    func show() {
-        if let window {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let controller = NSHostingController(rootView: ClipboardSettingsView())
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Clipboard 设置"
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.isReleasedWhenClosed = false
-        window.center()
-        window.delegate = self
-        window.setContentSize(NSSize(width: 500, height: 680))
-        self.window = window
-
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        window = nil
-    }
+    func show() { AppRouter.shared.send(.settings(.clipboard)) }
 }

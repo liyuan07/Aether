@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -28,7 +29,7 @@ private let clipboardHotKeyHandler: EventHandlerUPP = {
     }
     DispatchQueue.main.async {
         MainActor.assumeIsolated {
-            ClipboardPanelController.shared.togglePanel()
+            AppRouter.shared.send(.clipboard)
         }
     }
     return noErr
@@ -45,7 +46,7 @@ final class HotKeyManager {
 
     func refresh() {
         unregister()
-        guard UserDefaults.standard.bool(
+        guard AppEnvironment.clipboardDefaults.bool(
             forKey: PreferenceKeys.shortcutEnabled
         ) else {
             return
@@ -68,7 +69,7 @@ final class HotKeyManager {
             signature: OSType(0x434C4950), // CLIP
             id: 1
         )
-        RegisterEventHotKey(
+        let registrationStatus = RegisterEventHotKey(
             UInt32(kVK_ANSI_J),
             UInt32(cmdKey | shiftKey),
             hotKeyID,
@@ -76,6 +77,7 @@ final class HotKeyManager {
             0,
             &hotKeyReference
         )
+        ClipboardModule.shared.hotKeyError = registrationStatus == noErr ? nil : "快捷键 ⇧⌘J 注册失败（\(registrationStatus)），请检查其他应用占用。"
     }
 
     func unregister() {

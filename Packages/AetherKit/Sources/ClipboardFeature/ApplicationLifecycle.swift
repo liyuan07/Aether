@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -29,7 +30,7 @@ enum ApplicationRestartController {
         } catch {
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "无法重启 Clipboard"
+            alert.messageText = "无法重启 Aether"
             alert.informativeText = error.localizedDescription
             alert.addButton(withTitle: "好")
             NSApp.activate(ignoringOtherApps: true)
@@ -115,7 +116,7 @@ final class AccessibilityPermissionMonitor {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = "辅助功能权限已启用"
-        alert.informativeText = "需要重启 Clipboard 后才能稳定使用自动粘贴。"
+        alert.informativeText = "需要重启 Aether 后才能稳定使用自动粘贴。"
         alert.addButton(withTitle: "立即重启")
         alert.addButton(withTitle: "稍后")
 

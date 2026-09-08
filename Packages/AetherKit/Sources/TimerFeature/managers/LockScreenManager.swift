@@ -32,7 +32,6 @@ final class LockScreenManager: ObservableObject {
     func handleScreenLocked() {
         isLocked = true
         viewModel?.closeForLockScreen()
-        TimerControlWindowManager.shared.hide(animated: false)
         LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
     }
 

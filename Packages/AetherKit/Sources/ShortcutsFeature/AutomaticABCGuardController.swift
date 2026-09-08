@@ -1,3 +1,4 @@
+import SharedSupport
 import AppKit
 import Carbon.HIToolbox
 import ShortcutCore

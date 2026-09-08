@@ -10,7 +10,7 @@
 
 import AppKit
 import XCTest
-@testable import Clipboard
+@testable import ClipboardFeature
 
 final class ClipboardDetailTests: XCTestCase {
     func testDetailTextUsesFullStringInsteadOfTruncatedPreview() {

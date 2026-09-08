@@ -9,7 +9,7 @@
  */
 
 import XCTest
-@testable import Clipboard
+@testable import ClipboardFeature
 
 final class ClipboardStoreTests: XCTestCase {
     func testBackgroundResultsAreInsertedByCaptureTime() {

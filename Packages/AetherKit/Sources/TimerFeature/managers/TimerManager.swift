@@ -122,6 +122,13 @@ class TimerManager: ObservableObject {
     }
 
     private var timerInstance: Timer?
+    private var manualCountdown = ManualCountdown()
+    private let clock = ContinuousClock()
+    private let clockOrigin = ContinuousClock.now
+    private var monotonicNow: TimeInterval {
+        let value = clockOrigin.duration(to: clock.now).components
+        return Double(value.seconds) + Double(value.attoseconds) / 1e18
+    }
     private var cancellables = Set<AnyCancellable>()
     // MARK: - Initialization
     private init() {
@@ -135,6 +142,7 @@ class TimerManager: ObservableObject {
 
     // MARK: - Timer Methods
     func startTimer(duration: TimeInterval, name: String = "Timer", preset: TimerPreset? = nil) {
+        guard duration.isFinite, duration > 0 else { return }
         if activeSource == .external {
             endExternalTimer(triggerSmoothClose: false)
         }
@@ -162,31 +170,27 @@ class TimerManager: ObservableObject {
 
         activePresetId = preset?.id
 
-        // Start countdown timer
-        timerInstance = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
+        _ = manualCountdown.start(duration: duration, now: monotonicNow)
+        scheduleDisplayUpdates()
+    }
 
-            Task { @MainActor in
-                if !self.isPaused {
-                    if self.remainingTime > 0 {
-                        // Normal countdown
-                        self.remainingTime -= 1
-                        self.elapsedTime = self.totalDuration - self.remainingTime
-                        self.lastUpdated = Date()
-                    } else if self.remainingTime == 0 {
-                        // Timer just finished - start overtime without an audible alert.
-                        self.isFinished = true
-                        self.isOvertime = true
-                        self.remainingTime = -1
-                        self.lastUpdated = Date()
-                    } else {
-                        // Overtime - count negative
-                        self.remainingTime -= 1
-                        self.lastUpdated = Date()
-                    }
-                }
-            }
+    private func scheduleDisplayUpdates() {
+        timerInstance?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshManualTimer() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        timerInstance = timer
+    }
+
+    func refreshManualTimer() {
+        guard activeSource == .manual, isTimerActive, !isPaused else { return }
+        let remaining = manualCountdown.remaining(at: monotonicNow)
+        remainingTime = ceil(remaining)
+        elapsedTime = max(0, totalDuration - remainingTime)
+        isFinished = remaining <= 0
+        isOvertime = remainingTime < 0
+        lastUpdated = Date()
     }
 
     func startDemoTimer(duration: TimeInterval) {
@@ -228,6 +232,8 @@ class TimerManager: ObservableObject {
     func pauseTimer() {
         guard activeSource == .manual else { return }
         guard isTimerActive && !isPaused else { return }
+        refreshManualTimer()
+        manualCountdown.pause(at: monotonicNow)
         isPaused = true
         timerInstance?.invalidate()
         timerInstance = nil
@@ -244,31 +250,9 @@ class TimerManager: ObservableObject {
         isPaused = false
         lastUpdated = Date()
 
-        // Resume countdown timer with same logic as start timer
-        timerInstance = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-
-            Task { @MainActor in
-                if !self.isPaused {
-                    if self.remainingTime > 0 {
-                        // Normal countdown
-                        self.remainingTime -= 1
-                        self.elapsedTime = self.totalDuration - self.remainingTime
-                        self.lastUpdated = Date()
-                    } else if self.remainingTime == 0 {
-                        // Timer just finished - start overtime without an audible alert.
-                        self.isFinished = true
-                        self.isOvertime = true
-                        self.remainingTime = -1
-                        self.lastUpdated = Date()
-                    } else {
-                        // Overtime - count negative
-                        self.remainingTime -= 1
-                        self.lastUpdated = Date()
-                    }
-                }
-            }
-        }
+        manualCountdown.resume(at: monotonicNow)
+        refreshManualTimer()
+        scheduleDisplayUpdates()
     }
 
     func adoptExternalTimer(name: String, totalDuration: TimeInterval, remaining: TimeInterval, isPaused: Bool) {
@@ -347,6 +331,7 @@ class TimerManager: ObservableObject {
     }
 
     private func resetTimer() {
+        manualCountdown.stop()
         withAnimation(.smooth) {
             isTimerActive = false
         }

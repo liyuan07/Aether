@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -16,11 +17,7 @@ import UniformTypeIdentifiers
 
 enum ClipboardStorage {
     static let archiveDirectory: URL = {
-        let root = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        return createDirectory(root.appendingPathComponent("Clipboard", isDirectory: true))
+        return createDirectory(AppEnvironment.directory("Clipboard"))
     }()
 
     static let imagesDirectory = createDirectory(

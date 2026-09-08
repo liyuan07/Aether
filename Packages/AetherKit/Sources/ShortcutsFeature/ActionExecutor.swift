@@ -1,3 +1,4 @@
+import SharedSupport
 import AppKit
 import ShortcutCore
 
@@ -6,6 +7,12 @@ final class ActionExecutor {
     private let workspace = NSWorkspace.shared
 
     func execute(_ action: ShortcutAction) {
+        if case let .application(target, _) = action,
+           let route = LegacyApplication.route(identifier: target.bundleIdentifier, path: target.applicationPath) {
+            AppRouter.shared.send(route)
+            return
+        }
+
         switch action {
         case let .application(target, mode):
             openApplication(target, mode: mode)
@@ -138,7 +145,7 @@ private enum SystemShowDesktopShortcut {
     }
 
     private static func resolveShortcut() -> (keyCode: CGKeyCode, flags: CGEventFlags)? {
-        guard let domain = UserDefaults.standard.persistentDomain(forName: preferencesDomain),
+        guard let domain = AppEnvironment.shortcutsDefaults.persistentDomain(forName: preferencesDomain),
               let symbolicHotKeys = domain[symbolicHotKeysKey] as? [String: Any],
               let showDesktop = symbolicHotKeys[showDesktopID] as? [String: Any]
         else {

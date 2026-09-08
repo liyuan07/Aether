@@ -33,4 +33,3 @@ public struct ShortcutRuleStore: Sendable {
         try data.write(to: fileURL, options: .atomic)
     }
 }
-

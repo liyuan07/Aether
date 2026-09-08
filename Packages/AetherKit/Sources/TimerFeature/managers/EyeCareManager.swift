@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * package counter
  * Derived from Atoll (DynamicIsland)
@@ -75,7 +76,7 @@ final class EyeCareManager: ObservableObject {
         message = nil
         machine.start(workDuration: workDuration, now: now)
         publishAndSchedule()
-        TimerInteractionPanelManager.shared.hide()
+        AppRouter.shared.send(.dismissPanels)
         return true
     }
 
@@ -97,7 +98,7 @@ final class EyeCareManager: ObservableObject {
         guard machine.resume(now: now) else { return false }
         message = nil
         publishAndSchedule()
-        TimerInteractionPanelManager.shared.hide()
+        AppRouter.shared.send(.dismissPanels)
         return true
     }
 
@@ -213,9 +214,9 @@ final class EyeCareManager: ObservableObject {
 
     private func reconcileBreakWindow() {
         if machine.isBreakVisible, !LockScreenManager.shared.currentLockStatus {
-            TimerInteractionPanelManager.shared.hide(animated: false)
+            AppRouter.shared.send(.dismissPanels)
             EyeCareBreakWindowManager.shared.present(
-                preferredScreenName: AppDelegate.shared?.vm.screen
+                preferredScreenName: TimerRuntime.shared?.vm.screen
             )
         } else {
             EyeCareBreakWindowManager.shared.hide()

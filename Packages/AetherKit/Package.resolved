@@ -1,0 +1,41 @@
+{
+  "originHash" : "f39935d4a2a4de39ead66428199d1ad5ed27259908f3d4ba21274adebcdac268",
+  "pins" : [
+    {
+      "identity" : "defaults",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/Defaults",
+      "state" : {
+        "revision" : "00c82eff4550c87cf9c547d7e5493a6a97837061",
+        "version" : "9.0.3"
+      }
+    },
+    {
+      "identity" : "macrovisionkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/TheBoredTeam/MacroVisionKit",
+      "state" : {
+        "revision" : "5e8b06c448298de182638bb28ca064eaf6b1fe99",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "skylightwindow",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/SkyLightWindow",
+      "state" : {
+        "revision" : "4a7e8628c85e6b2ec429b57657a556a2171a4864"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax",
+      "state" : {
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
+      }
+    }
+  ],
+  "version" : 3
+}

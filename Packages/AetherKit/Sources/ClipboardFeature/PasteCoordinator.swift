@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -73,6 +74,7 @@ final class PasteCoordinator {
     }
 
     func pasteIntoCapturedApplication() {
+        AppRouter.shared.send(.dismissPanels)
         cancelPendingPaste()
         let currentGeneration = generation
         guard let application = resolvedTargetApplication else {
@@ -105,6 +107,7 @@ final class PasteCoordinator {
     }
 
     func pasteGroupIntoCapturedApplication(_ group: ClipboardGroup) {
+        AppRouter.shared.send(.dismissPanels)
         let usesSinglePaste = ClipboardGroupPastePlan.usesSinglePaste(
             for: group.items.map(\.type)
         )
@@ -243,6 +246,8 @@ final class PasteCoordinator {
         }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
+        SyntheticInput.tag(keyDown)
+        SyntheticInput.tag(keyUp)
         if globally {
             keyDown.post(tap: .cghidEventTap)
             keyUp.post(tap: .cghidEventTap)

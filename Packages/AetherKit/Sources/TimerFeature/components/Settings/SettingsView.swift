@@ -20,7 +20,6 @@ struct SettingsView: View {
     @Default(.eyeCareWorkDuration) private var eyeCareWorkDuration
     @Default(.eyeCareRestDuration) private var eyeCareRestDuration
     @AppStorage("customTimerDuration") private var customTimerDuration: Double = 600
-    @ObservedObject private var launchAtLoginManager = LaunchAtLoginManager.shared
     @State private var expandedPresetID: UUID?
     @State private var showingResetConfirmation = false
 
@@ -87,36 +86,6 @@ struct SettingsView: View {
 
     private var timerSettingsCard: some View {
         SettingsCard(title: "常规", systemImage: "gearshape") {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("开机启动")
-                        .font(.body.weight(.medium))
-                    Text("登录 macOS 后自动启动 package counter")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 12)
-
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { launchAtLoginManager.isEnabled },
-                        set: { launchAtLoginManager.setEnabled($0) }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.switch)
-            }
-
-            if let errorMessage = launchAtLoginManager.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            Divider()
-
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("同步 macOS“时钟”计时器")

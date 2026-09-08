@@ -1,3 +1,4 @@
+import SharedSupport
 import AppKit
 import Combine
 import ShortcutCore
@@ -57,9 +58,9 @@ final class AppModel: ObservableObject {
     private var legacyApplicationTargets: [ApplicationTarget] = []
 
     init(
-        store: ShortcutRuleStore = .defaultStore(),
-        appPreferencesStore: AppPreferencesStore = .defaultStore(),
-        preferences: UserDefaults = .standard
+        store: ShortcutRuleStore = ShortcutRuleStore(fileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("shortcuts.json")),
+        appPreferencesStore: AppPreferencesStore = AppPreferencesStore(fileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("preferences.json"), legacyFileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("input-automation.json")),
+        preferences: UserDefaults = AppEnvironment.shortcutsDefaults
     ) {
         self.store = store
         self.appPreferencesStore = appPreferencesStore

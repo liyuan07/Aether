@@ -1,5 +1,5 @@
 import XCTest
-@testable import Clipboard
+@testable import ClipboardFeature
 
 final class SearchTests: XCTestCase {
     @MainActor

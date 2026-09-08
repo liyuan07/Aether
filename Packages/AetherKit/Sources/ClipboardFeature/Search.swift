@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -28,7 +29,7 @@ final class ClipboardSearchModel: ObservableObject {
     private let debounceEnabled: Bool
     private var pendingSearch: Task<Void, Never>?
 
-    convenience init(defaults: UserDefaults = .standard) {
+    convenience init(defaults: UserDefaults = AppEnvironment.clipboardDefaults) {
         self.init(
             delayNanoseconds: ClipboardSearchDebounce.nanoseconds(
                 for: ClipboardSearchDebounce.milliseconds(in: defaults)

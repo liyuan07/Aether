@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * package counter
  * Derived from Atoll (DynamicIsland) and boring.notch
@@ -89,7 +90,7 @@ struct ContentView: View {
             notchHorizontalOffset = offset
         }
         .onDisappear {
-            TimerInteractionPanelManager.shared.hide(animated: false)
+            AppRouter.shared.send(.dismissPanels)
         }
     }
 

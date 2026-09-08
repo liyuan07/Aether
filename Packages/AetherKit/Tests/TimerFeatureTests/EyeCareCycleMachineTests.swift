@@ -9,7 +9,7 @@
  */
 
 import XCTest
-@testable import package_counter
+@testable import TimerFeature
 
 final class EyeCareCycleMachineTests: XCTestCase {
     private let start = Date(timeIntervalSinceReferenceDate: 1_000_000)

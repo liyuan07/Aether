@@ -1,3 +1,4 @@
+import SharedSupport
 import AppKit
 import ShortcutCore
 import SwiftUI
@@ -35,7 +36,7 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             List(selection: $navigation.section) {
-                Section("KeyPilot") {
+                Section("快捷操作") {
                     ForEach(SettingsSection.allCases) { value in
                         Label(value.title, systemImage: value.icon).tag(value)
                     }
@@ -50,7 +51,7 @@ struct SettingsView: View {
             case .shortcuts: ShortcutSettingsView(model: model)
             }
         }
-        .frame(minWidth: 920, minHeight: 600)
+        .frame(minWidth: 650, minHeight: 500)
     }
 }
 
@@ -142,12 +143,8 @@ private struct AppGeneralSettingsView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        SettingsPage("通用设置", subtitle: "配置 KeyPilot 整体行为") {
+        SettingsPage("通用设置", subtitle: "应用唤醒、按键与配置") {
             VStack(spacing: 8) {
-                SettingsRow("登录时启动") {
-                    Toggle("", isOn: appBinding(\.launchAtLogin)).labelsHidden().toggleStyle(.switch)
-                }
-                Divider()
                 SettingsRow(
                     "显示实体按钮",
                     detail: "显示可拖动的右 Option、双 Shift、复制和粘贴按钮"

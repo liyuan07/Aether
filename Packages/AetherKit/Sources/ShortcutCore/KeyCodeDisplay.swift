@@ -23,4 +23,3 @@ public enum KeyCodeDisplay {
         names[keyCode] ?? "Key \(keyCode)"
     }
 }
-

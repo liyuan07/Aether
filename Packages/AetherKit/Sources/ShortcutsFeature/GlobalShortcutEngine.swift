@@ -1,8 +1,8 @@
+import SharedSupport
 import AppKit
 import CoreGraphics
 import ShortcutCore
 
-private let shortcutEventMarker: Int64 = 0x4B_45_59_50_49_4C_4F_54
 
 private let shortcutEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
     guard let userInfo else { return Unmanaged.passUnretained(event) }
@@ -104,7 +104,7 @@ final class GlobalShortcutEngine {
             return Unmanaged.passUnretained(event)
         }
 
-        if event.getIntegerValueField(.eventSourceUserData) == shortcutEventMarker {
+        if SyntheticInput.isOurs(event) {
             return Unmanaged.passUnretained(event)
         }
 
@@ -294,7 +294,7 @@ enum SyntheticKeySender {
 
         for event in [keyDown, keyUp] {
             event.flags = shortcut.modifiers.eventFlags
-            event.setIntegerValueField(.eventSourceUserData, value: shortcutEventMarker)
+            SyntheticInput.tag(event)
             event.post(tap: .cgSessionEventTap)
         }
     }

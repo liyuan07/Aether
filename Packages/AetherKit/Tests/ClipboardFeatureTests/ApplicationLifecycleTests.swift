@@ -1,20 +1,7 @@
 import XCTest
-@testable import Clipboard
+@testable import ClipboardFeature
 
 final class ApplicationLifecycleTests: XCTestCase {
-    @MainActor
-    func testStatusMenuIncludesRestartBeforeQuit() {
-        let titles = StatusItemController.shared.makeMenu().items
-            .filter { !$0.isSeparatorItem }
-            .map(\.title)
-
-        guard let restartIndex = titles.firstIndex(of: "重启 Clipboard"),
-              let quitIndex = titles.firstIndex(of: "退出 Clipboard") else {
-            return XCTFail("Restart and quit items should both be present")
-        }
-        XCTAssertLessThan(restartIndex, quitIndex)
-    }
-
     @MainActor
     func testRestartHelperPassesPidAndBundlePathAsPositionalArguments() {
         let bundlePath = "/Applications/Clipboard Test.app"

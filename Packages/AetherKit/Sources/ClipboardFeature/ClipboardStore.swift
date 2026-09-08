@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Clipboard
  * Copyright (C) 2026 Li Yuan
@@ -370,11 +371,11 @@ final class ClipboardStore: ObservableObject {
     private var maintenanceGeneration: UInt64 = 0
 
     private var historyLimit: Int {
-        max(50, UserDefaults.standard.integer(forKey: PreferenceKeys.historyLimit))
+        max(50, AppEnvironment.clipboardDefaults.integer(forKey: PreferenceKeys.historyLimit))
     }
 
     private var expirationDays: Int {
-        max(0, UserDefaults.standard.integer(forKey: PreferenceKeys.expirationDays))
+        max(0, AppEnvironment.clipboardDefaults.integer(forKey: PreferenceKeys.expirationDays))
     }
 
     private init() {
@@ -601,7 +602,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func preferencesDidChange() {
-        if UserDefaults.standard.bool(forKey: PreferenceKeys.monitoringEnabled) {
+        if AppEnvironment.clipboardDefaults.bool(forKey: PreferenceKeys.monitoringEnabled) {
             startMonitoring()
         } else {
             stopMonitoring()
