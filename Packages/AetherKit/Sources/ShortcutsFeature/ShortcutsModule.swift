@@ -159,31 +159,4 @@ extension ShortcutsModule {
             _ = try AppPreferencesStore(fileURL: preferences, legacyFileURL: legacy).load()
         }
     }
-    public func configurationControls() -> AnyView { AnyView(ConfigurationControls(model: runtime.model)) }
-}
-
-private struct ConfigurationControls: View {
-    @ObservedObject var model: AppModel
-    var body: some View {
-        GroupBox("快捷操作配置") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("兼容原 KeyPilot 配置文件")
-                    Spacer()
-                    Button("导入…") {
-                        let panel = NSOpenPanel()
-                        panel.allowedContentTypes = [.json]
-                        if panel.runModal() == .OK, let url = panel.url { model.importConfiguration(from: url) }
-                    }
-                    Button("导出…") {
-                        let panel = NSSavePanel()
-                        panel.allowedContentTypes = [.json]
-                        panel.nameFieldStringValue = "Aether-Shortcuts.json"
-                        if panel.runModal() == .OK, let url = panel.url { model.exportConfiguration(to: url) }
-                    }
-                }
-                if let error = model.lastError { Text(error).foregroundStyle(.orange) }
-            }.padding(10)
-        }
-    }
 }

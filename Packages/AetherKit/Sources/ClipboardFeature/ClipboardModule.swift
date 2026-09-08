@@ -33,12 +33,7 @@ import SwiftUI
     public func captureTarget() { PasteCoordinator.shared.captureCurrentApplication() }
     public func showWindow() { ClipboardPanelController.shared.togglePanel() }
     public func hideWindow() { ClipboardPanelController.shared.hidePanel() }
-    public func settings() -> AnyView {
-        AnyView(ScrollView { VStack(alignment: .leading) {
-            ClipboardSettingsView()
-            if let hotKeyError { Text(hotKeyError).foregroundStyle(.orange).padding() }
-        } })
-    }
+    public func settings() -> AnyView { AnyView(ClipboardSettingsView()) }
     public func compactPanel() -> AnyView { AnyView(CompactClipboardView()) }
     public func monitoringControl() -> AnyView { AnyView(ClipboardMonitoringControl()) }
 }

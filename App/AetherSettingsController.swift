@@ -75,20 +75,18 @@ private struct AetherSettingsView: View {
                 List(SharedSupport.SettingsPage.allCases, selection: $navigation.page) { page in
                     Label(page.title, systemImage: page.symbol).tag(page).padding(.vertical, 5)
                 }.listStyle(.sidebar)
-                Text("本地 · 原生 · 轻量").font(.caption).foregroundStyle(.secondary).padding(18)
             }.frame(width: 185)
             Divider()
             Group {
-                if !startup.ready && navigation.page != .permissions && navigation.page != .about {
+                if !startup.ready && navigation.page != .permissions {
                     setup
                 } else {
                     switch navigation.page {
-                    case .general: GeneralSettingsView()
+                    case .general: SettingsContent("通用") { GeneralSettingsView() }
                     case .clipboard: ClipboardModule.shared.settings()
                     case .shortcuts: ShortcutsModule.shared.settings()
                     case .timer: TimerModule.shared.settings()
-                    case .permissions: PermissionSettingsView()
-                    case .about: about
+                    case .permissions: SettingsContent("权限") { PermissionSettingsView() }
                     }
                 }
             }
@@ -105,27 +103,7 @@ private struct AetherSettingsView: View {
             else { Button("继续迁移") { startup.prepare() }.buttonStyle(.borderedProminent) }
         }.padding(32)
     }
-    private var about: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Label("Aether · 以太", systemImage: "square.3.layers.3d").font(.largeTitle.bold())
-                Text("版本 1.0.0 · 倒计时、剪贴板与快捷操作").foregroundStyle(.secondary)
-                GroupBox("数据迁移") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(startup.message).frame(maxWidth: .infinity, alignment: .leading)
-                        if !startup.ready { Button("继续迁移") { startup.prepare() }.disabled(startup.importing) }
-                        Button("显示数据文件夹") { NSWorkspace.shared.activateFileViewerSelecting([AppEnvironment.root]) }
-                    }.padding(10)
-                }
-                if startup.ready { ShortcutsModule.shared.configurationControls() }
-                GroupBox("来源与许可") {
-                    Text("整合 Li Yuan 的 package counter、Clipboard 与 KeyPilot。计时与刘海实现源自 Atoll 及 boring.notch；保留原作者版权和 GPL-3.0-or-later 许可。依赖 Defaults、MacroVisionKit、SkyLightWindow。完整来源及许可随应用提供。")
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                }
-                Text("剪贴板正文仅保存在本机。更新与迁移不会删除旧应用数据。").font(.callout).foregroundStyle(.secondary)
-            }.padding(30)
-        }
-    }
+
 }
 
 private struct GeneralSettingsView: View {
@@ -136,12 +114,8 @@ private struct GeneralSettingsView: View {
                 Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set))
                 LabeledContent("系统登录项状态", value: login.status)
                 if let error = login.error { Text(error).foregroundStyle(.red) }
-            } header: { Text("通用") } footer: { Text("所有功能共用这一项登录设置。菜单栏中只显示一个 Aether 图标。") }
-            Section("操作方式") {
-                LabeledContent("菜单栏左键", value: "打开控制中心")
-                LabeledContent("菜单栏右键", value: "设置、重新启动与退出")
-                Text("点击面板外部或按 Esc 收起；鼠标移出不会打断输入。刘海只展示计时状态。")
-            }
+            } header: { Text("启动") }
+
         }.formStyle(.grouped)
     }
 }
@@ -162,7 +136,7 @@ private struct PermissionSettingsView: View {
                 Button("打开输入监控设置") { open("Privacy_ListenEvent") }
             }
             Section {
-                Text("Aether 使用新的应用身份，旧应用的授权不会自动迁入。请在系统设置中为 /Applications/Aether.app 授权；若系统要求退出并重新打开，请使用菜单栏右键的“重新启动”。")
+                Text("若系统要求重新打开应用，请使用菜单栏右键的“重新启动”。")
                 Text("系统时钟镜像受 macOS 版本及系统接口限制；本地倒计时不依赖镜像。")
             }
         }.formStyle(.grouped)

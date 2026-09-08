@@ -11,202 +11,176 @@ struct ShortcutSettingsView: View {
         VStack(spacing: 0) {
             settingsHeader
             Divider()
-            HStack(spacing: 0) {
-                sidebar
-                    .frame(width: 245)
-                Divider()
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(minWidth: 736, minHeight: 500)
-    }
-
-    private var settingsHeader: some View {
-        HStack(spacing: 10) {
-            Image(systemName: model.permissionGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                .foregroundStyle(model.permissionGranted ? .green : .orange)
-            Text(model.permissionGranted ? "辅助功能权限已开启" : "快捷键暂未生效：需要辅助功能权限")
-                .font(.callout)
-            if !model.permissionGranted {
-                Button("打开系统设置") { AccessibilityPermission.openSettings() }
-            }
-            Spacer()
-            Stepper(
-                value: Binding(
-                    get: { model.shortcutGuideHoldDuration },
-                    set: model.setShortcutGuideHoldDuration
-                ),
-                in: ShortcutGuideConfiguration.minimumHoldDuration...ShortcutGuideConfiguration.maximumHoldDuration,
-                step: ShortcutGuideConfiguration.holdDurationStep
-            ) {
-                Text("浮层 \(model.shortcutGuideHoldDuration, specifier: "%.1f") 秒")
-                    .font(.callout.monospacedDigit())
-            }
-            .help("调整双 Command 唤出快捷键表所需的长按时间")
-            if model.isScanningConflicts { ProgressView().controlSize(.small) }
-            Button("扫描冲突") { model.rescanConflicts() }
-                .disabled(model.isScanningConflicts)
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 48)
-    }
-
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            List(selection: $model.selectedRuleID) {
+            List {
                 ForEach(model.rules) { rule in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(rule.isEnabled ? Color.green : Color.secondary.opacity(0.35))
-                            .frame(width: 7, height: 7)
-                        VStack(alignment: .leading, spacing: 2) {
+                    DisclosureGroup(isExpanded: expansion(for: rule.id)) {
+                        RuleEditorView(
+                            rule: Binding(
+                                get: { model.rule(withID: rule.id) ?? rule },
+                                set: { model.update($0) }
+                            ),
+                            findings: model.findings(for: rule.id),
+                            setRecording: model.setShortcutRecording,
+                            remove: { model.removeRule(id: rule.id) }
+                        )
+                        .id(rule.id)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(rule.isEnabled ? Color.green : Color.secondary.opacity(0.35))
+                                .frame(width: 7, height: 7)
                             Text(rule.name).lineLimit(1)
+                            Spacer()
+                            if !model.findings(for: rule.id).isEmpty {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                            }
                             Text(rule.source.displayString)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
+                                .font(.callout.monospaced()).foregroundStyle(.secondary)
+                            Image(systemName: "line.3.horizontal")
+                                .foregroundStyle(.tertiary).help("拖动调整顺序")
                         }
-                        Spacer()
-                        if !model.findings(for: rule.id).isEmpty {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                        Image(systemName: "line.3.horizontal")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .help("拖动调整显示顺序")
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture { expansion(for: rule.id).wrappedValue.toggle() }
                     }
-                    .tag(rule.id)
                 }
                 .onMove(perform: model.moveRules)
             }
-            Text("拖动列表项可调整显示顺序")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            Divider()
-            HStack(spacing: 12) {
-                Button {
-                    _ = model.addRule()
-                } label: {
-                    Image(systemName: "plus")
+            .listStyle(.inset)
+            HStack {
+                Button { _ = model.addRule() } label: {
+                    Label("添加快捷键", systemImage: "plus")
                 }
-                .buttonStyle(.borderless)
-                Button {
-                    if let id = model.selectedRuleID { model.removeRule(id: id) }
-                } label: {
-                    Image(systemName: "minus")
-                }
-                .buttonStyle(.borderless)
-                .disabled(model.selectedRuleID == nil)
                 Spacer()
+                Text("拖动调整顺序").font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
+            .padding(.horizontal, 24).padding(.vertical, 12)
         }
     }
 
-    @ViewBuilder
-    private var detail: some View {
-        if let selected = model.rule(withID: model.selectedRuleID) {
-            RuleEditorView(
-                rule: Binding(
-                    get: { model.rule(withID: selected.id) ?? selected },
-                    set: { model.update($0) }
-                ),
-                findings: model.findings(for: selected.id),
-                setRecording: model.setShortcutRecording
-            )
-            .id(selected.id)
-        } else {
-            ContentUnavailableView(
-                "没有快捷键",
-                systemImage: "keyboard",
-                description: Text("点击左下角的加号创建一条配置")
-            )
-        }
+    private func expansion(for id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { model.selectedRuleID == id },
+            set: { expanded in
+                model.setShortcutRecording(false)
+                model.selectedRuleID = expanded ? id : nil
+            }
+        )
     }
+
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: model.permissionGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .foregroundStyle(model.permissionGranted ? .green : .orange)
+                Text(model.permissionGranted ? "辅助功能权限已开启" : "快捷键暂未生效：需要辅助功能权限")
+                    .font(.callout)
+                if !model.permissionGranted {
+                    Button("打开系统设置") { AccessibilityPermission.openSettings() }
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                Stepper(
+                    value: Binding(
+                        get: { model.shortcutGuideHoldDuration },
+                        set: model.setShortcutGuideHoldDuration
+                    ),
+                    in: ShortcutGuideConfiguration.minimumHoldDuration...ShortcutGuideConfiguration.maximumHoldDuration,
+                    step: ShortcutGuideConfiguration.holdDurationStep
+                ) {
+                    Text("长按双 ⌘ 显示提示：\(model.shortcutGuideHoldDuration, specifier: "%.1f") 秒")
+                        .font(.callout.monospacedDigit())
+                }
+                .help("调整双 Command 唤出快捷键表所需的长按时间")
+                Spacer()
+                if model.isScanningConflicts { ProgressView().controlSize(.small) }
+                Button("扫描冲突") { model.rescanConflicts() }
+                    .disabled(model.isScanningConflicts)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+    }
+
 }
 
 private struct RuleEditorView: View {
     @Binding var rule: ShortcutRule
     let findings: [ConflictFinding]
     let setRecording: (Bool) -> Void
+    let remove: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("快捷键配置")
-                        .font(.title3.weight(.semibold))
-                    Spacer()
-                    Toggle("启用", isOn: $rule.isEnabled)
-                        .toggleStyle(.switch)
-                }
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Button("删除快捷键", role: .destructive, action: remove)
+                Spacer()
+                Toggle("启用", isOn: $rule.isEnabled)
+                    .toggleStyle(.switch)
+            }
 
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        LabeledContent("名称") {
-                            TextField("快捷键名称", text: $rule.name)
-                                .frame(width: 280)
-                        }
-                        LabeledContent("触发快捷键") {
-                            ShortcutRecorderView(shortcut: $rule.source, onRecordingChanged: setRecording)
-                                .frame(width: 150, height: 28)
-                        }
-                        Text("按物理键位保存；同时按住中英键与左右修饰键时会记录物理组合。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    LabeledContent("名称") {
+                        TextField("快捷键名称", text: $rule.name)
+                            .frame(width: 280)
                     }
-                    .padding(6)
-                }
-
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Picker("动作", selection: actionKindBinding) {
-                            ForEach(ShortcutAction.Kind.allCases) { kind in
-                                Text(kind.displayName).tag(kind)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Divider()
-                        actionConfiguration
+                    LabeledContent("触发快捷键") {
+                        ShortcutRecorderView(shortcut: $rule.source, onRecordingChanged: setRecording)
+                            .frame(width: 150, height: 28)
                     }
-                    .padding(6)
+                    Text("按物理键位保存；同时按住中英键与左右修饰键时会记录物理组合。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(6)
+            }
 
-                if !findings.isEmpty {
-                    GroupBox("冲突提示") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(findings) { finding in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(finding.confidence == .confirmed ? .red : .orange)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(finding.confidence.displayName)
-                                            .font(.caption.bold())
-                                        Text(finding.message)
-                                            .font(.callout)
-                                    }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    Picker("动作", selection: actionKindBinding) {
+                        ForEach(ShortcutAction.Kind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Divider()
+                    actionConfiguration
+                }
+                .padding(6)
+            }
+
+            if !findings.isEmpty {
+                GroupBox("冲突提示") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(findings) { finding in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(finding.confidence == .confirmed ? .red : .orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(finding.confidence.displayName)
+                                        .font(.caption.bold())
+                                    Text(finding.message)
+                                        .font(.callout)
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
                 }
-
-                Text("冲突扫描会检查软件内重复、部分系统快捷键、排他式全局注册，以及当前运行软件公开在菜单中的快捷键；不能枚举第三方软件的全部内部快捷键。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-            .padding(18)
-            .frame(maxWidth: 620, alignment: .leading)
+
+            Text("冲突扫描会检查软件内重复、部分系统快捷键、排他式全局注册，以及当前运行软件公开在菜单中的快捷键；不能枚举第三方软件的全部内部快捷键。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onDisappear { setRecording(false) }
     }
 
     private var actionKindBinding: Binding<ShortcutAction.Kind> {

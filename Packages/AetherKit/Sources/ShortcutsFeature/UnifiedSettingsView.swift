@@ -10,9 +10,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "通用"
+        case .general: "按键与面板"
         case .applications: "应用唤醒"
-        case .shortcuts: "系统与自定义"
+        case .shortcuts: "快捷键"
         }
     }
     var icon: String {
@@ -34,24 +34,28 @@ struct SettingsView: View {
     @ObservedObject var navigation: SettingsNavigationModel
 
     var body: some View {
-        HStack(spacing: 0) {
-            List(selection: $navigation.section) {
-                Section("快捷操作") {
+        SettingsContent("快捷操作") {
+            VStack(spacing: 0) {
+                Picker("快捷操作分类", selection: $navigation.section) {
                     ForEach(SettingsSection.allCases) { value in
                         Label(value.title, systemImage: value.icon).tag(value)
                     }
                 }
-            }
-            .listStyle(.sidebar)
-            .frame(width: 184)
-            Divider()
-            switch navigation.section {
-            case .general: AppGeneralSettingsView(model: model)
-            case .applications: ApplicationShortcutSettingsView(model: model)
-            case .shortcuts: ShortcutSettingsView(model: model)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+                switch navigation.section {
+                case .general: AppGeneralSettingsView(model: model)
+                case .applications: ApplicationShortcutSettingsView(model: model)
+                case .shortcuts: ShortcutSettingsView(model: model)
+                }
+                if let error = model.lastError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange).padding(16)
+                }
             }
         }
-        .frame(minWidth: 650, minHeight: 500)
     }
 }
 
@@ -61,7 +65,6 @@ private struct ApplicationShortcutSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("应用唤醒").font(.title2.weight(.semibold))
                 Text("轻按 Option+首字母打开默认应用；按住后从同首字母应用中选择")
                     .font(.callout).foregroundStyle(.secondary)
             }
@@ -143,30 +146,26 @@ private struct AppGeneralSettingsView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        SettingsPage("通用设置", subtitle: "应用唤醒、按键与配置") {
-            VStack(spacing: 8) {
-                SettingsRow(
-                    "显示实体按钮",
-                    detail: "显示可拖动的右 Option、双 Shift、复制和粘贴按钮"
-                ) {
-                    Toggle("", isOn: appBinding(\.showModifierButtons)).labelsHidden().toggleStyle(.switch)
-                }
-                Divider()
-                SettingsRow(
-                    "屏蔽 ABC 自动切换",
-                    detail: "仅允许亲自按下物理中英键进入 ABC；需要输入监控权限"
-                ) {
-                    Toggle("", isOn: appBinding(\.blockAutomaticABC)).labelsHidden().toggleStyle(.switch)
-                }
-            }.compactSettingsGroup()
+        Form {
+            Section {
+                Toggle("显示实体按钮", isOn: appBinding(\.showModifierButtons))
+            } header: { Text("实体按钮") }
+            footer: { Text("在桌面显示可拖动的修饰键、复制与粘贴按钮。") }
 
-            HStack {
-                Text("配置导入导出")
-                Spacer()
-                Button("导出…") { exportConfiguration() }
-                Button("导入…") { importConfiguration() }
-            }.compactSettingsGroup()
-        }
+            Section {
+                Toggle("屏蔽 ABC 自动切换", isOn: appBinding(\.blockAutomaticABC))
+            } header: { Text("输入法") }
+            footer: { Text("只在按下物理中英键时切换到 ABC，需要输入监控权限。") }
+
+            Section("配置") {
+                LabeledContent("快捷操作配置") {
+                    HStack {
+                        Button("导入…") { importConfiguration() }
+                        Button("导出…") { exportConfiguration() }
+                    }
+                }
+            }
+        }.formStyle(.grouped)
     }
 
     private func appBinding<Value>(_ keyPath: WritableKeyPath<AppGeneralPreferences, Value>) -> Binding<Value> {
@@ -178,7 +177,7 @@ private struct AppGeneralSettingsView: View {
 
     private func exportConfiguration() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "KeyPilot-Configuration.json"
+        panel.nameFieldStringValue = "Aether-Shortcuts.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.exportConfiguration(to: url)
@@ -190,67 +189,5 @@ private struct AppGeneralSettingsView: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.importConfiguration(from: url)
-    }
-}
-
-struct SettingsPage<Content: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let content: Content
-
-    init(_ title: String, subtitle: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.title2.weight(.semibold))
-                    Text(subtitle).font(.callout).foregroundStyle(.secondary)
-                }
-                content
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-    }
-}
-
-struct SettingsRow<Control: View>: View {
-    let title: String
-    let detail: String?
-    @ViewBuilder let control: Control
-
-    init(_ title: String, detail: String? = nil, @ViewBuilder control: () -> Control) {
-        self.title = title
-        self.detail = detail
-        self.control = control()
-    }
-
-    var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 20)
-            control
-        }
-        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-    }
-}
-
-extension View {
-    func compactSettingsGroup() -> some View {
-        self
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: .separatorColor).opacity(0.45)))
     }
 }

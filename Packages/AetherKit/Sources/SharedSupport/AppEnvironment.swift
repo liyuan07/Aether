@@ -14,7 +14,7 @@ public enum AppEnvironment {
 }
 
 public enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, clipboard, shortcuts, timer, permissions, about
+    case general, clipboard, shortcuts, timer, permissions
     public var id: String { rawValue }
     public var title: String {
         switch self {
@@ -23,7 +23,6 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
         case .shortcuts: "快捷操作"
         case .timer: "计时与护眼"
         case .permissions: "权限"
-        case .about: "关于与数据"
         }
     }
     public var symbol: String {
@@ -33,7 +32,6 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
         case .shortcuts: "command"
         case .timer: "timer"
         case .permissions: "hand.raised"
-        case .about: "info.circle"
         }
     }
 }

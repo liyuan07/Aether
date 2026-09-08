@@ -28,130 +28,63 @@ struct ClipboardSettingsView: View {
         ClipboardSearchDebounce.defaultMilliseconds
     @State private var accessibilityTrusted = false
 
+    @ObservedObject private var module = ClipboardModule.shared
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "doc.on.clipboard.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.blue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("剪贴板")
-                        .font(.title2.weight(.semibold))
-                    Text("本地、快速、独立的剪切板历史")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            GroupBox("常规") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle("记录剪切板历史", isOn: $monitoringEnabled)
-                }
-                .padding(8)
-            }
-
-            GroupBox("快捷键") {
-                HStack {
-                    Toggle("启用全局快捷键", isOn: $shortcutEnabled)
-                    Spacer()
-                    Text("⇧⌘J")
-                        .font(.system(.body, design: .rounded).weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.secondary.opacity(0.12))
-                        )
-                }
-                .padding(8)
-            }
-
-            GroupBox("历史") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Stepper(
-                        "最多保留 \(historyLimit) 条",
-                        value: $historyLimit,
-                        in: 50...20_000,
-                        step: 50
-                    )
-                    Stepper(
-                        expirationDays == 0
-                            ? "永不过期"
-                            : "保留 \(expirationDays) 天",
-                        value: $expirationDays,
-                        in: 0...365
-                    )
-                    HStack {
-                        Text("历史记录仅保存在本机")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
+        SettingsContent("剪贴板") {
+            Form {
+                Section("记录") {
+                    Toggle("记录剪贴板历史", isOn: $monitoringEnabled)
+                    Stepper(value: $historyLimit, in: 50...20_000, step: 50) {
+                        LabeledContent("记录上限", value: "\(historyLimit) 条")
+                    }
+                    Stepper(value: $expirationDays, in: 0...365) {
+                        LabeledContent("保留时间", value: expirationDays == 0 ? "永久保留" : "\(expirationDays) 天")
+                    }
+                    LabeledContent("存储位置") {
                         Button("显示数据文件夹") {
-                            NSWorkspace.shared.activateFileViewerSelecting([
-                                ClipboardStorage.archiveDirectory
-                            ])
+                            NSWorkspace.shared.activateFileViewerSelecting([ClipboardStorage.archiveDirectory])
                         }
                     }
                 }
-                .padding(8)
-            }
 
-            GroupBox("搜索") {
-                HStack(spacing: 12) {
-                    Toggle(
-                        "启用搜索防抖",
-                        isOn: $searchDebounceEnabled
-                    )
-                    Spacer()
+                Section("快捷键") {
+                    Toggle(isOn: $shortcutEnabled) {
+                        LabeledContent("打开剪贴板", value: "⇧⌘J")
+                    }
+                    if let error = module.hotKeyError {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Section {
+                    Toggle("输入停顿后搜索", isOn: $searchDebounceEnabled)
                     Stepper(
-                        "停止输入 \(searchDebounceMilliseconds) 毫秒后搜索",
                         value: $searchDebounceMilliseconds,
                         in: ClipboardSearchDebounce.supportedMilliseconds,
                         step: ClipboardSearchDebounce.stepMilliseconds
-                    )
+                    ) {
+                        LabeledContent("等待时间", value: "\(searchDebounceMilliseconds) 毫秒")
+                    }
                     .disabled(!searchDebounceEnabled)
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+                } header: { Text("搜索") }
+                footer: { Text("关闭后，每次输入都会立即更新搜索结果。") }
 
-            GroupBox("粘贴权限") {
-                HStack {
-                    Image(systemName: accessibilityTrusted
-                        ? "checkmark.circle.fill"
-                        : "exclamationmark.triangle.fill")
-                        .foregroundStyle(accessibilityTrusted ? .green : .orange)
-                    Text(accessibilityTrusted
-                        ? "辅助功能权限已启用"
-                        : "单击条目自动粘贴需要辅助功能权限")
-                    Spacer()
-                    if accessibilityTrusted {
-                        Button("刷新") {
-                            refreshStatus()
-                        }
-                    } else {
-                        Button("授权") {
-                            AccessibilityController.requestAccess()
-                            AccessibilityController.openSystemSettings()
+                Section("自动粘贴") {
+                    LabeledContent("辅助功能", value: accessibilityTrusted ? "已授权" : "未授权")
+                    if !accessibilityTrusted {
+                        HStack {
+                            Text("粘贴到其他应用需要辅助功能权限。")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("权限设置") { AppRouter.shared.send(.settings(.permissions)) }
                         }
                     }
                 }
-                .padding(8)
             }
-
-            HStack {
-                Text("Aether 剪贴板 · GPL-3.0-or-later")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                Button("完成") {
-                    NSApp.keyWindow?.close()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
+            .formStyle(.grouped)
         }
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             searchDebounceMilliseconds = ClipboardSearchDebounce.clamped(
                 searchDebounceMilliseconds
@@ -190,11 +123,7 @@ struct ClipboardSettingsView: View {
         )
     }
 
-    private var appVersion: String {
-        Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "Development"
-    }
+
 }
 
 @MainActor

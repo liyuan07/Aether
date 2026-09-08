@@ -37,7 +37,7 @@ import TimerFeature
         startup.onReady = { [weak self] in self?.startFeatures() }
         startup.prepare()
         if DataMigration(destination: AppEnvironment.root).receipt()?.phase != "complete" {
-            settings?.show(.about)
+            settings?.show(.general)
         }
     }
     private func startFeatures() {
@@ -58,7 +58,7 @@ import TimerFeature
         switch route {
         case .overview: status?.show()
         case .clipboard:
-            guard started else { settings?.show(.about); return }
+            guard started else { settings?.show(.general); return }
             ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget()
             status?.hide()
             ClipboardModule.shared.showWindow()
