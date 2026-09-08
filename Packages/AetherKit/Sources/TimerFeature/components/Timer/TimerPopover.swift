@@ -487,6 +487,7 @@ private struct DurationStepper: View {
                 Spacer()
                 Text("\(value)")
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .fixedSize()
             }
         }
         .frame(minWidth: 60, maxWidth: .infinity)

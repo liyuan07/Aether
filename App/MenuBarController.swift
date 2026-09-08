@@ -87,19 +87,9 @@ private struct ControlCenterView: View {
                 case 2: ShortcutsModule.shared.quickActions()
                 default:
                     ScrollView {
-                        VStack(spacing: 12) {
-                            TimerModule.shared.overview().background(.background, in: RoundedRectangle(cornerRadius: 12))
-                            VStack(alignment: .leading, spacing: 12) {
-                                Label("常用开关", systemImage: "switch.2").font(.headline)
-                                ClipboardModule.shared.monitoringControl()
-                                ShortcutsModule.shared.controls()
-                            }
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
+                        TimerModule.shared.overview()
                             .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                        }.padding(12)
+                            .padding(12)
                     }
                 }
             } else {
