@@ -89,6 +89,11 @@ enum CompactNotchLiveActivityMetrics {
     static let iconTrailingAllowance: CGFloat = 4
     static let contentSpacing: CGFloat = 6
     static let countdownWidth: CGFloat = 56
+
+    static func horizontalOffset(leftWingWidth: CGFloat, rightWingWidth: CGFloat) -> CGFloat {
+        // Keep the middle spacer over the physical notch even when the wings differ in width.
+        (rightWingWidth - leftWingWidth) / 2
+    }
 }
 
 func getScreenFrame(_ screen: String? = nil) -> CGRect? {

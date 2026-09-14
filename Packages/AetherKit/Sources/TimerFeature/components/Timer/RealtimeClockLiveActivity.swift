@@ -157,7 +157,10 @@ struct RealtimeClockLiveActivity: View {
         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
         .preference(
             key: NotchHorizontalOffsetPreferenceKey.self,
-            value: -wingWidth / 2
+            value: CompactNotchLiveActivityMetrics.horizontalOffset(
+                leftWingWidth: wingWidth,
+                rightWingWidth: 0
+            )
         )
         .accessibilityElement(children: .combine)
     }

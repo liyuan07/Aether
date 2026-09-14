@@ -281,7 +281,10 @@ struct TimerLiveActivity: View {
         .contentShape(Rectangle())
         .preference(
             key: NotchHorizontalOffsetPreferenceKey.self,
-            value: showRealtimeClock ? (rightWingWidth - leftWingWidth) / 2 : 0
+            value: CompactNotchLiveActivityMetrics.horizontalOffset(
+                leftWingWidth: leftWingWidth,
+                rightWingWidth: rightWingWidth
+            )
         )
     }
 
