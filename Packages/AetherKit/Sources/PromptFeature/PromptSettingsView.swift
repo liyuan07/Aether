@@ -36,6 +36,7 @@ struct PromptSettingsView: View {
                     HStack {
                         Text("最多保留")
                         TextField("历史记录条数", value: $model.draftConfiguration.historyLimit, format: .number.grouping(.never))
+                            .labelsHidden()
                             .textFieldStyle(.roundedBorder).frame(width: 72)
                             .accessibilityIdentifier("prompt.settings.historyLimit")
                         Text("条（1–1000）").foregroundStyle(.secondary)

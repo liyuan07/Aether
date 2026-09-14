@@ -5,6 +5,7 @@ struct PromptWorkspaceView: View {
     @ObservedObject var model: PromptModel
     @State private var confirmingClear = false
     @State private var copied = false
+    @FocusState private var focusedEditor: String?
 
     var body: some View {
         HSplitView {
@@ -22,6 +23,7 @@ struct PromptWorkspaceView: View {
             Text("此操作会删除本机保存的全部原始提示词和优化结果，当前编辑区内容会保留。")
         }
         .onChange(of: model.outputText) { _, _ in copied = false }
+        .onAppear { focusedEditor = "prompt.input" }
     }
 
     private var historySidebar: some View {
@@ -98,7 +100,7 @@ struct PromptWorkspaceView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { model.newPrompt() } label: { Label("新建", systemImage: "square.and.pencil") }
+                Button { model.newPrompt(); focusedEditor = "prompt.input" } label: { Label("新建", systemImage: "square.and.pencil") }
                     .accessibilityIdentifier("prompt.new")
                 Button { AppRouter.shared.send(.settings(.prompt)) } label: {
                     Image(systemName: "gearshape")
@@ -232,6 +234,7 @@ struct PromptWorkspaceView: View {
     private func editor(text: Binding<String>, placeholder: String, identifier: String) -> some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: text)
+                .focused($focusedEditor, equals: identifier)
                 .font(.body)
                 .scrollContentBackground(.hidden)
                 .padding(8)
