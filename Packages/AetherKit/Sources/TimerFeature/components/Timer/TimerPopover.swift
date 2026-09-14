@@ -46,11 +46,6 @@ struct TimerPopover: View {
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject private var eyeCareManager = EyeCareManager.shared
     @Default(.timerPresets) private var timerPresets
-    @Default(.timerShowsCountdown) private var showsCountdown
-    @Default(.timerShowsProgress) private var showsProgress
-    @Default(.timerProgressStyle) private var progressStyle
-    @Default(.timerIconColorMode) private var colorMode
-    @Default(.timerSolidColor) private var solidColor
     @Default(.showRealtimeClock) private var showRealtimeClock
     @Default(.eyeCareEnabled) private var eyeCareEnabled
     @AppStorage("customTimerDuration") private var customTimerDuration: Double = 600
@@ -79,18 +74,23 @@ struct TimerPopover: View {
                 EyeCareStatusCard(manager: eyeCareManager)
             }
 
-            Toggle(isOn: $showRealtimeClock) {
-                Label("在刘海显示实时时间", systemImage: "clock")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
             Divider()
-                .padding(.horizontal, -8)
 
             PresetList(presets: timerPresets, activePresetId: timerManager.activePresetId, startAction: startPreset)
                 .animation(.smooth, value: timerManager.activePresetId)
+
+            Divider()
+
+            HStack {
+                Text("刘海实时时间")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("刘海实时时间", isOn: $showRealtimeClock)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity)
@@ -303,32 +303,13 @@ private struct HeaderView: View {
     let statusText: String
 
     var body: some View {
-        HStack(spacing: 12) {
-            TimerIconAnimation()
-                .frame(width: 28, height: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("倒计时")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(statusText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
+        HStack {
+            Text("倒计时")
+                .font(.system(size: 13, weight: .semibold))
             Spacer()
-
-            Button {
-                AppRouter.shared.send(.dismissPanels)
-                SettingsWindowController.shared.showWindow()
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 26, height: 26)
-                    .background(Color.secondary.opacity(0.06))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("设置")
+            Text(statusText)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -342,15 +323,19 @@ private struct ActiveTimerSection: View {
     @Default(.timerPresets) private var timerPresets
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 12) {
+            VStack(spacing: 4) {
                 Text(timerManager.timerName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 12))
                     .lineLimit(1)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.secondary)
+                    .help(timerManager.timerName)
 
                 Text(timerManager.formattedRemainingTime())
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .font(.system(size: 36, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(timerManager.isOvertime ? Color.red : Color.primary)
                     .contentTransition(.numericText())
             }
@@ -367,8 +352,9 @@ private struct ActiveTimerSection: View {
                         Label(timerManager.isPaused ? "继续" : "暂停", systemImage: timerManager.isPaused ? "play.fill" : "pause.fill")
                             .font(.system(size: 12, weight: .medium))
                             .labelStyle(.titleAndIcon)
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!timerManager.allowsManualInteraction)
                 }
 
@@ -376,15 +362,15 @@ private struct ActiveTimerSection: View {
                     Label("停止", systemImage: "stop.fill")
                         .font(.system(size: 12, weight: .medium))
                         .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .disabled(!timerManager.allowsManualInteraction)
             }
+            .controlSize(.regular)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
         .animation(.smooth, value: timerManager.isPaused)
     }
 
@@ -435,42 +421,23 @@ private struct CustomTimerSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 8) {
-                GridRow {
-                    DurationStepper(title: "小时", value: $hours, range: 0...23)
-                    DurationStepper(title: "分钟", value: $minutes, range: 0...59)
-                    DurationStepper(title: "秒", value: $seconds, range: 0...59)
-                }
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                DurationStepper(title: "小时", value: $hours, range: 0...23)
+                DurationStepper(title: "分钟", value: $minutes, range: 0...59)
+                DurationStepper(title: "秒", value: $seconds, range: 0...59)
             }
 
-            HStack(spacing: 8) {
-                Text(formattedDuration)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button(action: startAction) {
-                    Label("开始", systemImage: "play.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(totalSeconds == 0)
+            Button(action: startAction) {
+                Label("开始倒计时", systemImage: "play.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(totalSeconds == 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.secondary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var formattedDuration: String {
-        let components = TimerPreset.DurationComponents(hours: hours, minutes: minutes, seconds: seconds)
-        let interval = TimerPreset.duration(from: components)
-        return TimerPreset(name: "", duration: interval, color: .clear).formattedDuration
+        .padding(.vertical, 4)
     }
 }
 
@@ -481,23 +448,26 @@ private struct DurationStepper: View {
 
     var body: some View {
         Stepper(value: $value, in: range) {
-            HStack(spacing: 2) {
-                Text(title)
-                    .font(.system(size: 8.5, weight: .medium))
-                Spacer()
-                Text("\(value)")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(String(format: "%02d", value))
+                    .font(.system(size: 26, weight: .medium, design: .rounded))
+                    .monospacedDigit()
                     .fixedSize()
+                Text(title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(minWidth: 60, maxWidth: .infinity)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value)")
     }
 }
 
 private struct PresetList: View {
     private static let maximumVisiblePresets = 5
-    private static let presetRowHeight: CGFloat = 44
-    private static let rowSpacing: CGFloat = 6
+    private static let presetRowHeight: CGFloat = 34
+    private static let rowSpacing: CGFloat = 2
 
     let presets: [TimerPreset]
     let activePresetId: UUID?
@@ -512,17 +482,15 @@ private struct PresetList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("预设")
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.leading, 4)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
 
             if presets.isEmpty {
                 Text("在设置中添加常用预设")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .padding(12)
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.secondary.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             } else if presets.count <= Self.maximumVisiblePresets {
                 presetRows
             } else {
@@ -552,46 +520,47 @@ private struct TimerPresetRow: View {
     let preset: TimerPreset
     let isActive: Bool
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Circle()
-                    .fill(preset.color.gradient)
-                    .frame(width: 18, height: 18)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                    )
+                    .fill(preset.color)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(preset.name)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(preset.formattedDuration)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
+                Text(preset.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
+                Text(preset.formattedDuration)
+                    .font(.system(size: 11))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
 
                 Image(systemName: isActive ? "checkmark" : "play.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(isActive ? preset.color : Color.secondary)
-                    .padding(6)
-                    .background(isActive ? preset.color.opacity(0.2) : Color.clear)
-                    .clipShape(Circle())
+                    .frame(width: 12)
+                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isActive ? preset.color.opacity(0.18) : Color.secondary.opacity(0.05))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isActive ? preset.color.opacity(0.1) : Color.secondary.opacity(isHovering ? 0.07 : 0))
             )
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("开始\(preset.name) · \(preset.formattedDuration)")
+        .accessibilityLabel("开始\(preset.name)，\(preset.formattedDuration)")
+        .accessibilityValue(isActive ? "当前预设" : "")
     }
 }
 
