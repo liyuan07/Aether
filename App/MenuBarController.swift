@@ -42,13 +42,14 @@ import TimerFeature
     private func contextMenu() {
         hide()
         let menu = NSMenu()
-        for (title, action) in [("打开控制中心", #selector(openCenter)), ("设置…", #selector(openSettings)), ("重新启动", #selector(restart)), ("退出 Aether", #selector(quit))] {
+        for (title, action) in [("打开控制中心", #selector(openCenter)), ("Prompt 优化…", #selector(openPrompt)), ("设置…", #selector(openSettings)), ("重新启动", #selector(restart)), ("退出 Aether", #selector(quit))] {
             let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
             entry.target = self; menu.addItem(entry)
         }
         if let button = item.button { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height), in: button) }
     }
     @objc private func openCenter() { show() }
+    @objc private func openPrompt() { AppRouter.shared.send(.prompt) }
     @objc private func openSettings() { AppRouter.shared.send(.settings(.general)) }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func restart() {
@@ -92,6 +93,25 @@ private struct ControlCenterView: View {
                             .padding(12)
                     }
                 }
+                Divider()
+                Button { AppRouter.shared.send(.prompt) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.title3).foregroundStyle(.indigo)
+                            .frame(width: 30, height: 34)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Prompt 优化").font(.headline)
+                            Text("整理想法 · 复用历史提示词")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.forward").foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("AetherOpenPrompt")
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "tray.and.arrow.down").font(.largeTitle).foregroundStyle(.indigo)

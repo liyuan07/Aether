@@ -6,12 +6,15 @@
 Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项）
 ├─ TimerFeature → SharedSupport + Defaults + MacroVisionKit + SkyLightWindow
 ├─ ClipboardFeature → SharedSupport
+├─ PromptFeature → SharedSupport
 └─ ShortcutsFeature → SharedSupport + ShortcutCore
 ```
 
 `App/` 是唯一装配层，负责启动、停止和协调功能模块。各模块通过公开门面暴露生命周期及 SwiftUI 页面，内部实现保持 internal。`AppRouter` 传递 `AppRoute`，由应用层决定窗口行为。功能模块不互相导入，`SharedSupport` 不访问功能实现。
 
 `TimerFeature` 管理计时、护眼、刘海和屏幕协调；`ClipboardFeature` 管理历史、搜索、详情与粘贴；`ShortcutsFeature` 管理事件监听、应用唤醒、按键映射和快捷面板；`ShortcutCore` 提供快捷键配置与规则模型。
+
+`PromptFeature` 管理提示词编辑状态、优化规则、兼容模型接口、钥匙串凭证及本地历史。应用层的 `PromptWindowController` 负责唯一工具窗口，设置页仍嵌入原有设置窗口；菜单栏入口通过 `.prompt` 路由打开工具，通过 `.settings(.prompt)` 定位配置页。新模块不依赖剪贴板或其他功能实现。
 
 ## 存储与启动
 
@@ -22,6 +25,8 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 | 应用数据根目录 | `~/Library/Application Support/Aether/` |
 | 剪贴板文件 | `Aether/Clipboard/` |
 | 快捷操作配置 | `Aether/Shortcuts/` |
+| Prompt 配置与历史 | `Aether/Prompt/` |
+| Prompt API Key | macOS 钥匙串，服务 `com.liyuan.aether.prompt` |
 | 剪贴板偏好 | `com.liyuan.aether.clipboard` |
 | 快捷操作偏好 | `com.liyuan.aether.shortcuts` |
 | 计时及通用偏好 | 主应用域 `com.liyuan.aether` |
@@ -31,6 +36,14 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 `DataMigration` 使用复制、校验及同卷暂存目录移动；`copied` 阶段支持重试偏好导入，`complete` 阶段不再覆盖数据。无法识别的已有目标目录会停止处理，不得静默清空。后续格式升级同样需要明确版本、幂等行为及恢复策略。
 
 Swift Package 测试进程默认使用临时根目录和随机偏好域。测试数据必须合成或脱敏，真实剪贴板内容不得进入日志、测试输出、截图或 Git。
+
+### Prompt 请求与持久化
+
+Prompt 配置和历史文件各有版本封装，原子写入并限制本地访问权限。加载失败或遇到未知版本时保留原文件并阻止覆盖，以便恢复后重试。API Key 使用独立可注入的钥匙串存储，不进入 JSON、请求错误说明或日志。配置只保存 Key 的摘要用于一致性校验；配置写入失败会回滚 Key，即使回滚失败并重启，下次请求也会先检查摘要，避免旧服务地址误用新 Key。测试使用临时目录、模拟凭证存储和隔离 URLSession。
+
+客户端使用非流式 Chat Completions 请求，只发送系统优化规则和本次用户输入；不附带历史，也不自动读取剪贴板。远程地址要求 HTTPS，允许本机回环 HTTP；拒绝地址中混入凭证、查询参数或片段。网络重定向不会继续携带凭证，请求设置超时，错误反馈不显示服务端原始响应正文。
+
+编辑状态位于主线程模型中，每次请求固定输入及配置快照，并使用独立请求标识。取消、新建和选择历史使旧标识失效，即使网络晚返回也不能覆盖当前结果。只有成功且完整的结果才进入历史；历史写入失败时仍保留编辑区结果并显示错误。保存开关控制后续记录，既有记录由明确删除操作管理。
 
 ## 窗口与输入协调
 

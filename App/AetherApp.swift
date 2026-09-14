@@ -4,6 +4,7 @@ import SharedSupport
 import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
+import PromptFeature
 
 @main struct AetherApp: App {
     @NSApplicationDelegateAdaptor(AetherDelegate.self) private var delegate
@@ -21,6 +22,7 @@ import TimerFeature
 @MainActor final class AetherDelegate: NSObject, NSApplicationDelegate {
     private var status: MenuBarController?
     private var settings: AetherSettingsController?
+    private let prompt = PromptWindowController()
     private var started = false
     private let startup = StartupController()
 
@@ -62,6 +64,11 @@ import TimerFeature
             ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget()
             status?.hide()
             ClipboardModule.shared.showWindow()
+        case .prompt:
+            guard started else { settings?.show(.general); return }
+            status?.hide()
+            ClipboardModule.shared.hideWindow()
+            prompt.show()
         case let .settings(page):
             if started { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
             status?.hide()
@@ -75,7 +82,8 @@ import TimerFeature
         if started { ShortcutsModule.shared.refreshPermissions() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if settings?.isVisible != true { route(.overview) }
+        if prompt.isVisible { prompt.show() }
+        else if settings?.isVisible != true { route(.overview) }
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -84,6 +92,7 @@ import TimerFeature
             ClipboardModule.shared.stop()
             ShortcutsModule.shared.stop()
             TimerModule.shared.stop()
+            PromptModule.shared.stop()
         }
     }
 }

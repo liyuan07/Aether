@@ -14,7 +14,7 @@ public enum AppEnvironment {
 }
 
 public enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, clipboard, shortcuts, timer, permissions
+    case general, clipboard, shortcuts, timer, prompt, permissions
     public var id: String { rawValue }
     public var title: String {
         switch self {
@@ -22,6 +22,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
         case .clipboard: "剪贴板"
         case .shortcuts: "快捷操作"
         case .timer: "计时与护眼"
+        case .prompt: "Prompt 优化"
         case .permissions: "权限"
         }
     }
@@ -31,13 +32,14 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
         case .clipboard: "doc.on.clipboard"
         case .shortcuts: "command"
         case .timer: "timer"
+        case .prompt: "wand.and.stars"
         case .permissions: "hand.raised"
         }
     }
 }
 
 public enum AppRoute: Equatable {
-    case overview, clipboard, settings(SettingsPage), dismissPanels
+    case overview, clipboard, prompt, settings(SettingsPage), dismissPanels
 }
 
 /// Features publish typed intents; only the application owns window presentation.

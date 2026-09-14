@@ -7,6 +7,7 @@ import SharedSupport
 import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
+import PromptFeature
 
 @MainActor final class LoginService: ObservableObject {
     static let shared = LoginService()
@@ -86,6 +87,7 @@ private struct AetherSettingsView: View {
                     case .clipboard: ClipboardModule.shared.settings()
                     case .shortcuts: ShortcutsModule.shared.settings()
                     case .timer: TimerModule.shared.settings()
+                    case .prompt: PromptModule.shared.settings()
                     case .permissions: SettingsContent("权限") { PermissionSettingsView() }
                     }
                 }
