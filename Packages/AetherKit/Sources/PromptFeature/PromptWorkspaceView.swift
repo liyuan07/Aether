@@ -1,174 +1,279 @@
 import SharedSupport
 import SwiftUI
 
+/// A compact tool hosted directly inside the shared menu-bar popover.
 struct PromptWorkspaceView: View {
+    private enum Page: String, CaseIterable, Identifiable {
+        case input = "输入", result = "结果", history = "历史"
+        var id: String { rawValue }
+    }
+
     @ObservedObject var model: PromptModel
+    @State private var page: Page = .input
     @State private var confirmingClear = false
     @State private var copied = false
+    @State private var awaitingResult = false
     @FocusState private var focusedEditor: String?
 
     var body: some View {
-        HSplitView {
-            historySidebar
-                .frame(minWidth: 200, idealWidth: 220, maxWidth: 280)
-            workspace
-                .frame(minWidth: 610, maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Label("Prompt 优化", systemImage: "sparkles").font(.headline)
+                    Spacer(minLength: 4)
+                    Button {
+                        awaitingResult = false
+                        model.newPrompt()
+                        showInput()
+                    } label: { Image(systemName: "square.and.pencil") }
+                    .help("新建提示词")
+                    .accessibilityLabel("新建提示词")
+                    .accessibilityIdentifier("prompt.new")
+                    Button { AppRouter.shared.send(.settings(.prompt)) } label: { Image(systemName: "gearshape") }
+                        .help("Prompt 优化设置")
+                        .accessibilityLabel("Prompt 优化设置")
+                        .accessibilityIdentifier("prompt.openSettings")
+                }.buttonStyle(.borderless)
+                Picker("提示词页面", selection: $page) {
+                    ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                .accessibilityIdentifier("prompt.pages")
+            }.padding(12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !model.isConfigured { configurationGuide }
+                    switch page {
+                    case .input: inputPage
+                    case .result: resultPage
+                    case .history: historyPage
+                    }
+                    messages
+                    serviceNote
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.bottom, 12)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            actions.padding(12)
         }
-        .frame(minWidth: 840, minHeight: 560)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .alert("清空所有历史提示词？", isPresented: $confirmingClear) {
-            Button("取消", role: .cancel) {}
-            Button("清空历史", role: .destructive) { model.clearHistory() }
-        } message: {
-            Text("此操作会删除本机保存的全部原始提示词和优化结果，当前编辑区内容会保留。")
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: model.outputText) { _, _ in copied = false }
-        .onAppear { focusedEditor = "prompt.input" }
+        .onChange(of: model.isOptimizing) { wasOptimizing, optimizing in
+            if wasOptimizing, !optimizing, awaitingResult {
+                awaitingResult = false
+                if model.optimizationError == nil, !model.outputText.isEmpty {
+                    page = .result
+                    focusedEditor = nil
+                }
+            }
+        }
+        .onChange(of: page) { _, newPage in
+            confirmingClear = false
+            if newPage != .input { focusedEditor = nil }
+        }
+        .onAppear {
+            awaitingResult = model.isOptimizing
+            if !model.isOptimizing, !model.outputText.isEmpty, model.outputOriginal == model.inputText {
+                page = .result
+            } else {
+                page = .input
+                if !model.isOptimizing { focusedEditor = "prompt.input" }
+            }
+        }
+        // Closing the popover keeps the model and its in-flight request alive.
     }
 
-    private var historySidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private var configurationGuide: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("先配置 API 服务和模型，即可开始优化。")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("前往设置") { AppRouter.shared.send(.settings(.prompt)) }
+                .font(.caption)
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var inputPage: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("历史提示词", systemImage: "clock.arrow.circlepath")
-                    .font(.headline)
+                Text("原始提示词").font(.subheadline.weight(.medium))
                 Spacer()
-                Text("\(model.history.count)").font(.caption).foregroundStyle(.secondary)
-            }.padding(.horizontal, 16).padding(.top, 20).padding(.bottom, 12)
-            TextField("搜索原文或优化结果", text: $model.historyQuery)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("prompt.history.search")
-                .padding(.horizontal, 12).padding(.bottom, 10)
-            if model.filteredHistory.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "text.bubble").font(.largeTitle).foregroundStyle(.tertiary)
-                    Text(model.historyQuery.isEmpty ? "暂无历史提示词" : "没有匹配的历史")
-                        .font(.callout).foregroundStyle(.secondary)
-                    if model.historyQuery.isEmpty {
-                        Text(model.configuration.saveHistory ? "成功优化后，原文与结果会保存在这里。" : "历史记录已关闭，可在设置中开启。")
-                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }
-                }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: Binding(get: { model.selectedHistoryID }, set: { model.selectHistory($0) })) {
-                    ForEach(model.filteredHistory) { entry in
-                        historyRow(entry).tag(entry.id)
-                            .contextMenu {
-                                Button("复用原文") { model.reuseHistory(entry) }
-                                Divider()
-                                Button("删除记录", role: .destructive) { model.deleteHistory(entry) }
-                            }
-                    }
-                }
-                .listStyle(.sidebar)
-                .accessibilityIdentifier("prompt.history.list")
+                Button {
+                    model.pasteInput()
+                    focusedEditor = "prompt.input"
+                } label: { Label("粘贴", systemImage: "doc.on.clipboard") }
+                .controlSize(.small).disabled(model.isOptimizing)
+                .accessibilityIdentifier("prompt.paste")
             }
-            Divider()
+            editor(text: $model.inputText,
+                   placeholder: "输入目标、背景和要求，零散口述也可以。支持输入法语音输入。",
+                   identifier: "prompt.input")
+                .disabled(model.isOptimizing)
             HStack {
-                Label(model.configuration.saveHistory ? "仅保存在本机" : "历史记录已关闭", systemImage: "internaldrive")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer(minLength: 4)
+                Text("\(model.inputText.count) 字")
+                Spacer()
+                Text("⌘↩ 优化 · ↩ 换行")
+            }.font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private var resultPage: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("优化结果").font(.subheadline.weight(.medium))
+                Spacer()
+                Text("\(model.outputText.count) 字").font(.caption2).foregroundStyle(.secondary)
+            }
+            editor(text: $model.outputText, placeholder: "优化后的提示词会显示在这里，可编辑后复制使用。", identifier: "prompt.output")
+                .disabled(model.isOptimizing)
+            if model.isOptimizing, !model.outputText.isEmpty {
+                Text("当前为上次结果，正在等待更新。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            } else if !model.outputText.isEmpty, model.inputText != model.outputOriginal {
+                Text("原文已修改，当前仍是上次优化结果。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if let entry = model.selectedHistory {
+                HStack(spacing: 10) {
+                    Text("已保存于 \(entry.createdAt.formatted(.dateTime.month().day().hour().minute()))")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("复用原文") { reuse(entry) }
+                        .accessibilityIdentifier("prompt.history.reuse")
+                    deleteButton(entry)
+                }.controlSize(.small)
+            }
+        }
+    }
+
+    private var historyPage: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("历史提示词 · \(model.history.count) 条").font(.subheadline.weight(.medium))
+                Spacer()
                 Button { confirmingClear = true } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless)
+                    .disabled(model.history.isEmpty)
                     .help("清空历史提示词")
                     .accessibilityLabel("清空历史提示词")
                     .accessibilityIdentifier("prompt.history.clear")
-                    .disabled(model.history.isEmpty)
-            }.padding(12)
+            }
+            if confirmingClear {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("删除全部本机历史？当前编辑内容会保留。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button("取消") { confirmingClear = false }
+                        Spacer()
+                        Button("确认清空", role: .destructive) {
+                            model.clearHistory()
+                            confirmingClear = false
+                        }.accessibilityIdentifier("prompt.history.confirmClear")
+                    }.controlSize(.small)
+                }
+                .padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            }
+            TextField("搜索原文或结果", text: $model.historyQuery)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("prompt.history.search")
+            if model.filteredHistory.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "text.bubble").font(.title2).foregroundStyle(.tertiary)
+                    Text(model.historyQuery.isEmpty ? "暂无历史提示词" : "没有匹配的历史")
+                    if model.historyQuery.isEmpty {
+                        Text(model.configuration.saveHistory ? "成功优化后，原文与结果会保存在这里。" : "历史记录已关闭，可在设置中开启。")
+                            .font(.caption2)
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity).padding(.vertical, 24)
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(model.filteredHistory) { historyRow($0) }
+                }.accessibilityIdentifier("prompt.history.list")
+            }
+            Label(model.configuration.saveHistory ? "历史仅保存在本机" : "已关闭新增历史，已有记录保留", systemImage: "internaldrive")
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
     private func historyRow(_ entry: PromptHistoryEntry) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(entry.original.replacingOccurrences(of: "\n", with: " "))
-                .font(.callout.weight(.medium)).lineLimit(2)
-            Text(entry.optimized.replacingOccurrences(of: "\n", with: " "))
-                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            HStack {
-                Text(entry.createdAt, format: .dateTime.month().day().hour().minute())
-                Spacer(minLength: 3)
-                Text(entry.model).lineLimit(1)
-            }.font(.caption2).foregroundStyle(.tertiary)
-        }.padding(.vertical, 6)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                select(entry, page: .result)
+            } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(entry.original.replacingOccurrences(of: "\n", with: " "))
+                        .font(.caption.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
+                    Text(entry.optimized.replacingOccurrences(of: "\n", with: " "))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    HStack {
+                        Text(entry.createdAt, format: .dateTime.month().day().hour().minute())
+                        Spacer(minLength: 4)
+                        Text(entry.model).lineLimit(1)
+                    }.font(.caption2).foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).help("查看优化结果")
+            HStack(spacing: 10) {
+                Button("查看原文") { select(entry, page: .input) }
+                Button("复用") { reuse(entry) }
+                Spacer(minLength: 0)
+                deleteButton(entry)
+            }.controlSize(.small)
+        }
+        .padding(10)
+        .background(model.selectedHistoryID == entry.id ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private var workspace: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Prompt 优化").font(.title2.weight(.semibold))
-                    Text("把零散想法整理成可直接使用的提示词")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { model.newPrompt(); focusedEditor = "prompt.input" } label: { Label("新建", systemImage: "square.and.pencil") }
-                    .accessibilityIdentifier("prompt.new")
-                Button { AppRouter.shared.send(.settings(.prompt)) } label: {
-                    Image(systemName: "gearshape")
-                }
-                .help("Prompt 优化设置")
-                .accessibilityLabel("Prompt 优化设置")
-                .accessibilityIdentifier("prompt.openSettings")
-            }
-            if !model.isConfigured {
-                HStack(spacing: 10) {
-                    Image(systemName: "network")
-                    Text("先配置兼容 OpenAI 的 API 服务，再开始优化。")
-                        .font(.callout)
-                    Spacer(minLength: 0)
-                    Button("前往设置") { AppRouter.shared.send(.settings(.prompt)) }
-                }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-            }
-            HSplitView {
-                inputPanel.frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
-                outputPanel.frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .layoutPriority(1)
-            if let error = model.optimizationError {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                    Text(error).textSelection(.enabled)
-                    Spacer(minLength: 0)
-                    if model.isConfigured {
-                        Button("重试") { model.optimize() }.disabled(!model.canOptimize)
-                    }
-                }.font(.callout).foregroundStyle(.orange)
+    private func deleteButton(_ entry: PromptHistoryEntry) -> some View {
+        Button { model.deleteHistory(entry) } label: { Image(systemName: "trash") }
+            .buttonStyle(.borderless)
+            .help("删除这条历史记录")
+            .accessibilityLabel("删除这条历史记录")
+            .accessibilityIdentifier("prompt.history.delete")
+    }
+
+    @ViewBuilder
+    private var messages: some View {
+        if let error = model.optimizationError {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("prompt.error")
-            }
-            if let message = model.historyMessage {
-                HStack(alignment: .top) {
-                    Label(message, systemImage: "internaldrive.badge.exclamationmark")
-                        .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
-                    Spacer(minLength: 4)
-                    Button("重试历史存储") { model.retryHistoryStorage() }
-                        .accessibilityIdentifier("prompt.history.retryStorage")
+                if model.isConfigured {
+                    Button("重试") { startOptimization() }.disabled(!model.canOptimize).controlSize(.small)
                 }
             }
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    if model.isConfigured {
-                        Text("服务：\(serviceDisplay)")
-                            .lineLimit(1).truncationMode(.middle).help(model.configuration.baseURL)
-                        Text("点击优化会将输入及优化指令发送给此服务。")
-                    } else {
-                        Text("支持键盘输入、粘贴及输入法语音输入。")
-                    }
-                }.font(.caption).foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                if model.isOptimizing {
-                    ProgressView().controlSize(.small)
-                    Text("正在优化…").font(.callout).foregroundStyle(.secondary)
-                    Button("取消") { model.cancelOptimization() }
-                        .accessibilityIdentifier("prompt.cancel")
-                } else {
-                    Button { model.optimize() } label: { Label("优化提示词", systemImage: "sparkles") }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .disabled(!model.canOptimize)
-                        .help("优化提示词（⌘↩）")
-                        .accessibilityIdentifier("prompt.optimize")
-                }
+        }
+        if let message = model.historyMessage {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(message, systemImage: "internaldrive.badge.exclamationmark")
+                    .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("重试历史存储") { model.retryHistoryStorage() }
+                    .controlSize(.small).accessibilityIdentifier("prompt.history.retryStorage")
             }
-        }.padding(20)
+        }
+    }
+
+    private var serviceNote: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if model.isConfigured {
+                Text("服务：\(serviceDisplay)")
+                    .lineLimit(2).truncationMode(.middle).help(model.configuration.baseURL)
+                Text("优化时发送输入及优化指令；关闭菜单后继续处理。")
+            } else {
+                Text("支持键盘、粘贴及输入法语音输入。")
+            }
+        }.font(.caption2).foregroundStyle(.secondary)
     }
 
     private var serviceDisplay: String {
@@ -176,78 +281,74 @@ struct PromptWorkspaceView: View {
         return "\(host) · \(model.configuration.model)"
     }
 
-    private var inputPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("原始提示词").font(.headline)
-                Spacer()
-                Button { model.pasteInput() } label: { Label("粘贴", systemImage: "doc.on.clipboard") }
-                    .disabled(model.isOptimizing)
-                    .accessibilityIdentifier("prompt.paste")
+    private var actions: some View {
+        HStack(spacing: 8) {
+            Button {
+                model.copyOutput()
+                copied = true
+            } label: { Label(copied ? "已复制" : "复制结果", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                .disabled(model.outputText.isEmpty)
+                .accessibilityIdentifier("prompt.copy")
+            Spacer(minLength: 0)
+            if model.isOptimizing {
+                ProgressView().controlSize(.small)
+                Button("取消") {
+                    awaitingResult = false
+                    model.cancelOptimization()
+                }.accessibilityIdentifier("prompt.cancel")
+            } else {
+                Button { startOptimization() } label: { Label("优化", systemImage: "sparkles") }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.canOptimize)
+                    .help("优化提示词（⌘↩）")
+                    .accessibilityLabel("优化提示词")
+                    .accessibilityIdentifier("prompt.optimize")
             }
-            editor(text: $model.inputText, placeholder: "输入你的目标、背景、要求和已有想法，零散口述也可以。", identifier: "prompt.input")
-                .disabled(model.isOptimizing)
-            HStack {
-                Text("\(model.inputText.count) 字")
-                Spacer()
-                Text("⌘↩ 优化 · ↩ 换行")
-            }.font(.caption).foregroundStyle(.secondary)
-        }.padding(.trailing, 8)
-    }
-
-    private var outputPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("优化结果").font(.headline)
-                Spacer()
-                Button {
-                    model.copyOutput()
-                    copied = true
-                } label: { Label(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc") }
-                    .disabled(model.outputText.isEmpty)
-                    .accessibilityIdentifier("prompt.copy")
-            }
-            editor(text: $model.outputText, placeholder: "优化后的提示词会显示在这里，可继续编辑并复制使用。", identifier: "prompt.output")
-                .disabled(model.isOptimizing)
-            HStack(spacing: 8) {
-                Text("\(model.outputText.count) 字")
-                Spacer()
-                if model.isOptimizing, !model.outputText.isEmpty {
-                    Text("上次结果 · 等待更新")
-                } else if !model.outputText.isEmpty, model.inputText != model.outputOriginal {
-                    Text("上次结果 · 原文已修改")
-                } else if let entry = model.selectedHistory {
-                    Button("复用原文") { model.reuseHistory(entry) }
-                        .buttonStyle(.link).accessibilityIdentifier("prompt.history.reuse")
-                    Button { model.deleteHistory(entry) } label: { Image(systemName: "trash") }
-                        .buttonStyle(.borderless)
-                        .help("删除这条历史记录")
-                        .accessibilityLabel("删除这条历史记录")
-                        .accessibilityIdentifier("prompt.history.delete")
-                } else {
-                    Text("可编辑后复制")
-                }
-            }.font(.caption).foregroundStyle(.secondary)
-        }.padding(.leading, 8)
+        }.controlSize(.regular)
     }
 
     private func editor(text: Binding<String>, placeholder: String, identifier: String) -> some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: text)
                 .focused($focusedEditor, equals: identifier)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(8)
+                .font(.body).scrollContentBackground(.hidden).padding(6)
                 .accessibilityLabel(identifier == "prompt.input" ? "原始提示词" : "优化结果")
                 .accessibilityIdentifier(identifier)
             if text.wrappedValue.isEmpty {
                 Text(placeholder).font(.body).foregroundStyle(.tertiary)
-                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1))
-        .frame(minHeight: 220)
+        .frame(height: 200)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary, lineWidth: 1))
+    }
+
+    private func startOptimization() {
+        if page == .history { page = .input }
+        model.optimize()
+        awaitingResult = model.isOptimizing
+        if model.isOptimizing { focusedEditor = nil }
+    }
+
+    private func showInput() {
+        page = .input
+        confirmingClear = false
+        focusedEditor = "prompt.input"
+    }
+
+    private func select(_ entry: PromptHistoryEntry, page selectedPage: Page) {
+        awaitingResult = false
+        model.selectHistory(entry.id)
+        page = selectedPage
+        if selectedPage == .input { focusedEditor = "prompt.input" }
+    }
+
+    private func reuse(_ entry: PromptHistoryEntry) {
+        awaitingResult = false
+        model.reuseHistory(entry)
+        showInput()
     }
 }

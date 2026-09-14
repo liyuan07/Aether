@@ -11,7 +11,7 @@ import SwiftUI
         return created
     }
     private init() {}
-    public func workspace() -> AnyView { AnyView(PromptWorkspaceView(model: model)) }
+    public func compactPanel() -> AnyView { AnyView(PromptWorkspaceView(model: model)) }
     public func settings() -> AnyView { AnyView(PromptSettingsView(model: model)) }
     public func stop() { storedModel?.cancelOptimization() }
 }

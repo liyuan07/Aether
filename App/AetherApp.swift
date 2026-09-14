@@ -22,7 +22,6 @@ import PromptFeature
 @MainActor final class AetherDelegate: NSObject, NSApplicationDelegate {
     private var status: MenuBarController?
     private var settings: AetherSettingsController?
-    private let prompt = PromptWindowController()
     private var started = false
     private let startup = StartupController()
 
@@ -58,7 +57,7 @@ import PromptFeature
     }
     private func route(_ route: AppRoute) {
         switch route {
-        case .overview: status?.show()
+        case .overview: status?.show(tab: .overview)
         case .clipboard:
             guard started else { settings?.show(.general); return }
             ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget()
@@ -66,9 +65,8 @@ import PromptFeature
             ClipboardModule.shared.showWindow()
         case .prompt:
             guard started else { settings?.show(.general); return }
-            status?.hide()
             ClipboardModule.shared.hideWindow()
-            prompt.show()
+            status?.show(tab: .prompt)
         case let .settings(page):
             if started { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
             status?.hide()
@@ -82,8 +80,7 @@ import PromptFeature
         if started { ShortcutsModule.shared.refreshPermissions() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if prompt.isVisible { prompt.show() }
-        else if settings?.isVisible != true { route(.overview) }
+        if settings?.isVisible != true { route(.overview) }
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

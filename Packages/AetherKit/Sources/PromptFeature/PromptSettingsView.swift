@@ -12,7 +12,7 @@ struct PromptSettingsView: View {
                     Text("输入零散想法或口述内容，一键整理为可直接使用的提示词。")
                         .foregroundStyle(.secondary)
                     Button { AppRouter.shared.send(.prompt) } label: {
-                        Label("打开 Prompt 优化", systemImage: "sparkles")
+                        Label("在菜单栏打开 Prompt 优化", systemImage: "sparkles")
                     }.accessibilityIdentifier("prompt.settings.openWorkspace")
                 }
                 Section {
@@ -48,7 +48,7 @@ struct PromptSettingsView: View {
                 } header: {
                     Text("历史提示词")
                 } footer: {
-                    Text("每次成功优化后，在本机保存原文、结果、时间和模型。关闭后停止新增，已有记录仍保留；可在工具窗口删除单条或清空。降低保留数量并保存后，会删除最早的超额记录。")
+                    Text("每次成功优化后，在本机保存原文、结果、时间和模型。关闭后停止新增，已有记录仍保留；可在菜单栏历史页删除单条或清空。降低保留数量并保存后，会删除最早的超额记录。")
                 }
                 Section {
                     VStack(alignment: .leading, spacing: 10) {

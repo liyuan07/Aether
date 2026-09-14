@@ -4,11 +4,22 @@ import SharedSupport
 import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
+import PromptFeature
+
+enum ControlCenterTab: Int {
+    case overview, clipboard, shortcuts, prompt
+}
+
+@MainActor private final class ControlCenterNavigation: ObservableObject {
+    @Published var tab: ControlCenterTab = .overview
+    @Published var height: CGFloat = 600
+}
 
 @MainActor final class MenuBarController: NSObject, NSPopoverDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
     private let startup: StartupController
+    private let navigation = ControlCenterNavigation()
     init(startup: StartupController) {
         self.startup = startup
         super.init()
@@ -24,13 +35,18 @@ import TimerFeature
         popover.delegate = self
         popover.animates = true
     }
-    func show() {
+    func show(tab: ControlCenterTab? = nil) {
         guard let button = item.button else { return }
+        if let tab { navigation.tab = tab }
         if startup.ready { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
         let height = min(600, (button.window?.screen?.visibleFrame.height ?? 700) - 50)
         let width: CGFloat = 300
-        popover.contentViewController = NSHostingController(rootView: ControlCenterView(startup: startup).frame(width: width, height: max(350, height)))
-        popover.contentSize = NSSize(width: width, height: max(350, height))
+        navigation.height = max(350, height)
+        if popover.contentViewController == nil {
+            popover.contentViewController = NSHostingController(rootView: ControlCenterView(startup: startup, navigation: navigation).frame(width: width))
+        }
+        popover.contentSize = NSSize(width: width, height: navigation.height)
+        if popover.isShown { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -63,7 +79,7 @@ import TimerFeature
 
 private struct ControlCenterView: View {
     @ObservedObject var startup: StartupController
-    @State private var tab = 0
+    @ObservedObject var navigation: ControlCenterNavigation
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -76,42 +92,25 @@ private struct ControlCenterView: View {
                 Button { AppRouter.shared.send(.settings(.general)) } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.borderless).help("设置")
             }.padding(16)
-            Picker("页面", selection: $tab) {
-                Text("概览").tag(0)
-                Text("剪贴板").tag(1)
-                Text("快捷操作").tag(2)
+            Picker("页面", selection: $navigation.tab) {
+                Text("概览").tag(ControlCenterTab.overview)
+                Text("剪贴板").tag(ControlCenterTab.clipboard)
+                Text("快捷操作").tag(ControlCenterTab.shortcuts)
+                Text("Prompt").tag(ControlCenterTab.prompt).accessibilityLabel("Prompt 优化")
             }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 14).padding(.bottom, 12)
             Divider()
             if startup.ready {
-                switch tab {
-                case 1: ClipboardModule.shared.compactPanel()
-                case 2: ShortcutsModule.shared.quickActions()
-                default:
+                switch navigation.tab {
+                case .clipboard: ClipboardModule.shared.compactPanel()
+                case .shortcuts: ShortcutsModule.shared.quickActions()
+                case .prompt: PromptModule.shared.compactPanel()
+                case .overview:
                     ScrollView {
                         TimerModule.shared.overview()
                             .background(.background, in: RoundedRectangle(cornerRadius: 12))
                             .padding(12)
                     }
                 }
-                Divider()
-                Button { AppRouter.shared.send(.prompt) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.title3).foregroundStyle(.indigo)
-                            .frame(width: 30, height: 34)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Prompt 优化").font(.headline)
-                            Text("整理想法 · 复用历史提示词")
-                                .font(.caption2).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.up.forward").foregroundStyle(.secondary)
-                    }
-                    .padding(12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("AetherOpenPrompt")
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "tray.and.arrow.down").font(.largeTitle).foregroundStyle(.indigo)
@@ -122,6 +121,7 @@ private struct ControlCenterView: View {
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(height: navigation.height)
         .tint(.indigo)
         .background(.regularMaterial)
         .onExitCommand { AppRouter.shared.send(.dismissPanels) }
