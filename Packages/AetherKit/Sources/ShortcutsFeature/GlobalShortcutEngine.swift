@@ -108,6 +108,14 @@ final class GlobalShortcutEngine {
             return Unmanaged.passUnretained(event)
         }
 
+        if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(type) {
+            ApplicationIntent.shared.interrupt()
+            return Unmanaged.passUnretained(event)
+        }
+        if type == .keyDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+            ApplicationIntent.shared.interrupt()
+        }
+
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         if (type == .flagsChanged || type == .keyDown), PhysicalInputSwitchKey.matches(keyCode: keyCode) {
             Task { @MainActor [inputSwitchKeyObserver] in inputSwitchKeyObserver() }
@@ -222,6 +230,10 @@ final class GlobalShortcutEngine {
             let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
                 | (CGEventMask(1) << CGEventType.keyUp.rawValue)
                 | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
+                | (CGEventMask(1) << CGEventType.leftMouseDown.rawValue)
+                | (CGEventMask(1) << CGEventType.rightMouseDown.rawValue)
+                | (CGEventMask(1) << CGEventType.otherMouseDown.rawValue)
+                | (CGEventMask(1) << CGEventType.scrollWheel.rawValue)
             guard let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
@@ -259,7 +271,9 @@ final class GlobalShortcutEngine {
     }
 
     private func perform(_ action: ShortcutAction, display: ShortcutDisplayContext? = nil) {
+        let revision = ApplicationIntent.shared.revision
         Task { @MainActor [actionHandler] in
+            if case .application = action, revision != ApplicationIntent.shared.revision { return }
             actionHandler(action, display)
         }
     }
@@ -286,7 +300,7 @@ extension ShortcutModifiers {
 }
 
 enum SyntheticKeySender {
-    static func send(_ shortcut: KeyCombination) {
+    static func send(_ shortcut: KeyCombination, to pid: Int32? = nil) {
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(shortcut.keyCode), keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(shortcut.keyCode), keyDown: false)
@@ -295,7 +309,8 @@ enum SyntheticKeySender {
         for event in [keyDown, keyUp] {
             event.flags = shortcut.modifiers.eventFlags
             SyntheticInput.tag(event)
-            event.post(tap: .cgSessionEventTap)
+            if let pid { event.postToPid(pid) }
+            else { event.post(tap: .cgSessionEventTap) }
         }
     }
 }

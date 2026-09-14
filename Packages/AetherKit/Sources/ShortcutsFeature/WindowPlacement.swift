@@ -64,16 +64,44 @@ enum WindowPlacement {
                       y: position(window.minY, source.minY, source.height, target.minY, target.height, size.height),
                       width: size.width, height: size.height)
     }
+
+    static func approximatelyEqual(_ a: CGRect, _ b: CGRect) -> Bool {
+        abs(a.minX - b.minX) <= 3 && abs(a.minY - b.minY) <= 3
+            && abs(a.width - b.width) <= 3 && abs(a.height - b.height) <= 3
+    }
+
+    /// Preserve existing target-screen windows and stagger exact collisions.
+    static func avoidingOverlap(_ frame: CGRect, occupied: [CGRect], within bounds: CGRect) -> CGRect {
+        func collides(_ candidate: CGRect) -> Bool {
+            occupied.contains { abs($0.minX - candidate.minX) < 20 && abs($0.minY - candidate.minY) < 20 }
+        }
+        if !collides(frame) { return frame }
+        for distance in 1...12 {
+            for direction in [CGPoint(x: 1, y: 1), CGPoint(x: -1, y: -1), CGPoint(x: 1, y: -1), CGPoint(x: -1, y: 1)] {
+                let offset = CGFloat(distance * 28)
+                let candidate = CGRect(x: frame.minX + direction.x * offset,
+                                       y: frame.minY + direction.y * offset,
+                                       width: frame.width, height: frame.height)
+                if bounds.contains(candidate), !collides(candidate) { return candidate }
+            }
+        }
+        return frame // No space: do not shrink or move existing windows to manufacture room.
+    }
 }
 
 /// Cancellation is visible on the AX queue, including between individual window writes.
 final class WindowMoveLease: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
+    private let action: ApplicationActionToken?
     let deadline: TimeInterval
-    init(now: TimeInterval = ProcessInfo.processInfo.systemUptime) { deadline = now + 10 }
+    init(now: TimeInterval = ProcessInfo.processInfo.systemUptime, duration: TimeInterval = 10,
+         action: ApplicationActionToken? = nil) {
+        deadline = now + duration
+        self.action = action
+    }
     func cancel() { lock.withLock { cancelled = true } }
     func isActive(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
-        lock.withLock { !cancelled && now < deadline }
+        lock.withLock { !cancelled && now < deadline } && (action?.isActive(now: now) ?? true)
     }
 }

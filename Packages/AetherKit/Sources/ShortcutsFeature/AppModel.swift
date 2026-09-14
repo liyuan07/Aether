@@ -39,6 +39,7 @@ final class AppModel: ObservableObject {
     @Published var selectedRuleID: UUID?
     @Published var permissionGranted = false
     @Published var inputMonitoringGranted = false
+    @Published var canRestoreWindowLayout = false
     @Published private(set) var shortcutGuideHoldDuration: TimeInterval
     @Published private(set) var shortcutGuideFavoriteIDs: Set<String>
     @Published private(set) var externalConflicts: [UUID: [ConflictFinding]] = [:]

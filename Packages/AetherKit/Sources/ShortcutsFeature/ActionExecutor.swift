@@ -1,13 +1,57 @@
 import SharedSupport
 import AppKit
+import ApplicationServices
 import ShortcutCore
 
 @MainActor
 final class ActionExecutor {
     private let workspace = NSWorkspace.shared
     private let windowMover = ApplicationWindowMover()
+    private let preferences: () -> ApplicationShortcutPreferences
+    private var commandTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
+    private var fallbackInputMonitor: Any?
+    var onUndoAvailabilityChanged: ((Bool) -> Void)? {
+        didSet { windowMover.onUndoAvailabilityChanged = onUndoAvailabilityChanged }
+    }
+
+    init(preferences: @escaping () -> ApplicationShortcutPreferences = { ApplicationShortcutPreferences() }) {
+        self.preferences = preferences
+        activationObserver = workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            ApplicationIntent.shared.applicationActivated(pid: app.processIdentifier)
+        }
+        fallbackInputMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+            // With AX permission the event tap handles input synchronously, including our shortcut key.
+            guard !AXIsProcessTrusted(), event.cgEvent.map({ !SyntheticInput.isOurs($0) }) ?? true else { return }
+            ApplicationIntent.shared.interrupt()
+        }
+    }
+
+    func cancel() {
+        ApplicationIntent.shared.interrupt()
+        commandTask?.cancel()
+        commandTask = nil
+        windowMover.cancel()
+    }
+
+    func restoreLastWindowLayout() {
+        cancel()
+        guard let display = ShortcutDisplayContext.capture() else { return }
+        let action = ApplicationIntent.shared.begin(sourcePID: workspace.frontmostApplication?.processIdentifier)
+        windowMover.restoreLastLayout(action: action, display: display)
+    }
+
+    deinit {
+        commandTask?.cancel()
+        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+        if let fallbackInputMonitor { NSEvent.removeMonitor(fallbackInputMonitor) }
+    }
 
     func execute(_ action: ShortcutAction, targetDisplay: ShortcutDisplayContext? = nil) {
+        cancel()
         if case let .application(target, _) = action,
            let route = LegacyApplication.route(identifier: target.bundleIdentifier, path: target.applicationPath) {
             AppRouter.shared.send(route)
@@ -31,54 +75,102 @@ final class ActionExecutor {
     }
 
     private func openApplication(_ target: ApplicationTarget, mode: ApplicationOpenMode, display: ShortcutDisplayContext?) {
-        windowMover.cancelPendingActivations()
-        let resolvedURL = resolvedApplicationURL(for: target)
-        let identifier = resolvedURL.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? target.bundleIdentifier
-        let findApplication: @MainActor () -> NSRunningApplication? = {
-            if let identifier {
-                return NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
+        let applicationURL = resolvedApplicationURL(for: target)
+        let identifier = applicationURL.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? target.bundleIdentifier
+        let behavior = preferences().windowBehavior(for: identifier)
+        let display = behavior.moveWindows ? (display ?? ShortcutDisplayContext.capture()) : nil
+        let running = identifier.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }
+            ?? workspace.runningApplications.first { app in
+                applicationURL != nil && app.bundleURL?.standardizedFileURL == applicationURL?.standardizedFileURL
             }
-            guard let resolvedURL else { return nil }
-            return NSWorkspace.shared.runningApplications.first { $0.bundleURL?.standardizedFileURL == resolvedURL.standardizedFileURL }
-        }
-        let runningApplication = findApplication()
-        if let runningApplication {
-            let activate: (Bool) -> Void = { [self] hasWindows in
-                guard !runningApplication.isTerminated else { return }
-                if runningApplication.isHidden { runningApplication.unhide() }
-                if display == nil { ApplicationWindowRestorer.restoreMinimizedWindows(for: runningApplication) }
-                if mode == .activateExisting, !hasWindows, let applicationURL = resolvedURL {
-                    let configuration = NSWorkspace.OpenConfiguration()
-                    configuration.activates = true
-                    workspace.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
+        let action = ApplicationIntent.shared.begin(sourcePID: workspace.frontmostApplication?.processIdentifier,
+                                                    targetPID: running?.processIdentifier)
+        if let running {
+            if display == nil, mode == .activateExisting, let applicationURL {
+                openInBackground(applicationURL, mode: mode, display: nil,
+                                 restoreMinimized: false, action: action)
+                return
+            }
+            prepare(running, display: display, scope: .existing, restoreMinimized: behavior.restoreMinimized,
+                    action: action) { [weak self] report in
+                guard let self, action.isActive() else { return }
+                // Only a successful, empty inventory justifies reopening. Unknown is not windowless.
+                if mode == .activateExisting, display != nil, !report.hasWindows,
+                   report.readFailure == nil, !report.timedOut, !report.displayDisconnected,
+                   let applicationURL {
+                    self.openInBackground(applicationURL, mode: mode, display: display,
+                                          restoreMinimized: behavior.restoreMinimized, action: action)
                 } else {
-                    runningApplication.activate(options: [.activateAllWindows])
-                    if mode == .newWindow { sendNewWindow(after: 0.12) }
+                    self.activate(running, mode: mode, display: display, restoreMinimized: behavior.restoreMinimized,
+                                  report: report, action: action)
                 }
             }
-            if let display {
-                let key = identifier ?? resolvedURL?.standardizedFileURL.path ?? target.applicationPath
-                windowMover.start(key: key, display: display, application: findApplication, beforeActivation: activate)
-            } else {
-                activate(false)
-            }
-            return
-        }
+        } else if let applicationURL {
+            openInBackground(applicationURL, mode: mode, display: display,
+                             restoreMinimized: behavior.restoreMinimized, action: action)
+        } else { NSSound.beep() }
+    }
 
-        guard let applicationURL = resolvedURL else {
-            NSSound.beep()
+    private func openInBackground(_ url: URL, mode: ApplicationOpenMode, display: ShortcutDisplayContext?,
+                                  restoreMinimized: Bool, action: ApplicationActionToken) {
+        guard action.isActive() else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        // Launch completion may arrive after the user has switched tasks. Only our guarded callback activates.
+        configuration.activates = false
+        workspace.openApplication(at: url, configuration: configuration) { [weak self] app, _ in
+            Task { @MainActor in
+                guard let self, action.isActive() else { return }
+                guard let app else { NSSound.beep(); return }
+                action.setTarget(app.processIdentifier)
+                self.prepare(app, display: display, scope: .appearing(excluding: []),
+                             restoreMinimized: restoreMinimized, action: action) { [weak self] report in
+                    self?.activate(app, mode: mode, display: display, restoreMinimized: restoreMinimized,
+                                   report: report, action: action)
+                }
+            }
+        }
+    }
+
+    private func prepare(_ app: NSRunningApplication, display: ShortcutDisplayContext?, scope: WindowCaptureScope,
+                         restoreMinimized: Bool, action: ApplicationActionToken,
+                         completion: @escaping (WindowMoveReport) -> Void) {
+        guard action.isActive(), !app.isTerminated else { return }
+        guard let display else {
+            var report = WindowMoveReport()
+            report.isComplete = true
+            completion(report)
             return
         }
-        if let display {
-            let key = identifier ?? applicationURL.standardizedFileURL.path
-            windowMover.start(key: key, display: display, application: findApplication)
-        }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        workspace.openApplication(at: applicationURL, configuration: configuration) { _, _ in
-            guard mode == .newWindow else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                self.sendNewWindow(after: 0)
+        windowMover.move(pid: app.processIdentifier, display: display, scope: scope,
+                         restoreMinimized: restoreMinimized, action: action, completion: completion)
+    }
+
+    private func activate(_ app: NSRunningApplication, mode: ApplicationOpenMode, display: ShortcutDisplayContext?,
+                          restoreMinimized: Bool, report: WindowMoveReport, action: ApplicationActionToken) {
+        guard action.isActive(), !app.isTerminated else { return }
+        if app.isHidden { app.unhide() }
+        app.activate()
+        guard mode == .newWindow else { return }
+        commandTask = Task { [weak self] in
+            guard let self else { return }
+            let deadline = ProcessInfo.processInfo.systemUptime + 0.8
+            while action.isActive(), !Task.isCancelled, !app.isTerminated,
+                  ProcessInfo.processInfo.systemUptime < deadline {
+                if action.canSend(to: app.processIdentifier,
+                                  frontmostPID: self.workspace.frontmostApplication?.processIdentifier) {
+                    // Target the process as well as checking focus: a focus race cannot send Command+N to another app.
+                    SyntheticKeySender.send(KeyCombination(keyCode: 45, modifiers: [.command]), to: app.processIdentifier)
+                    if let display, !report.timedOut, !report.displayDisconnected, report.readFailure == nil {
+                        self.prepare(app, display: display, scope: .appearing(excluding: report.knownIDs),
+                                     restoreMinimized: restoreMinimized, action: action) { _ in }
+                    }
+                    return
+                }
+                do { try await Task.sleep(nanoseconds: 20_000_000) }
+                catch { return }
+            }
+            if action.isActive(), !Task.isCancelled, let display {
+                self.windowMover.showFeedback("未能激活目标应用，新建窗口未执行。", display: display)
             }
         }
     }
@@ -127,11 +219,7 @@ final class ActionExecutor {
         return FileManager.default.fileExists(atPath: path) ? URL(fileURLWithPath: path) : nil
     }
 
-    private func sendNewWindow(after delay: TimeInterval) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            SyntheticKeySender.send(KeyCombination(keyCode: 45, modifiers: [.command]))
-        }
-    }
+
 }
 
 private enum SystemShowDesktopShortcut {

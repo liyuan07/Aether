@@ -99,7 +99,7 @@ private struct ShortcutActionsView: View {
                         ForEach(model.registeredApplications.filter { query.isEmpty || matches($0.displayName) }) { app in
                             Button {
                                 AppRouter.shared.send(.dismissPanels)
-                                ActionExecutor().execute(.application(target: ApplicationTarget(displayName: app.displayName, bundleIdentifier: app.bundleIdentifier, applicationPath: app.applicationPath), mode: .activateExisting))
+                                ShortcutsModule.shared.runtime.execute(.application(target: ApplicationTarget(displayName: app.displayName, bundleIdentifier: app.bundleIdentifier, applicationPath: app.applicationPath), mode: .activateExisting))
                             } label: { actionRow(app.displayName, detail: app.initial) }
                                 .buttonStyle(.plain)
                         }
@@ -107,7 +107,7 @@ private struct ShortcutActionsView: View {
                         ForEach(listed) { rule in
                             Button {
                                 if case let .remap(shortcut) = rule.action { ShortcutsModule.shared.sendToCapturedApplication(shortcut) }
-                                else { AppRouter.shared.send(.dismissPanels); ActionExecutor().execute(rule.action) }
+                                else { AppRouter.shared.send(.dismissPanels); ShortcutsModule.shared.runtime.execute(rule.action) }
                             } label: { actionRow(rule.name, detail: rule.source.displayString) }
                                 .buttonStyle(.plain).disabled(!model.executableRuleIDs.contains(rule.id))
                         }
@@ -125,6 +125,11 @@ private struct ShortcutActionsView: View {
             }
             if let error = model.lastError { Text(error).font(.caption).foregroundStyle(.orange) }
             Divider()
+            Button {
+                AppRouter.shared.send(.dismissPanels)
+                ShortcutsModule.shared.runtime.restoreLastWindowLayout()
+            } label: { Label("恢复上次跨屏布局", systemImage: "arrow.uturn.backward") }
+                .disabled(!model.canRestoreWindowLayout)
             Button { query = ""; showApplications.toggle() } label: {
                 Label(showApplications ? "返回收藏动作" : "打开应用启动器", systemImage: showApplications ? "star" : "app.badge")
             }

@@ -30,7 +30,11 @@ final class ApplicationShortcutEventRouter {
         if !isRepeat {
             lock.withLock { _ = activeKeyCodes.insert(keyCode) }
             let display = ShortcutDisplayContext.capture()
-            Task { @MainActor [weak self] in self?.onEvent?(initial, .pressed, display) }
+            let revision = ApplicationIntent.shared.revision
+            Task { @MainActor [weak self] in
+                guard revision == ApplicationIntent.shared.revision else { return }
+                self?.onEvent?(initial, .pressed, display)
+            }
         }
         return true
     }
@@ -82,6 +86,7 @@ final class ApplicationLauncherController {
     private let moveApplicationsHandler: (String, IndexSet, Int) -> Void
     private let launchHandler: (RegisteredApplication, ShortcutDisplayContext?) -> Void
     private var pendingInitial: String?
+    private var pendingRevision: UInt64?
     private var targetDisplay: ShortcutDisplayContext?
     private var holdTimer: Timer?
     private var displayedInitial: String?
@@ -131,6 +136,7 @@ final class ApplicationLauncherController {
             guard panel?.isVisible != true else { return }
             holdTimer?.invalidate()
             pendingInitial = initial
+            pendingRevision = ApplicationIntent.shared.revision
             targetDisplay = display
             let timer = Timer(timeInterval: holdDurationProvider(), repeats: false) { [weak self] _ in
                 Task { @MainActor in self?.showChooserIfNeeded(for: initial) }
@@ -140,6 +146,10 @@ final class ApplicationLauncherController {
             holdTimer = timer
         case .released:
             guard pendingInitial == initial else { return }
+            guard panel?.isVisible == true || pendingRevision == ApplicationIntent.shared.revision else {
+                dismiss()
+                return
+            }
             pendingInitial = nil
             holdTimer?.invalidate()
             holdTimer = nil

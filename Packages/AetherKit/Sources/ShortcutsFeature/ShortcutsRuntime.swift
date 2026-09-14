@@ -20,7 +20,12 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        let executor = ActionExecutor()
+        let executor = ActionExecutor(preferences: { [weak model] in
+            model?.appPreferences.applicationShortcuts ?? ApplicationShortcutPreferences()
+        })
+        executor.onUndoAvailabilityChanged = { [weak model] available in
+            model?.canRestoreWindowLayout = available
+        }
         let abcGuard = AutomaticABCGuardController(isEnabled: model.appPreferences.app.blockAutomaticABC)
         let applicationLauncher = ApplicationLauncherController(
             applicationsProvider: { [weak model] initial in model?.applications(for: initial) ?? [] },
@@ -172,6 +177,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        actionExecutor?.cancel()
         shortcutEngine?.stop()
         shortcutGuideController?.stop()
         applicationLauncherController?.stop()
@@ -182,6 +188,14 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
         PhysicalModifierMonitor.shared.onInputSwitchKey = nil
         PhysicalModifierMonitor.shared.stop()
         model.flushSave()
+    }
+
+    func execute(_ action: ShortcutAction) {
+        actionExecutor?.execute(action, targetDisplay: ShortcutDisplayContext.capture())
+    }
+
+    func restoreLastWindowLayout() {
+        actionExecutor?.restoreLastWindowLayout()
     }
 
     private func refreshPermission(promptIfNeeded: Bool) {

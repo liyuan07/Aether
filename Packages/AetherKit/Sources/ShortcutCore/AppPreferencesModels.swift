@@ -27,11 +27,13 @@ public struct ApplicationShortcutPreferences: Codable, Hashable, Sendable {
     public var defaultBundleIdentifiers: [String: String] = [:]
     public var orderedBundleIdentifiers: [String: [String]] = [:]
     public var holdDuration: TimeInterval = 0.5
+    public var restoreMinimizedWindows = true
+    public var windowBehaviorOverrides: [String: ApplicationWindowBehavior] = [:]
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case defaultBundleIdentifiers, orderedBundleIdentifiers, holdDuration
+        case defaultBundleIdentifiers, orderedBundleIdentifiers, holdDuration, restoreMinimizedWindows, windowBehaviorOverrides
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,10 +48,35 @@ public struct ApplicationShortcutPreferences: Codable, Hashable, Sendable {
             forKey: .orderedBundleIdentifiers
         ) ?? orderedBundleIdentifiers
         holdDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .holdDuration) ?? holdDuration
+        restoreMinimizedWindows = try container.decodeIfPresent(Bool.self, forKey: .restoreMinimizedWindows) ?? true
+        windowBehaviorOverrides = try container.decodeIfPresent([String: ApplicationWindowBehavior].self,
+                                                               forKey: .windowBehaviorOverrides) ?? [:]
     }
 
     public func normalizedHoldDuration() -> TimeInterval {
         min(max(holdDuration, 0.3), 1.5)
+    }
+
+    public func windowBehavior(for identifier: String?) -> (moveWindows: Bool, restoreMinimized: Bool) {
+        switch identifier.flatMap({ windowBehaviorOverrides[$0] }) ?? .followGlobal {
+        case .followGlobal: (true, restoreMinimizedWindows)
+        case .keepMinimized: (true, false)
+        case .restoreMinimized: (true, true)
+        case .activateOnly: (false, false)
+        }
+    }
+}
+
+public enum ApplicationWindowBehavior: String, Codable, CaseIterable, Sendable {
+    case followGlobal, keepMinimized, restoreMinimized, activateOnly
+
+    public var title: String {
+        switch self {
+        case .followGlobal: "跟随全局设置"
+        case .keepMinimized: "保留最小化窗口"
+        case .restoreMinimized: "恢复最小化窗口"
+        case .activateOnly: "仅激活，不移动"
+        }
     }
 }
 

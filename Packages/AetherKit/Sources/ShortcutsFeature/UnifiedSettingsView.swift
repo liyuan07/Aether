@@ -69,6 +69,17 @@ private struct ApplicationShortcutSettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
                 Text("普通窗口移到按键时鼠标所在屏幕；全屏窗口保持原位。需要辅助功能权限。")
                     .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Toggle("唤起时恢复最小化窗口", isOn: Binding(
+                        get: { model.appPreferences.applicationShortcuts.restoreMinimizedWindows },
+                        set: { value in model.updateAppPreferences { $0.applicationShortcuts.restoreMinimizedWindows = value } }
+                    ))
+                    Spacer()
+                    Button("恢复上次跨屏布局") { ShortcutsModule.shared.runtime.restoreLastWindowLayout() }
+                        .disabled(!model.canRestoreWindowLayout)
+                }.padding(.top, 8)
+                Text("关闭后，最小化窗口保持原位。布局记录仅在本次 Aether 运行期间有效。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 18)
@@ -103,6 +114,14 @@ private struct ApplicationShortcutSettingsView: View {
                                             .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     Spacer(minLength: 12)
+                                    Picker("窗口行为", selection: windowBehaviorBinding(for: application.bundleIdentifier)) {
+                                        ForEach(ApplicationWindowBehavior.allCases, id: \.self) { behavior in
+                                            Text(behavior.title).tag(behavior)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .frame(width: 170)
+                                    .help("此应用的窗口行为，适用于应用快捷键和应用启动器")
                                     Image(systemName: "line.3.horizontal")
                                         .font(.caption).foregroundStyle(.tertiary)
                                         .help("拖动调整 Option+\(group.initial) 选择器中的位置")
@@ -141,6 +160,16 @@ private struct ApplicationShortcutSettingsView: View {
             get: { model.appPreferences.applicationShortcuts.defaultBundleIdentifiers[initial] ?? "" },
             set: { model.setDefaultApplication(bundleIdentifier: $0.isEmpty ? nil : $0, for: initial) }
         )
+    }
+
+    private func windowBehaviorBinding(for identifier: String) -> Binding<ApplicationWindowBehavior> {
+        Binding(get: { model.appPreferences.applicationShortcuts.windowBehaviorOverrides[identifier] ?? .followGlobal },
+                set: { value in
+                    model.updateAppPreferences {
+                        if value == .followGlobal { $0.applicationShortcuts.windowBehaviorOverrides.removeValue(forKey: identifier) }
+                        else { $0.applicationShortcuts.windowBehaviorOverrides[identifier] = value }
+                    }
+                })
     }
 }
 
