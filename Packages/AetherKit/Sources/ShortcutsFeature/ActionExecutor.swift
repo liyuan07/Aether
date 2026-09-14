@@ -31,40 +31,47 @@ final class ActionExecutor {
     }
 
     private func openApplication(_ target: ApplicationTarget, mode: ApplicationOpenMode, display: ShortcutDisplayContext?) {
+        windowMover.cancelPendingActivations()
         let resolvedURL = resolvedApplicationURL(for: target)
         let identifier = resolvedURL.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? target.bundleIdentifier
-        if let display {
-            let key = identifier ?? resolvedURL?.standardizedFileURL.path ?? target.applicationPath
-            windowMover.start(key: key, display: display) {
-                if let identifier {
-                    return NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
-                }
-                guard let resolvedURL else { return nil }
-                return NSWorkspace.shared.runningApplications.first { $0.bundleURL?.standardizedFileURL == resolvedURL.standardizedFileURL }
+        let findApplication: @MainActor () -> NSRunningApplication? = {
+            if let identifier {
+                return NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first
             }
+            guard let resolvedURL else { return nil }
+            return NSWorkspace.shared.runningApplications.first { $0.bundleURL?.standardizedFileURL == resolvedURL.standardizedFileURL }
         }
-        let runningApplication = identifier.flatMap {
-            NSRunningApplication.runningApplications(withBundleIdentifier: $0).first
-        }
-
+        let runningApplication = findApplication()
         if let runningApplication {
-            if runningApplication.isHidden { runningApplication.unhide() }
-            if display == nil { ApplicationWindowRestorer.restoreMinimizedWindows(for: runningApplication) }
-            if mode == .activateExisting, let applicationURL = resolvedApplicationURL(for: target) {
-                let configuration = NSWorkspace.OpenConfiguration()
-                configuration.activates = true
-                workspace.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
+            let activate: (Bool) -> Void = { [self] hasWindows in
+                guard !runningApplication.isTerminated else { return }
+                if runningApplication.isHidden { runningApplication.unhide() }
+                if display == nil { ApplicationWindowRestorer.restoreMinimizedWindows(for: runningApplication) }
+                if mode == .activateExisting, !hasWindows, let applicationURL = resolvedURL {
+                    let configuration = NSWorkspace.OpenConfiguration()
+                    configuration.activates = true
+                    workspace.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
+                } else {
+                    runningApplication.activate(options: [.activateAllWindows])
+                    if mode == .newWindow { sendNewWindow(after: 0.12) }
+                }
+            }
+            if let display {
+                let key = identifier ?? resolvedURL?.standardizedFileURL.path ?? target.applicationPath
+                windowMover.start(key: key, display: display, application: findApplication, beforeActivation: activate)
             } else {
-                runningApplication.activate(options: [.activateAllWindows])
-                if mode == .newWindow { sendNewWindow(after: 0.12) }
+                activate(false)
             }
             return
         }
 
-        let applicationURL = resolvedApplicationURL(for: target)
-        guard let applicationURL else {
+        guard let applicationURL = resolvedURL else {
             NSSound.beep()
             return
+        }
+        if let display {
+            let key = identifier ?? applicationURL.standardizedFileURL.path
+            windowMover.start(key: key, display: display, application: findApplication)
         }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true

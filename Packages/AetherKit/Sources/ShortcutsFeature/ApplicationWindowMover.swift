@@ -6,26 +6,34 @@ final class ApplicationWindowMover {
     private struct Request {
         let lease: WindowMoveLease
         let task: Task<Void, Never>
+        let activation: WindowMoveActivation?
     }
     private var requests: [String: Request] = [:]
     private let queue = DispatchQueue(label: "com.liyuan.aether.window-movement", qos: .userInitiated)
     private let feedback = WindowMoveFeedback()
 
     func start(key: String, display: ShortcutDisplayContext,
-               application: @escaping @MainActor () -> NSRunningApplication?) {
-        requests.removeValue(forKey: key).map { $0.lease.cancel(); $0.task.cancel() }
+               application: @escaping @MainActor () -> NSRunningApplication?,
+               beforeActivation: ((Bool) -> Void)? = nil) {
+        requests.removeValue(forKey: key).map { $0.lease.cancel(); $0.task.cancel(); $0.activation?.cancel() }
         let lease = WindowMoveLease()
         guard AccessibilityPermission.isGranted else {
             feedback.show("窗口未移动：请在系统设置中授予 Aether 辅助功能权限。", display: display)
+            beforeActivation?(false)
             return
         }
+        let activation = beforeActivation.map { WindowMoveActivation(lease: lease, action: $0) }
+        activation?.startTimeout()
         let task = Task { [weak self] in
             guard let self else { return }
             let backend = AXWindowMoveSession(lease: lease)
             var observedSource: CFRunLoopSource?
             var message: String?
             var lastScan: TimeInterval = 0
+            var wasPreparing = activation?.isPending == true
             defer {
+                if !Task.isCancelled { activation?.activate() }
+                activation?.cancel()
                 lease.cancel()
                 if let source = observedSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
                 if self.requests[key]?.lease === lease {
@@ -42,15 +50,20 @@ final class ApplicationWindowMover {
                 if let app = application() {
                     if app.isTerminated { break }
                     let now = ProcessInfo.processInfo.systemUptime
-                    if backend.consumeChange() || now - lastScan >= 1 {
+                    let preparing = activation?.isPending == true
+                    let justActivated = wasPreparing && !preparing
+                    wasPreparing = preparing
+                    if backend.consumeChange() || preparing || justActivated || now - lastScan >= 1 {
                         lastScan = now
                         let pid = app.processIdentifier
-                        await withCheckedContinuation { continuation in
+                        let preparation = await withCheckedContinuation { continuation in
                             self.queue.async {
-                                backend.scan(pid: pid, screens: screens, targetID: display.displayID)
-                                continuation.resume()
+                                let result = backend.scan(pid: pid, screens: screens, targetID: display.displayID,
+                                                          preparing: preparing)
+                                continuation.resume(returning: result)
                             }
                         }
+                        if !Task.isCancelled { activation?.receive(preparation) }
                         if observedSource == nil, let observer = backend.observer {
                             let source = AXObserverGetRunLoopSource(observer)
                             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -58,11 +71,21 @@ final class ApplicationWindowMover {
                         }
                     }
                 }
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: wasPreparing ? 16_000_000 : 250_000_000)
             }
             if !Task.isCancelled, message == nil { message = backend.failureMessage }
         }
-        requests[key] = Request(lease: lease, task: task)
+        requests[key] = Request(lease: lease, task: task, activation: activation)
+    }
+
+    // A newer application shortcut must not be followed by an older delayed activation.
+    func cancelPendingActivations() {
+        for (key, request) in requests where request.activation?.isPending == true {
+            request.lease.cancel()
+            request.task.cancel()
+            request.activation?.cancel()
+            requests.removeValue(forKey: key)
+        }
     }
 
     deinit {
@@ -88,6 +111,7 @@ private final class AXWindowMoveSession: @unchecked Sendable {
     private var sawWindow = false
     private var skippedFullScreen = false
     private var readFailed = false
+    private var preparedBeforeActivation = false
 
     init(lease: WindowMoveLease) { self.lease = lease }
     func consumeChange() -> Bool { changeLock.withLock { let result = changed; changed = false; return result } }
@@ -102,9 +126,23 @@ private final class AXWindowMoveSession: @unchecked Sendable {
         return nil
     }
 
-    func scan(pid: pid_t, screens: [PlacementScreen], targetID: CGDirectDisplayID) {
+    private var preparation: WindowMovePreparation {
+        WindowMovePreparation(hasWindows: sawWindow, isReady: readFailed || windows.allSatisfy(\.completed))
+    }
+
+    func scan(pid: pid_t, screens: [PlacementScreen], targetID: CGDirectDisplayID,
+              preparing: Bool) -> WindowMovePreparation {
         guard lease.isActive(), CGDisplayIsActive(targetID) != 0,
-              let target = screens.first(where: { $0.id == targetID }) else { return }
+              let target = screens.first(where: { $0.id == targetID }) else { return preparation }
+        if !preparing, preparedBeforeActivation {
+            // Unhiding/restoring can adjust frames. Recheck once after activation,
+            // then leave completed windows alone if the user moves them manually.
+            for index in windows.indices {
+                windows[index].completed = false
+                windows[index].attempts = 0
+            }
+        }
+        preparedBeforeActivation = preparing
         if appElement == nil {
             let app = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(app, 0.15)
@@ -119,13 +157,13 @@ private final class AXWindowMoveSession: @unchecked Sendable {
                                           Unmanaged.passUnretained(self).toOpaque())
             }
         }
-        guard let app = appElement else { return }
+        guard let app = appElement else { return preparation }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
-              let elements = value as? [AXUIElement] else { readFailed = true; return }
+              let elements = value as? [AXUIElement] else { readFailed = true; return preparation }
         readFailed = false
         for element in elements {
-            guard lease.isActive() else { return }
+            guard lease.isActive() else { return preparation }
             guard AXHelpers.string(element, attribute: kAXSubroleAttribute as CFString) == kAXStandardWindowSubrole else { continue }
             sawWindow = true
             if AXHelpers.bool(element, attribute: "AXFullScreen" as CFString) {
@@ -137,7 +175,7 @@ private final class AXWindowMoveSession: @unchecked Sendable {
             }
         }
         for index in windows.indices {
-            guard lease.isActive(), CGDisplayIsActive(targetID) != 0 else { return }
+            guard lease.isActive(), CGDisplayIsActive(targetID) != 0 else { return preparation }
             if windows[index].completed { continue }
             let element = windows[index].element
             // A user can close or make a window fullscreen while startup is pending.
@@ -151,8 +189,10 @@ private final class AXWindowMoveSession: @unchecked Sendable {
                 continue
             }
             AXUIElementSetMessagingTimeout(element, 0.15)
-            if AXHelpers.bool(element, attribute: kAXMinimizedAttribute as CFString) {
-                guard lease.isActive() else { return }
+            // Reposition minimized windows while they are still invisible. Apps
+            // that refuse this get the existing restore-and-retry fallback.
+            if !preparing, AXHelpers.bool(element, attribute: kAXMinimizedAttribute as CFString) {
+                guard lease.isActive() else { return preparation }
                 if AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, kCFBooleanFalse) != .success {
                     windows[index].attempts += 1
                     continue
@@ -176,7 +216,7 @@ private final class AXWindowMoveSession: @unchecked Sendable {
                 for: frame, source: source.visibleFrame, target: target.visibleFrame,
                 resizable: AXHelpers.isAttributeSettable(element, attribute: kAXSizeAttribute as CFString))
             if desired.size != frame.size {
-                guard lease.isActive() else { return }
+                guard lease.isActive() else { return preparation }
                 var size = desired.size
                 if let value = AXValueCreate(.cgSize, &size) {
                     AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
@@ -187,7 +227,7 @@ private final class AXWindowMoveSession: @unchecked Sendable {
                                                           source: target.visibleFrame, target: target.visibleFrame, resizable: false)
                 }
             }
-            guard lease.isActive(), CGDisplayIsActive(targetID) != 0 else { return }
+            guard lease.isActive(), CGDisplayIsActive(targetID) != 0 else { return preparation }
             var point = desired.origin
             if let value = AXValueCreate(.cgPoint, &point),
                AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value) == .success {
@@ -196,6 +236,7 @@ private final class AXWindowMoveSession: @unchecked Sendable {
                 markChanged()
             }
         }
+        return preparation
     }
 
     private static func frame(_ window: AXUIElement) -> CGRect? {
