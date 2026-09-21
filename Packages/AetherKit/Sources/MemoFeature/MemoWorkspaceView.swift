@@ -4,9 +4,9 @@ import SwiftUI
 struct MemoWorkspaceView: View {
     @ObservedObject var model: MemoModel
     @State private var title = ""
-    @State private var pomodoroCount = 1
     @State private var hasDeadline = false
     @State private var deadline = Date()
+    @State private var showingDeadlinePicker = false
     @FocusState private var titleFocused: Bool
 
     var body: some View {
@@ -45,29 +45,48 @@ struct MemoWorkspaceView: View {
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 8) {
             TextField("写下要做的事", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .focused($titleFocused)
                 .onSubmit(add)
                 .accessibilityIdentifier("memo.title")
-            HStack(spacing: 10) {
-                Stepper(value: $pomodoroCount, in: 1...20) {
-                    Label("\(pomodoroCount) 个番茄", systemImage: "timer")
-                }
-                Spacer(minLength: 0)
-                Button("添加", action: add)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("memo.add")
+                .frame(minWidth: 0)
+            Button {
+                showingDeadlinePicker = true
+            } label: {
+                Image(systemName: hasDeadline ? "calendar.badge.clock" : "calendar")
             }
-            Toggle("设置截止时间", isOn: $hasDeadline)
-                .toggleStyle(.checkbox)
-            if hasDeadline {
+            .buttonStyle(.borderless)
+            .foregroundStyle(hasDeadline ? .indigo : .secondary)
+            .help(hasDeadline ? "修改截止时间" : "设置截止时间")
+            .accessibilityLabel(hasDeadline ? "修改截止时间" : "设置截止时间")
+            .popover(isPresented: $showingDeadlinePicker, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("截止时间").font(.headline)
                 DatePicker("截止时间", selection: $deadline, displayedComponents: [.date, .hourAndMinute])
                     .datePickerStyle(.compact)
+                    HStack {
+                        if hasDeadline {
+                            Button("清除截止时间", role: .destructive) {
+                                hasDeadline = false
+                                showingDeadlinePicker = false
+                            }
+                        }
+                        Spacer()
+                        Button("完成") {
+                            hasDeadline = true
+                            showingDeadlinePicker = false
+                        }
+                    }
+                }
+                .padding(14)
             }
+            Button("添加", action: add)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("memo.add")
         }
-        .padding(10)
+        .padding(6)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 
@@ -106,13 +125,6 @@ struct MemoWorkspaceView: View {
                     }
                 }
                 .font(.caption2).foregroundStyle(.secondary)
-                Stepper("调整番茄数", value: Binding(
-                    get: { item.pomodoroCount },
-                    set: { model.updatePomodoroCount(for: item, to: $0) }
-                ), in: 1...20)
-                .labelsHidden()
-                .controlSize(.small)
-                .accessibilityLabel("调整 \(item.title) 的番茄数")
             }
             Spacer(minLength: 0)
         }
@@ -121,9 +133,8 @@ struct MemoWorkspaceView: View {
     }
 
     private func add() {
-        guard model.add(title: title, pomodoroCount: pomodoroCount, deadline: hasDeadline ? deadline : nil) else { return }
+        guard model.add(title: title, pomodoroCount: 1, deadline: hasDeadline ? deadline : nil) else { return }
         title = ""
-        pomodoroCount = 1
         hasDeadline = false
         titleFocused = true
     }

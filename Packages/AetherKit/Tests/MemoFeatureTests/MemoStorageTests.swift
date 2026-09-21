@@ -16,7 +16,12 @@ final class MemoStorageTests: XCTestCase {
     func testRoundTripPreservesOptionalDeadlineAndPomodoroCount() throws {
         let storage = MemoStorage(directory: directory)
         let deadline = Date(timeIntervalSince1970: 1_700_000_000)
-        let item = MemoItem(title: "合成待办", pomodoroCount: 3, deadline: deadline)
+        let item = MemoItem(
+            title: "合成待办",
+            pomodoroCount: 3,
+            deadline: deadline,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_123.456)
+        )
 
         try storage.save([item])
 
