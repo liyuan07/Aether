@@ -217,10 +217,17 @@ private struct EyeCareStatusCard: View {
                 compactControls(primaryTitle: "继续", primaryIcon: "play.fill", primaryAction: resume)
             }
 
-        case .resting, .awaitingCompletion:
-            Text("休息提醒已在屏幕右上角常驻显示")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+        case .resting:
+            EmptyView()
+
+        case .awaitingCompletion:
+            compactControls(
+                primaryTitle: "开始下一轮",
+                primaryIcon: "play.fill",
+                stopTitle: "停止"
+            ) {
+                _ = manager.completeRest()
+            }
         }
     }
 
@@ -237,6 +244,7 @@ private struct EyeCareStatusCard: View {
     private func compactControls(
         primaryTitle: String,
         primaryIcon: String,
+        stopTitle: String = "结束",
         primaryAction: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 6) {
@@ -247,7 +255,7 @@ private struct EyeCareStatusCard: View {
             .controlSize(.small)
 
             Button(role: .destructive, action: manager.stop) {
-                Label("结束", systemImage: "stop.fill")
+                Label(stopTitle, systemImage: "stop.fill")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
