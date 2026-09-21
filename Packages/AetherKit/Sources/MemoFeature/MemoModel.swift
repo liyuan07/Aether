@@ -25,22 +25,15 @@ final class MemoModel: ObservableObject {
         }
     }
 
-    func add(title: String, pomodoroCount: Int, deadline: Date?) -> Bool {
+    func add(title: String, deadline: Date?) -> Bool {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        return persist(items + [MemoItem(title: trimmed, pomodoroCount: pomodoroCount, deadline: deadline)])
+        return persist(items + [MemoItem(title: trimmed, deadline: deadline)])
     }
 
     /// A checked item is complete, so it is removed instead of retaining finished personal notes.
     func complete(_ item: MemoItem) {
         _ = persist(items.filter { $0.id != item.id })
-    }
-
-    func updatePomodoroCount(for item: MemoItem, to count: Int) {
-        var next = items
-        guard let index = next.firstIndex(where: { $0.id == item.id }) else { return }
-        next[index].pomodoroCount = max(1, count)
-        _ = persist(next)
     }
 
     func reload() {

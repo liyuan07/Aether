@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Keeps each personal item small: a title, a number of focus blocks, and an optional deadline.
+/// Compact local todo page with optional deadlines.
 struct MemoWorkspaceView: View {
     @ObservedObject var model: MemoModel
     @State private var title = ""
@@ -15,8 +15,6 @@ struct MemoWorkspaceView: View {
                 Label("备忘录", systemImage: "checklist")
                     .font(.headline)
                 Spacer()
-                Text("1 个番茄 = 25 分钟")
-                    .font(.caption2).foregroundStyle(.secondary)
             }
             .padding(12)
 
@@ -94,7 +92,7 @@ struct MemoWorkspaceView: View {
         VStack(spacing: 8) {
             Image(systemName: "checklist").font(.title2).foregroundStyle(.tertiary)
             Text("暂时没有待办")
-            Text("按番茄数拆分任务，完成后勾选即可删除。")
+            Text("写下待办，完成后勾选即可删除。")
                 .font(.caption2).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 28)
@@ -113,18 +111,15 @@ struct MemoWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.title).font(.subheadline.weight(.medium)).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 6) {
-                    Label("\(item.pomodoroCount) 个番茄", systemImage: "timer")
-                    if let deadline = item.deadline {
-                        Label {
-                            Text(deadline, format: .dateTime.month().day().hour().minute())
-                        } icon: {
-                            Image(systemName: "calendar")
-                        }
-                            .foregroundStyle(deadline < Date() ? .orange : .secondary)
+                if let deadline = item.deadline {
+                    Label {
+                        Text(deadline, format: .dateTime.month().day().hour().minute())
+                    } icon: {
+                        Image(systemName: "calendar")
                     }
+                    .font(.caption2)
+                    .foregroundStyle(deadline < Date() ? .orange : .secondary)
                 }
-                .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -133,7 +128,7 @@ struct MemoWorkspaceView: View {
     }
 
     private func add() {
-        guard model.add(title: title, pomodoroCount: 1, deadline: hasDeadline ? deadline : nil) else { return }
+        guard model.add(title: title, deadline: hasDeadline ? deadline : nil) else { return }
         title = ""
         hasDeadline = false
         titleFocused = true
