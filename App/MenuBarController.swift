@@ -5,14 +5,44 @@ import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
 import PromptFeature
+import MemoFeature
 
-enum ControlCenterTab: Int {
-    case overview, clipboard, shortcuts, prompt
+enum ControlCenterTab: String, CaseIterable, Identifiable {
+    case overview, clipboard, shortcuts, memo, prompt
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .overview: "概览"
+        case .clipboard: "剪贴板"
+        case .shortcuts: "快捷操作"
+        case .memo: "备忘录"
+        case .prompt: "Prompt"
+        }
+    }
 }
 
 @MainActor private final class ControlCenterNavigation: ObservableObject {
     @Published var tab: ControlCenterTab = .overview
     @Published var height: CGFloat = 600
+    @Published var tabOrder: [ControlCenterTab]
+
+    init(defaults: UserDefaults = AppEnvironment.controlCenterDefaults) {
+        let saved = defaults.stringArray(forKey: "controlCenterTabOrder")?.compactMap(ControlCenterTab.init(rawValue:)) ?? []
+        let known = saved.reduce(into: [ControlCenterTab]()) { result, tab in
+            if !result.contains(tab) { result.append(tab) }
+        }
+        let missing = ControlCenterTab.allCases.filter { !known.contains($0) }
+        tabOrder = known + missing
+    }
+
+    func move(_ tab: ControlCenterTab, before destination: ControlCenterTab) {
+        guard tab != destination,
+              let sourceIndex = tabOrder.firstIndex(of: tab),
+              let destinationIndex = tabOrder.firstIndex(of: destination) else { return }
+        tabOrder.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destinationIndex)
+        AppEnvironment.controlCenterDefaults.set(tabOrder.map(\.rawValue), forKey: "controlCenterTabOrder")
+    }
 }
 
 @MainActor final class MenuBarController: NSObject, NSPopoverDelegate {
@@ -92,17 +122,14 @@ private struct ControlCenterView: View {
                 Button { AppRouter.shared.send(.settings(.general)) } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.borderless).help("设置")
             }.padding(16)
-            Picker("页面", selection: $navigation.tab) {
-                Text("概览").tag(ControlCenterTab.overview)
-                Text("剪贴板").tag(ControlCenterTab.clipboard)
-                Text("快捷操作").tag(ControlCenterTab.shortcuts)
-                Text("Prompt").tag(ControlCenterTab.prompt).accessibilityLabel("Prompt 优化")
-            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 14).padding(.bottom, 12)
+            ControlCenterTabs(navigation: navigation)
+                .padding(.horizontal, 8).padding(.bottom, 12)
             Divider()
             if startup.ready {
                 switch navigation.tab {
                 case .clipboard: ClipboardModule.shared.compactPanel()
                 case .shortcuts: ShortcutsModule.shared.quickActions()
+                case .memo: MemoModule.shared.compactPanel()
                 case .prompt: PromptModule.shared.compactPanel()
                 case .overview:
                     ScrollView {
@@ -125,5 +152,57 @@ private struct ControlCenterView: View {
         .tint(.indigo)
         .background(.regularMaterial)
         .onExitCommand { AppRouter.shared.send(.dismissPanels) }
+    }
+}
+
+private struct ControlCenterTabs: View {
+    @ObservedObject var navigation: ControlCenterNavigation
+    @State private var dragging: ControlCenterTab?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(navigation.tabOrder) { tab in
+                Button { navigation.tab = tab } label: {
+                    Text(tab.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(navigation.tab == tab ? .white : .primary)
+                .background(navigation.tab == tab ? Color.indigo : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .onDrag {
+                    dragging = tab
+                    return NSItemProvider(object: tab.rawValue as NSString)
+                }
+                .onDrop(of: [.text], delegate: TabDropDelegate(destination: tab, navigation: navigation, dragging: $dragging))
+                .accessibilityLabel(tab == .prompt ? "Prompt 优化" : tab.title)
+                .accessibilityHint("按住并拖动调整页面位置")
+                .accessibilityIdentifier("control-center.tab.\(tab.rawValue)")
+            }
+        }
+        .padding(2)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityLabel("控制中心页面，可拖动调整顺序")
+    }
+}
+
+private struct TabDropDelegate: DropDelegate {
+    let destination: ControlCenterTab
+    let navigation: ControlCenterNavigation
+    @Binding var dragging: ControlCenterTab?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging else { return }
+        navigation.move(dragging, before: destination)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
     }
 }

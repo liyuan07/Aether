@@ -5,9 +5,9 @@ A00000000000000000000002 = { isa = PBXGroup; children = (A0000000000000000000000
 A00000000000000000000003 = { isa = PBXGroup; children = (A00000000000000000000005); name = Products; sourceTree = "<group>"; };
 A00000000000000000000004 = { isa = PBXFileSystemSynchronizedRootGroup; path = App; sourceTree = "<group>"; };
 A00000000000000000000005 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aether.app; sourceTree = BUILT_PRODUCTS_DIR; };
-A00000000000000000000006 = { isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000011; buildPhases = (A00000000000000000000007, A00000000000000000000008, A00000000000000000000009); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A00000000000000000000004); name = Aether; packageProductDependencies = (B00000000000000000000000, B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004); productName = Aether; productReference = A00000000000000000000005; productType = "com.apple.product-type.application"; };
+A00000000000000000000006 = { isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000011; buildPhases = (A00000000000000000000007, A00000000000000000000008, A00000000000000000000009); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A00000000000000000000004); name = Aether; packageProductDependencies = (B00000000000000000000000, B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B00000000000000000000004, B00000000000000000000005); productName = Aether; productReference = A00000000000000000000005; productType = "com.apple.product-type.application"; };
 A00000000000000000000007 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-A00000000000000000000008 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000000, C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004); runOnlyForDeploymentPostprocessing = 0; };
+A00000000000000000000008 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000000, C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005); runOnlyForDeploymentPostprocessing = 0; };
 A00000000000000000000009 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 A00000000000000000000010 = { isa = XCConfigurationList; buildConfigurations = (A00000000000000000000012, A00000000000000000000013); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 A00000000000000000000011 = { isa = XCConfigurationList; buildConfigurations = (A00000000000000000000014, A00000000000000000000015); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
@@ -26,4 +26,6 @@ B00000000000000000000003 = { isa = XCSwiftPackageProductDependency; productName 
 C00000000000000000000003 = { isa = PBXBuildFile; productRef = B00000000000000000000003; };
 B00000000000000000000004 = { isa = XCSwiftPackageProductDependency; productName = PromptFeature; };
 C00000000000000000000004 = { isa = PBXBuildFile; productRef = B00000000000000000000004; };
+B00000000000000000000005 = { isa = XCSwiftPackageProductDependency; productName = MemoFeature; };
+C00000000000000000000005 = { isa = PBXBuildFile; productRef = B00000000000000000000005; };
 }; rootObject = A00000000000000000000001; }

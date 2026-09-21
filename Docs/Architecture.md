@@ -6,6 +6,7 @@
 Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项）
 ├─ TimerFeature → SharedSupport + Defaults + MacroVisionKit + SkyLightWindow
 ├─ ClipboardFeature → SharedSupport
+├─ MemoFeature → SharedSupport
 ├─ PromptFeature → SharedSupport
 └─ ShortcutsFeature → SharedSupport + ShortcutCore
 ```
@@ -14,7 +15,9 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 
 `TimerFeature` 管理计时、护眼、刘海和屏幕协调；`ClipboardFeature` 管理历史、搜索、详情与粘贴；`ShortcutsFeature` 管理事件监听、应用唤醒、按键映射和快捷面板；`ShortcutCore` 提供快捷键配置与规则模型。
 
-`PromptFeature` 管理提示词编辑状态、优化规则、兼容模型接口、钥匙串凭证及本地历史。应用层的 `MenuBarController` 在原有 300 pt 面板提供第四个 Prompt 分页，输入、结果、历史在分页内切换；设置页仍嵌入原有设置窗口。`.prompt` 路由打开菜单栏并定位该分页，`.settings(.prompt)` 定位配置页，不创建独立编辑窗口。新模块不依赖剪贴板或其他功能实现。
+`PromptFeature` 管理提示词编辑状态、优化规则、兼容模型接口、钥匙串凭证及本地历史。应用层的 `MenuBarController` 在原有 300 pt 面板提供一个可排序的 Prompt 分页，输入、结果、历史在分页内切换；设置页仍嵌入原有设置窗口。`.prompt` 路由打开菜单栏并定位该分页，`.settings(.prompt)` 定位配置页，不创建独立编辑窗口。新模块不依赖剪贴板或其他功能实现。
+
+`MemoFeature` 管理本机待办。每项记录标题、番茄数和可选截止时间；完成操作即删除该项，不保留已完成内容。`MemoStorage` 用带版本的原子本地文件保存数据，加载失败或遇到未知版本时保留原文件并停止写入。控制中心顶部的五个页面标签支持拖动排序，顺序以 `AppEnvironment` 管理的偏好域保存；缺失、重复或未知值会整理为完整的默认页面集合。
 
 ## 存储与启动
 
@@ -25,10 +28,12 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 | 应用数据根目录 | `~/Library/Application Support/Aether/` |
 | 剪贴板文件 | `Aether/Clipboard/` |
 | 快捷操作配置 | `Aether/Shortcuts/` |
+| 备忘录 | `Aether/Memo/` |
 | Prompt 配置与历史 | `Aether/Prompt/` |
 | Prompt API Key | macOS 钥匙串，服务 `com.liyuan.aether.prompt` |
 | 剪贴板偏好 | `com.liyuan.aether.clipboard` |
 | 快捷操作偏好 | `com.liyuan.aether.shortcuts` |
+| 控制中心页面顺序 | 主应用域 `com.liyuan.aether` |
 | 计时及通用偏好 | 主应用域 `com.liyuan.aether` |
 
 `StartupController` 完成本地数据准备后才启动功能模块，避免历史清理或事件监听与数据写入竞争。现有数据兼容处理集中在启动层及 `SharedSupport`，功能模块不承担外部数据识别。修改兼容处理前应检查已有数据与失败恢复路径。
