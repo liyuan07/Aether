@@ -28,6 +28,7 @@ final class EyeCareManager: ObservableObject {
     private var machine = EyeCareCycleMachine()
     private var deadlineTimer: Timer?
     private var panelDisplayTimer: Timer?
+    private var breakWindowRecoveryTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
@@ -45,6 +46,7 @@ final class EyeCareManager: ObservableObject {
     deinit {
         deadlineTimer?.invalidate()
         panelDisplayTimer?.invalidate()
+        breakWindowRecoveryTask?.cancel()
     }
 
     var isActive: Bool { machine.isActive }
@@ -215,11 +217,38 @@ final class EyeCareManager: ObservableObject {
     private func reconcileBreakWindow() {
         if machine.isBreakVisible, !LockScreenManager.shared.currentLockStatus {
             AppRouter.shared.send(.dismissPanels)
-            EyeCareBreakWindowManager.shared.present(
-                preferredScreenName: TimerRuntime.shared?.vm.screen
-            )
+            presentBreakWindow()
+            scheduleBreakWindowRecovery()
         } else {
+            breakWindowRecoveryTask?.cancel()
+            breakWindowRecoveryTask = nil
             EyeCareBreakWindowManager.shared.hide()
+        }
+    }
+
+    private func presentBreakWindow() {
+        EyeCareBreakWindowManager.shared.present(
+            preferredScreenName: TimerRuntime.shared?.vm.screen
+        )
+    }
+
+    /// A transient popover close or display-space transition can cause AppKit to drop a
+    /// non-activating panel's first order-front request. The break state is persistent, so
+    /// reassert its panel shortly afterwards instead of treating that one request as final.
+    private func scheduleBreakWindowRecovery() {
+        breakWindowRecoveryTask?.cancel()
+        breakWindowRecoveryTask = Task { @MainActor [weak self] in
+            for delay in [0.2, 0.8] as [TimeInterval] {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled,
+                      let self,
+                      self.machine.isBreakVisible,
+                      !LockScreenManager.shared.currentLockStatus else {
+                    return
+                }
+                self.presentBreakWindow()
+            }
+            self?.breakWindowRecoveryTask = nil
         }
     }
 
