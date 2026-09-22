@@ -67,6 +67,21 @@ final class QuickClipboardTests: XCTestCase {
     }
 
     @MainActor
+    func testDefaultCollectionNamesAreAvailableImmediatelyAndDoNotCollide() throws {
+        let context = modelContext()
+        defer { context.cleanup() }
+        let model = context.model
+
+        let firstID = try model.createDefaultCollection().get()
+        _ = try model.createCollection(name: "常用 2").get()
+        let thirdID = try model.createDefaultCollection().get()
+
+        XCTAssertEqual(model.collections.map(\.name), ["常用 1", "常用 2", "常用 3"])
+        XCTAssertEqual(model.selectedCollectionID, thirdID)
+        XCTAssertNotEqual(firstID, thirdID)
+    }
+
+    @MainActor
     func testKeysUseExactMatchingAndStableEntryOrder() throws {
         let context = modelContext()
         defer { context.cleanup() }

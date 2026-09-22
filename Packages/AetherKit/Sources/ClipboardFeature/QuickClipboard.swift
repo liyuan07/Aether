@@ -179,12 +179,12 @@ enum QuickClipboardValidationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .emptyCollectionName: "请输入集合名称。"
-        case .duplicateCollectionName: "已存在同名集合。"
-        case .missingCollection: "找不到这个集合，请重新选择。"
-        case .emptyKey: "请输入 Key。"
-        case .emptyValue: "请输入 Value。"
-        case .duplicateKey: "该 Key 已存在。"
+        case .emptyCollectionName: "请输入名称。"
+        case .duplicateCollectionName: "这个名称已被使用。"
+        case .missingCollection: "没有找到此内容。"
+        case .emptyKey: "请输入标题。"
+        case .emptyValue: "请输入内容。"
+        case .duplicateKey: "这个标题已存在。"
         }
     }
 }
@@ -243,6 +243,15 @@ final class QuickClipboardModel: ObservableObject {
         return collections.first {
             Self.normalizedCollectionName($0.name) == normalized
         }?.id
+    }
+
+    @discardableResult
+    func createDefaultCollection() -> Result<UUID, QuickClipboardValidationError> {
+        var index = 1
+        while existingCollectionID(named: "常用 \(index)") != nil {
+            index += 1
+        }
+        return createCollection(name: "常用 \(index)")
     }
 
     @discardableResult

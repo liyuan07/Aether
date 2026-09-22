@@ -20,32 +20,6 @@ final class ClipboardPanelKeyboardRouter {
     }
 }
 
-struct QuickClipboardCollapsedRail: View {
-    let onExpand: () -> Void
-
-    var body: some View {
-        Button(action: onExpand) {
-            VStack(spacing: 10) {
-                Image(systemName: "tray.full.fill")
-                Text("常用")
-                    .font(.caption2.weight(.semibold))
-                    .fixedSize()
-                    .rotationEffect(.degrees(90))
-                    .frame(width: 14, height: 36)
-                Image(systemName: "chevron.left")
-                    .font(.caption2)
-            }
-            .foregroundStyle(.indigo)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("展开常用剪贴板")
-        .accessibilityLabel("展开常用剪贴板")
-        .background(Color.indigo.opacity(0.07))
-    }
-}
-
 private enum QuickClipboardFocus: Hashable {
     case search
     case collectionName
@@ -54,7 +28,6 @@ private enum QuickClipboardFocus: Hashable {
 }
 
 private enum QuickClipboardCollectionEditor: Equatable {
-    case create
     case rename(UUID)
 }
 
@@ -70,7 +43,7 @@ private enum QuickClipboardUndo {
     case collection(QuickClipboardDeletedCollection)
 }
 
-struct QuickClipboardRailView: View {
+struct QuickClipboardPopoverView: View {
     @ObservedObject var model: QuickClipboardModel
     let onCollapse: () -> Void
 
@@ -151,21 +124,15 @@ struct QuickClipboardRailView: View {
         HStack(spacing: 8) {
             Image(systemName: "tray.full.fill")
                 .foregroundStyle(.indigo)
-            Text("常用剪贴板")
+            Text("常用")
                 .font(.system(size: 13, weight: .semibold))
-            Text("永久")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.indigo)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.indigo.opacity(0.12), in: Capsule())
             Spacer(minLength: 0)
             Button(action: onCollapse) {
                 Image(systemName: "chevron.right")
             }
             .buttonStyle(.plain)
-            .help("收起常用剪贴板")
-            .accessibilityLabel("收起常用剪贴板")
+            .help("关闭常用内容")
+            .accessibilityLabel("关闭常用内容")
         }
         .padding(.horizontal, 12)
         .frame(height: 46)
@@ -175,7 +142,7 @@ struct QuickClipboardRailView: View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("搜索集合、Key 或 Value", text: $searchText)
+            TextField("搜索", text: $searchText)
                 .textFieldStyle(.plain)
                 .focused($focus, equals: .search)
                 .accessibilityIdentifier("quick-clipboard.search")
@@ -200,10 +167,10 @@ struct QuickClipboardRailView: View {
     @ViewBuilder
     private var collectionControl: some View {
         VStack(alignment: .leading, spacing: 7) {
-            if let collectionEditor {
+            if collectionEditor != nil {
                 HStack(spacing: 7) {
                     TextField(
-                        collectionEditor == .create ? "集合名称" : "新的集合名称",
+                        "新名称",
                         text: $collectionNameDraft
                     )
                     .textFieldStyle(.roundedBorder)
@@ -221,7 +188,7 @@ struct QuickClipboardRailView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                         if conflictingCollectionID != nil {
-                            Button("打开现有集合", action: openConflictingCollection)
+                            Button("打开已有内容", action: openConflictingCollection)
                                 .buttonStyle(.link)
                                 .font(.caption2)
                         }
@@ -229,9 +196,9 @@ struct QuickClipboardRailView: View {
                 }
             } else if model.collections.isEmpty {
                 Button {
-                    beginCollectionEditor(.create)
+                    createDefaultCollection()
                 } label: {
-                    Label("创建第一个集合", systemImage: "plus")
+                    Label("新建", systemImage: "plus")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -247,7 +214,7 @@ struct QuickClipboardRailView: View {
                         }
                     } label: {
                         HStack(spacing: 5) {
-                            Text(model.selectedCollection?.name ?? "选择集合")
+                            Text(model.selectedCollection?.name ?? "常用")
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                             Text("\(model.selectedCollection?.entries.count ?? 0)")
@@ -264,28 +231,28 @@ struct QuickClipboardRailView: View {
                     .frame(maxWidth: .infinity)
 
                     Button {
-                        beginCollectionEditor(.create)
+                        createDefaultCollection()
                     } label: {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
-                    .help("新建集合（⇧⌘N）")
-                    .accessibilityLabel("新建集合")
+                    .help("新建（⇧⌘N）")
+                    .accessibilityLabel("新建")
 
                     Menu {
                         Button("重命名") {
                             guard let id = model.selectedCollection?.id else { return }
                             beginCollectionEditor(.rename(id))
                         }
-                        Button("删除集合", role: .destructive) {
+                        Button("删除", role: .destructive) {
                             deleteCollectionID = model.selectedCollection?.id
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                     .menuStyle(.borderlessButton)
-                    .help("集合操作")
-                    .accessibilityLabel("集合操作")
+                    .help("更多操作")
+                    .accessibilityLabel("更多操作")
 
                     Button {
                         beginNewEntry()
@@ -293,8 +260,8 @@ struct QuickClipboardRailView: View {
                         Image(systemName: "square.and.pencil")
                     }
                     .buttonStyle(.borderless)
-                    .help("添加条目（⌘N）")
-                    .accessibilityLabel("添加条目")
+                    .help("添加内容（⌘N）")
+                    .accessibilityLabel("添加内容")
                 }
             }
 
@@ -324,8 +291,8 @@ struct QuickClipboardRailView: View {
         if model.collections.isEmpty {
             emptyState(
                 icon: "tray.full",
-                title: "还没有集合",
-                detail: "创建一个集合，保存常用文本。"
+                title: "还没有常用内容",
+                detail: ""
             )
         } else if !trimmedQuery.isEmpty {
             searchContent
@@ -334,8 +301,8 @@ struct QuickClipboardRailView: View {
         } else {
             emptyState(
                 icon: "tray.full",
-                title: "选择一个集合",
-                detail: "从上方菜单选择要使用的集合。"
+                title: "选择内容",
+                detail: ""
             )
         }
     }
@@ -352,8 +319,8 @@ struct QuickClipboardRailView: View {
                     if collection.entries.isEmpty, entryEditor == nil {
                         emptyState(
                             icon: "text.badge.plus",
-                            title: "集合为空",
-                            detail: "添加第一条 Key-Value。"
+                            title: "还没有内容",
+                            detail: ""
                         )
                     } else {
                         entryRows(collection.entries, collectionID: collection.id)
@@ -375,7 +342,7 @@ struct QuickClipboardRailView: View {
             emptyState(
                 icon: "magnifyingglass",
                 title: "没有找到结果",
-                detail: "没有与“\(trimmedQuery)”匹配的集合或条目。",
+                detail: "没有与“\(trimmedQuery)”匹配的内容。",
                 actionTitle: "清除搜索",
                 action: { searchText = "" }
             )
@@ -394,7 +361,7 @@ struct QuickClipboardRailView: View {
                             }
                             .padding(.horizontal, 5)
                             if section.entries.isEmpty {
-                                Text("集合中暂无条目")
+                                Text("暂无内容")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 5)
@@ -457,7 +424,7 @@ struct QuickClipboardRailView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("复制“\(entry.key)”的值")
+            .accessibilityLabel("复制“\(entry.key)”的内容")
 
             Menu {
                 Button("编辑") { beginEditing(entry, collectionID: collectionID) }
@@ -478,7 +445,7 @@ struct QuickClipboardRailView: View {
                     : Color.primary.opacity(0.055))
         )
         .contextMenu {
-            Button("复制 Value") { copy(entry, collectionID: collectionID) }
+            Button("复制内容") { copy(entry, collectionID: collectionID) }
             Button("编辑") { beginEditing(entry, collectionID: collectionID) }
             Divider()
             Button("删除", role: .destructive) {
@@ -489,7 +456,7 @@ struct QuickClipboardRailView: View {
 
     private func entryEditorView(_ editor: QuickClipboardEntryEditor) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            TextField("Key", text: Binding(
+            TextField("标题", text: Binding(
                 get: { entryEditor?.key ?? "" },
                 set: { entryEditor?.key = $0 }
             ))
@@ -507,7 +474,7 @@ struct QuickClipboardRailView: View {
             .frame(minHeight: 72, maxHeight: 112)
             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
             .focused($focus, equals: .value)
-            .accessibilityLabel("Value")
+            .accessibilityLabel("内容")
             .accessibilityIdentifier("quick-clipboard.entry.value")
 
             if let entryError {
@@ -611,7 +578,7 @@ struct QuickClipboardRailView: View {
                 return true
             case 45: // N
                 if modifiers.contains(.shift) {
-                    beginCollectionEditor(.create)
+                    createDefaultCollection()
                 } else {
                     beginNewEntry()
                 }
@@ -687,20 +654,27 @@ struct QuickClipboardRailView: View {
         collectionError = nil
         conflictingCollectionID = nil
         switch mode {
-        case .create:
-            collectionNameDraft = ""
         case let .rename(id):
             collectionNameDraft = model.collections.first { $0.id == id }?.name ?? ""
         }
         DispatchQueue.main.async { focus = .collectionName }
     }
 
+    private func createDefaultCollection() {
+        activateKeyboardArea()
+        switch model.createDefaultCollection() {
+        case .success:
+            collectionError = nil
+            conflictingCollectionID = nil
+        case let .failure(error):
+            collectionError = error.localizedDescription
+        }
+    }
+
     private func saveCollectionEditor() {
         guard let collectionEditor else { return }
         let result: Result<Void, QuickClipboardValidationError>
         switch collectionEditor {
-        case .create:
-            result = model.createCollection(name: collectionNameDraft).map { _ in () }
         case let .rename(id):
             result = model.renameCollection(id: id, name: collectionNameDraft)
         }
@@ -737,7 +711,12 @@ struct QuickClipboardRailView: View {
 
     private func beginNewEntry() {
         guard let collectionID = model.selectedCollection?.id else {
-            beginCollectionEditor(.create)
+            switch model.createDefaultCollection() {
+            case .success:
+                beginNewEntry()
+            case let .failure(error):
+                collectionError = error.localizedDescription
+            }
             return
         }
         searchText = ""

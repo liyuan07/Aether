@@ -21,16 +21,12 @@ struct ClipboardPanelView: View {
     private let store = ClipboardStore.shared
     @StateObject private var panelModel = ClipboardPanelViewModel()
     @StateObject private var quickClipboardModel = QuickClipboardModel()
-    @AppStorage(
-        PreferenceKeys.quickClipboardRailExpanded,
-        store: AppEnvironment.clipboardDefaults
-    ) private var quickClipboardRailExpanded = true
     @State private var selectedItemID: UUID?
     @State private var selectedItemIDs = Set<UUID>()
     @State private var selectedGroupID: UUID?
     @State private var lastCompletedQuery = ""
     @State private var lockedTab = ClipboardPanelTabLock.tab()
-    @State private var narrowQuickClipboardPresented = false
+    @State private var quickClipboardPresented = false
 
     private var selectedTab: ClipboardTab {
         panelModel.state.selectedTab
@@ -101,6 +97,11 @@ struct ClipboardPanelView: View {
                 reconcileSelection()
             }
         }
+        .onChange(of: quickClipboardPresented) { _, isPresented in
+            if !isPresented {
+                ClipboardPanelKeyboardRouter.shared.area = .history
+            }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: .clipboardPanelActivateSelection
@@ -152,6 +153,28 @@ struct ClipboardPanelView: View {
                     !panelModel.hasContent(in: selectedTab)
                 )
                 .help("清空当前分类")
+
+                Button {
+                    quickClipboardPresented.toggle()
+                    ClipboardPanelKeyboardRouter.shared.area = .quickClipboard
+                } label: {
+                    Image(systemName: "tray.full.fill")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.indigo)
+                }
+                .buttonStyle(.plain)
+                .help("常用内容")
+                .accessibilityLabel("常用内容")
+                .popover(isPresented: $quickClipboardPresented, arrowEdge: .top) {
+                    QuickClipboardPopoverView(
+                        model: quickClipboardModel,
+                        onCollapse: {
+                            quickClipboardPresented = false
+                            ClipboardPanelKeyboardRouter.shared.area = .history
+                        }
+                    )
+                    .frame(width: 320, height: 480)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -232,69 +255,22 @@ struct ClipboardPanelView: View {
     private var content: some View {
         GeometryReader { geometry in
             let dividerWidth: CGFloat = 1
-            let isWide = geometry.size.width >= 1_100
-            let railWidth: CGFloat = isWide && quickClipboardRailExpanded
-                ? 300
-                : 36
-            let mainWidth = max(
-                0,
-                geometry.size.width - railWidth - dividerWidth * 2
-            )
+            let mainWidth = max(0, geometry.size.width - dividerWidth)
 
-            ZStack(alignment: .trailing) {
-                HStack(spacing: 0) {
-                    listContent
-                        .frame(width: mainWidth * 2 / 3)
-                        .simultaneousGesture(TapGesture().onEnded {
-                            ClipboardPanelKeyboardRouter.shared.area = .history
-                        })
-                    Divider()
-                        .frame(width: dividerWidth)
-                    detailContent
-                        .frame(width: mainWidth / 3)
-                        .simultaneousGesture(TapGesture().onEnded {
-                            ClipboardPanelKeyboardRouter.shared.area = .history
-                        })
-                    Divider()
-                        .frame(width: dividerWidth)
-                    if isWide && quickClipboardRailExpanded {
-                        QuickClipboardRailView(
-                            model: quickClipboardModel,
-                            onCollapse: {
-                                quickClipboardRailExpanded = false
-                                ClipboardPanelKeyboardRouter.shared.area = .history
-                            }
-                        )
-                        .frame(width: railWidth)
-                    } else {
-                        QuickClipboardCollapsedRail {
-                            if isWide {
-                                quickClipboardRailExpanded = true
-                            } else {
-                                narrowQuickClipboardPresented = true
-                            }
-                            ClipboardPanelKeyboardRouter.shared.area = .quickClipboard
-                        }
-                        .frame(width: railWidth)
-                    }
-                }
-
-                if !isWide && narrowQuickClipboardPresented {
-                    QuickClipboardRailView(
-                        model: quickClipboardModel,
-                        onCollapse: {
-                            narrowQuickClipboardPresented = false
-                            ClipboardPanelKeyboardRouter.shared.area = .history
-                        }
-                    )
-                    .frame(width: 300)
-                    .background(.regularMaterial)
-                    .shadow(color: .black.opacity(0.22), radius: 14, x: -4)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+            HStack(spacing: 0) {
+                listContent
+                    .frame(width: mainWidth * 2 / 3)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        ClipboardPanelKeyboardRouter.shared.area = .history
+                    })
+                Divider()
+                    .frame(width: dividerWidth)
+                detailContent
+                    .frame(width: mainWidth / 3)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        ClipboardPanelKeyboardRouter.shared.area = .history
+                    })
             }
-            .animation(.easeInOut(duration: 0.18), value: quickClipboardRailExpanded)
-            .animation(.easeInOut(duration: 0.18), value: narrowQuickClipboardPresented)
         }
     }
 
