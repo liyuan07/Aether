@@ -23,6 +23,7 @@ enum PreferenceKeys {
     static let searchDebounceEnabled = "searchDebounceEnabled"
     static let searchDebounceMilliseconds = "searchDebounceMilliseconds"
     static let lockedPanelTab = "lockedPanelTab"
+    static let quickClipboardRailExpanded = "quickClipboardRailExpanded"
 
     static func registerDefaults(in defaults: UserDefaults = AppEnvironment.clipboardDefaults) {
         defaults.register(defaults: [
@@ -34,7 +35,8 @@ enum PreferenceKeys {
             searchDebounceEnabled: true,
             searchDebounceMilliseconds:
                 ClipboardSearchDebounce.defaultMilliseconds,
-            lockedPanelTab: ""
+            lockedPanelTab: "",
+            quickClipboardRailExpanded: true
         ])
     }
 }

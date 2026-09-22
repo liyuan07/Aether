@@ -75,6 +75,7 @@ final class ClipboardPanel: NSPanel {
     }
 
     private func configureWindow() {
+        ClipboardPanelKeyboardRouter.shared.area = .history
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
@@ -91,11 +92,14 @@ final class ClipboardPanel: NSPanel {
 
     private func preferredSize() -> NSSize {
         guard let screen = screenAtPointer() else {
-            return NSSize(width: 1_080, height: 700)
+            return NSSize(width: 1_180, height: 700)
         }
         let size = screen.visibleFrame.size
         return NSSize(
-            width: min(max(size.width * 0.70, 820), size.width * 0.94),
+            width: min(
+                max(size.width * 0.76, 1_120),
+                min(size.width * 0.94, 1_380)
+            ),
             height: min(max(size.height * 0.78, 580), size.height * 0.94)
         )
     }
@@ -118,6 +122,12 @@ final class ClipboardPanel: NSPanel {
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
+        if isEditingText {
+            return false
+        }
+        if ClipboardPanelKeyboardRouter.shared.handle(event) {
+            return true
+        }
         switch event.keyCode {
         case 36, 76:
             NotificationCenter.default.post(
@@ -135,6 +145,10 @@ final class ClipboardPanel: NSPanel {
         default:
             return false
         }
+    }
+
+    private var isEditingText: Bool {
+        firstResponder is NSTextView || firstResponder is NSTextField
     }
 }
 

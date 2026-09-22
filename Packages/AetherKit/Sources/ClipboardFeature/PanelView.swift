@@ -20,11 +20,17 @@ struct ClipboardPanelView: View {
 
     private let store = ClipboardStore.shared
     @StateObject private var panelModel = ClipboardPanelViewModel()
+    @StateObject private var quickClipboardModel = QuickClipboardModel()
+    @AppStorage(
+        PreferenceKeys.quickClipboardRailExpanded,
+        store: AppEnvironment.clipboardDefaults
+    ) private var quickClipboardRailExpanded = true
     @State private var selectedItemID: UUID?
     @State private var selectedItemIDs = Set<UUID>()
     @State private var selectedGroupID: UUID?
     @State private var lastCompletedQuery = ""
     @State private var lockedTab = ClipboardPanelTabLock.tab()
+    @State private var narrowQuickClipboardPresented = false
 
     private var selectedTab: ClipboardTab {
         panelModel.state.selectedTab
@@ -218,21 +224,77 @@ struct ClipboardPanelView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
         }
+        .simultaneousGesture(TapGesture().onEnded {
+            ClipboardPanelKeyboardRouter.shared.area = .history
+        })
     }
 
     private var content: some View {
         GeometryReader { geometry in
             let dividerWidth: CGFloat = 1
-            let availableWidth = max(0, geometry.size.width - dividerWidth)
+            let isWide = geometry.size.width >= 1_100
+            let railWidth: CGFloat = isWide && quickClipboardRailExpanded
+                ? 300
+                : 36
+            let mainWidth = max(
+                0,
+                geometry.size.width - railWidth - dividerWidth * 2
+            )
 
-            HStack(spacing: 0) {
-                listContent
-                    .frame(width: availableWidth * 2 / 3)
-                Divider()
-                    .frame(width: dividerWidth)
-                detailContent
-                    .frame(width: availableWidth / 3)
+            ZStack(alignment: .trailing) {
+                HStack(spacing: 0) {
+                    listContent
+                        .frame(width: mainWidth * 2 / 3)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            ClipboardPanelKeyboardRouter.shared.area = .history
+                        })
+                    Divider()
+                        .frame(width: dividerWidth)
+                    detailContent
+                        .frame(width: mainWidth / 3)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            ClipboardPanelKeyboardRouter.shared.area = .history
+                        })
+                    Divider()
+                        .frame(width: dividerWidth)
+                    if isWide && quickClipboardRailExpanded {
+                        QuickClipboardRailView(
+                            model: quickClipboardModel,
+                            onCollapse: {
+                                quickClipboardRailExpanded = false
+                                ClipboardPanelKeyboardRouter.shared.area = .history
+                            }
+                        )
+                        .frame(width: railWidth)
+                    } else {
+                        QuickClipboardCollapsedRail {
+                            if isWide {
+                                quickClipboardRailExpanded = true
+                            } else {
+                                narrowQuickClipboardPresented = true
+                            }
+                            ClipboardPanelKeyboardRouter.shared.area = .quickClipboard
+                        }
+                        .frame(width: railWidth)
+                    }
+                }
+
+                if !isWide && narrowQuickClipboardPresented {
+                    QuickClipboardRailView(
+                        model: quickClipboardModel,
+                        onCollapse: {
+                            narrowQuickClipboardPresented = false
+                            ClipboardPanelKeyboardRouter.shared.area = .history
+                        }
+                    )
+                    .frame(width: 300)
+                    .background(.regularMaterial)
+                    .shadow(color: .black.opacity(0.22), radius: 14, x: -4)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut(duration: 0.18), value: quickClipboardRailExpanded)
+            .animation(.easeInOut(duration: 0.18), value: narrowQuickClipboardPresented)
         }
     }
 

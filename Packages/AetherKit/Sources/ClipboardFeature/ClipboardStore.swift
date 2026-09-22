@@ -431,6 +431,19 @@ final class ClipboardStore: ObservableObject {
     }
 
     @discardableResult
+    func copyPlainTextToClipboard(_ value: String) -> Bool {
+        captureCurrentClipboardChangeIfNeeded()
+
+        let item = NSPasteboardItem()
+        guard item.setString(value, forType: .string) else { return false }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let didWrite = pasteboard.writeObjects([item])
+        lastChangeCount = pasteboard.changeCount
+        return didWrite
+    }
+
+    @discardableResult
     func copyToClipboard(_ item: ClipboardItem) -> Bool {
         let prepared = pasteboardItems(for: [item])
         guard !prepared.isEmpty else { return false }
