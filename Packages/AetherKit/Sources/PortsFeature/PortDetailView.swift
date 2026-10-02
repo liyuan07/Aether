@@ -528,7 +528,7 @@ struct PortDetailView: View {
                     }
                 }
                 if power.vconnCurrent > 0 {
-                    Text("有源线缆")
+                    Text("已报告 VConn 供电")
                         .scaledFont(.footnote, weight: .medium)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
@@ -581,7 +581,7 @@ struct PortDetailView: View {
     private func chargerRow(_ charger: ChargerInfo) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(charger.name)
+                Text(charger.name == "PD charger" ? "PD 充电器" : charger.name)
                     .scaledFont(.body, weight: .medium)
                 Spacer()
                 if !charger.manufacturer.isEmpty {

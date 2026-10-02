@@ -58,6 +58,7 @@ struct PortsWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("协商速率表示链路能力；实际传输速度取决于设备与负载。")
                     Text("仅在查看时采集 · 历史仅保留在内存 · 无法读取的项目显示不可用")
+                    Text(model.collecting ? "实时采集中" : "采集已暂停").accessibilityIdentifier("ports.sampling-status")
                     if model.lastUpdated != nil && !model.phyAvailable { Text("此 Mac 当前未提供通道状态读数。") }
                     if model.sleeping { Text("系统休眠，采集已暂停。") }
                     if let note = capabilityNote(model.manager) { Text(note) }

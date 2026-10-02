@@ -2,6 +2,9 @@
 // bound snapshot buffering, and give each visibility session a single lifetime.
 import Foundation
 import WhatPortCore
+import os
+
+private let samplingLog = Logger(subsystem: "com.liyuan.aether", category: "PortSampling")
 
 public final class LivePortDataSource: @unchecked Sendable, PortDataSource {
     // Shared across successive sources so old teardown precedes new reads.
@@ -41,6 +44,7 @@ public final class LivePortDataSource: @unchecked Sendable, PortDataSource {
                 defer { completion.resume() }
                 guard !running, !ended else { return }
                 running = true
+                samplingLog.debug("Sampling started")
                 smc.open()
                 read()
                 notifier.start(onChange: { [weak self] in
@@ -69,6 +73,7 @@ public final class LivePortDataSource: @unchecked Sendable, PortDataSource {
             guard !ended else { return }
             ended = true
             running = false
+            samplingLog.debug("Sampling stopped")
             timer?.cancel()
             timer = nil
             notifier.stop()
