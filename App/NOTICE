@@ -9,3 +9,7 @@ Aether is distributed under GPL-3.0-or-later. See LICENSE for the GPL v3 text.
 Dependencies retain their own licenses: Defaults, MacroVisionKit, SkyLightWindow,
 and SwiftSyntax (build-time dependency). Their license texts are included in
 ThirdPartyNotices in the installed app.
+
+Port monitoring is derived from WhatPort, Copyright (c) 2025 Darryl Morley,
+MIT licensed. Source revision: e6727567d0a08ccd9eac7a41cce64e9e5a6cca20.
+See ThirdPartyNotices/WhatPort-LICENSE in the installed app.

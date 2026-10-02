@@ -8,6 +8,7 @@ import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
 import PromptFeature
+import PortsFeature
 
 @MainActor final class LoginService: ObservableObject {
     static let shared = LoginService()
@@ -35,20 +36,33 @@ import PromptFeature
 }
 
 @MainActor private final class SettingsSelection: ObservableObject {
-    @Published var page: SharedSupport.SettingsPage = .general
+    @Published var page: SharedSupport.SettingsPage = .general { didSet { changed?() } }
+    var changed: (() -> Void)?
 }
 
-@MainActor final class AetherSettingsController {
+@MainActor final class AetherSettingsController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let navigation = SettingsSelection()
     private let startup: StartupController
-    init(startup: StartupController) { self.startup = startup }
+    init(startup: StartupController) {
+        self.startup = startup
+        super.init()
+        navigation.changed = { [weak self] in self?.updatePortVisibility() }
+    }
+    private func updatePortVisibility() {
+        PortsModule.shared.setDetailsVisible(window?.isVisible == true && window?.isMiniaturized != true && window?.occlusionState.contains(.visible) == true && navigation.page == .ports)
+    }
+    func windowWillClose(_ notification: Notification) { PortsModule.shared.setDetailsVisible(false) }
+    func windowDidChangeOcclusionState(_ notification: Notification) { updatePortVisibility() }
+    func windowDidMiniaturize(_ notification: Notification) { PortsModule.shared.setDetailsVisible(false) }
+    func windowDidDeminiaturize(_ notification: Notification) { updatePortVisibility() }
     var isVisible: Bool { window?.isVisible == true }
     func show(_ page: SharedSupport.SettingsPage) {
         navigation.page = page
         if window == nil {
             let controller = NSHostingController(rootView: AetherSettingsView(navigation: navigation, startup: startup))
             let window = NSWindow(contentViewController: controller)
+            window.delegate = self
             window.title = "Aether 设置"
             window.setFrameAutosaveName("AetherSettingsWindow")
             window.setContentSize(NSSize(width: 960, height: 680))
@@ -59,7 +73,9 @@ import PromptFeature
             self.window = window
         }
         NSApp.activate(ignoringOtherApps: true)
+        window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
+        updatePortVisibility()
     }
 }
 
@@ -88,6 +104,7 @@ private struct AetherSettingsView: View {
                     case .shortcuts: ShortcutsModule.shared.settings()
                     case .timer: TimerModule.shared.settings()
                     case .prompt: PromptModule.shared.settings()
+                    case .ports: PortsModule.shared.details()
                     case .permissions: SettingsContent("权限") { PermissionSettingsView() }
                     }
                 }

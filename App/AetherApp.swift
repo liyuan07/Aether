@@ -5,6 +5,7 @@ import ClipboardFeature
 import ShortcutsFeature
 import TimerFeature
 import PromptFeature
+import PortsFeature
 
 @main struct AetherApp: App {
     @NSApplicationDelegateAdaptor(AetherDelegate.self) private var delegate
@@ -90,6 +91,7 @@ import PromptFeature
             ShortcutsModule.shared.stop()
             TimerModule.shared.stop()
             PromptModule.shared.stop()
+            PortsModule.shared.stop()
         }
     }
 }

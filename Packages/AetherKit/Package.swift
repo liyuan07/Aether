@@ -3,7 +3,7 @@ import PackageDescription
 let package = Package(
     name: "AetherKit",
     platforms: [.macOS("14.6")],
-    products: ["SharedSupport", "TimerFeature", "ClipboardFeature", "ShortcutsFeature", "PromptFeature", "MemoFeature"].map { .library(name: $0, targets: [$0]) },
+    products: ["SharedSupport", "TimerFeature", "ClipboardFeature", "ShortcutsFeature", "PromptFeature", "MemoFeature", "PortsFeature"].map { .library(name: $0, targets: [$0]) },
     dependencies: [
         .package(url: "https://github.com/sindresorhus/Defaults", exact: "9.0.3"),
         .package(url: "https://github.com/TheBoredTeam/MacroVisionKit", exact: "0.1.0"),
@@ -11,6 +11,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "SharedSupport"),
+        .target(name: "WhatPortCore"),
+        .target(name: "WhatPortIOKit", dependencies: ["WhatPortCore"], linkerSettings: [.linkedFramework("IOKit")]),
+        .target(name: "PortsFeature", dependencies: ["SharedSupport", "WhatPortCore", "WhatPortIOKit"]),
+        .testTarget(name: "WhatPortCoreTests", dependencies: ["WhatPortCore", "WhatPortIOKit"]),
+        .testTarget(name: "PortsFeatureTests", dependencies: ["PortsFeature"]),
         .target(name: "ShortcutCore"),
         .target(name: "ShortcutsFeature", dependencies: ["ShortcutCore", "SharedSupport"]),
         .target(name: "ClipboardFeature", dependencies: ["SharedSupport"]),

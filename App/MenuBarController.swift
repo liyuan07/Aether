@@ -6,6 +6,7 @@ import ShortcutsFeature
 import TimerFeature
 import PromptFeature
 import MemoFeature
+import PortsFeature
 
 enum ControlCenterTab: String, CaseIterable, Identifiable {
     case overview, clipboard, shortcuts, memo, prompt
@@ -25,6 +26,7 @@ enum ControlCenterTab: String, CaseIterable, Identifiable {
 @MainActor private final class ControlCenterNavigation: ObservableObject {
     @Published var tab: ControlCenterTab = .overview
     @Published var height: CGFloat = 600
+    @Published var showing = false
     @Published var tabOrder: [ControlCenterTab]
 
     init(defaults: UserDefaults = AppEnvironment.controlCenterDefaults) {
@@ -79,8 +81,14 @@ enum ControlCenterTab: String, CaseIterable, Identifiable {
         if popover.isShown { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+        navigation.showing = true
+        PortsModule.shared.setSummaryVisible(startup.ready && navigation.tab == .overview)
     }
-    func hide() { popover.performClose(nil) }
+    func hide() { popover.performClose(nil); navigation.showing = false; PortsModule.shared.setSummaryVisible(false) }
+    func popoverDidClose(_ notification: Notification) {
+        navigation.showing = false
+        PortsModule.shared.setSummaryVisible(false)
+    }
     @objc private func clicked() {
         if NSApp.currentEvent?.type == .rightMouseUp { contextMenu() }
         else if popover.isShown { hide() } else { show() }
@@ -133,6 +141,7 @@ private struct ControlCenterView: View {
                 case .prompt: PromptModule.shared.compactPanel()
                 case .overview:
                     ScrollView {
+                        PortsModule.shared.summary().padding([.horizontal, .top], 12)
                         TimerModule.shared.overview()
                             .background(.background, in: RoundedRectangle(cornerRadius: 12))
                             .padding(12)
@@ -152,6 +161,12 @@ private struct ControlCenterView: View {
         .tint(.indigo)
         .background(.regularMaterial)
         .onExitCommand { AppRouter.shared.send(.dismissPanels) }
+        .onChange(of: navigation.tab) { _, tab in
+            PortsModule.shared.setSummaryVisible(startup.ready && navigation.showing && tab == .overview)
+        }
+        .onChange(of: startup.ready) { _, ready in
+            PortsModule.shared.setSummaryVisible(ready && navigation.showing && navigation.tab == .overview)
+        }
     }
 }
 
