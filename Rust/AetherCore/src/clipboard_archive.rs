@@ -5,33 +5,44 @@ use crate::{
     storage::{self, Buffer},
     versioned,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{ffi::c_char, path::PathBuf};
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Item<'a> {
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<Text<'a>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     r#type: Option<Text<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<f64>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     preview: Option<Text<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     is_pinned: Option<bool>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     string_data: Option<Text<'a>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     image_file_name: Option<Text<'a>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     image_content_hash: Option<Text<'a>>,
     #[serde(rename = "fileURLs", borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     file_urls: Option<Vec<Text<'a>>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     rtf_data: Option<Text<'a>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     rtf_file_name: Option<Text<'a>>,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Group<'a> {
     #[serde(borrow)]
     id: Text<'a>,
@@ -39,7 +50,7 @@ struct Group<'a> {
     #[serde(borrow)]
     items: Vec<Item<'a>>,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Archive<'a> {
     #[serde(borrow)]
@@ -47,6 +58,7 @@ struct Archive<'a> {
     #[serde(borrow)]
     pinned_items: Vec<Item<'a>>,
     #[serde(borrow)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     groups: Option<Vec<Group<'a>>>,
 }
 fn valid_base64(value: &str) -> bool {
@@ -145,6 +157,9 @@ impl Store {
     }
     fn write(&mut self, bytes: &[u8]) -> Result<(), u32> {
         validate(bytes).map_err(|_| 3_u32)?;
+        self.write_validated(bytes)
+    }
+    fn write_validated(&mut self, bytes: &[u8]) -> Result<(), u32> {
         if self.blocked {
             return Err(2);
         }
@@ -488,4 +503,144 @@ pub unsafe extern "C" fn aether_clipboard_archive_decoded_has_groups(
     unsafe { decoded.as_ref() }
         .and_then(|d| d.value.as_ref())
         .is_some_and(|v| v.groups.is_some()) as u8
+}
+
+#[repr(C)]
+pub struct WriteItem {
+    item: ItemView,
+    url_start: usize,
+}
+#[repr(C)]
+pub struct WriteGroup {
+    id: Bytes,
+    timestamp: f64,
+    start: usize,
+    count: usize,
+}
+unsafe fn borrowed<'a>(bytes: Bytes) -> Result<Text<'a>, u32> {
+    unsafe { bytes.text() }
+        .map(|s| Text(std::borrow::Cow::Borrowed(s)))
+        .ok_or(3)
+}
+unsafe fn borrowed_optional<'a>(
+    bytes: Bytes,
+    present: u16,
+    bit: u16,
+) -> Result<Option<Text<'a>>, u32> {
+    if present & bit == 0 {
+        Ok(None)
+    } else {
+        unsafe { borrowed(bytes) }.map(Some)
+    }
+}
+unsafe fn span<'a, T>(ptr: *const T, count: usize) -> Result<&'a [T], u32> {
+    if count == 0 {
+        Ok(&[])
+    } else if ptr.is_null() {
+        Err(3)
+    } else {
+        Ok(unsafe { std::slice::from_raw_parts(ptr, count) })
+    }
+}
+unsafe fn write_item<'a>(row: &WriteItem, urls: &[Bytes]) -> Result<Item<'a>, u32> {
+    let i = &row.item;
+    if i.present & 7 != 7 || i.kind > 5 {
+        return Err(3);
+    }
+    let file_urls = if i.present & 64 != 0 {
+        let end = row.url_start.checked_add(i.file_count).ok_or(3_u32)?;
+        Some(
+            urls.get(row.url_start..end)
+                .ok_or(3_u32)?
+                .iter()
+                .map(|bytes| unsafe { borrowed(*bytes) })
+                .collect::<Result<_, _>>()?,
+        )
+    } else {
+        None
+    };
+    Ok(Item {
+        id: Some(unsafe { borrowed(i.id) }?),
+        r#type: Some(Text(std::borrow::Cow::Borrowed(
+            ["text", "url", "file", "image", "rtf", "unknown"][i.kind as usize],
+        ))),
+        timestamp: Some(i.timestamp),
+        preview: Some(unsafe { borrowed(i.preview) }?),
+        is_pinned: Some(i.pinned != 0),
+        string_data: unsafe { borrowed_optional(i.string_data, i.present, 8) }?,
+        image_file_name: unsafe { borrowed_optional(i.image_file_name, i.present, 16) }?,
+        image_content_hash: unsafe { borrowed_optional(i.image_content_hash, i.present, 32) }?,
+        file_urls,
+        rtf_data: unsafe { borrowed_optional(i.rtf_data, i.present, 128) }?,
+        rtf_file_name: unsafe { borrowed_optional(i.rtf_file_name, i.present, 256) }?,
+    })
+}
+/// # Safety
+/// Store is live and exclusively borrowed. Input arrays and byte views are readable until return.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_archive_write_records(
+    store: *mut Store,
+    rows: *const WriteItem,
+    row_count: usize,
+    history_count: usize,
+    pinned_count: usize,
+    urls: *const Bytes,
+    url_count: usize,
+    groups: *const WriteGroup,
+    group_count: usize,
+    has_groups: u8,
+) -> u32 {
+    let result = (|| -> Result<(), u32> {
+        let store = unsafe { store.as_mut() }.ok_or(3_u32)?;
+        let rows = unsafe { span(rows, row_count) }?;
+        let urls = unsafe { span(urls, url_count) }?;
+        let groups = unsafe { span(groups, group_count) }?;
+        let pinned_end = history_count.checked_add(pinned_count).ok_or(3_u32)?;
+        if pinned_end > rows.len()
+            || (has_groups == 0 && (!groups.is_empty() || pinned_end != rows.len()))
+        {
+            return Err(3);
+        }
+        let convert = |rows: &[WriteItem]| {
+            rows.iter()
+                .map(|row| unsafe { write_item(row, urls) })
+                .collect::<Result<Vec<_>, _>>()
+        };
+        let mut expected_start = pinned_end;
+        let groups = if has_groups != 0 {
+            Some(
+                groups
+                    .iter()
+                    .map(|group| {
+                        let end = group.start.checked_add(group.count).ok_or(3_u32)?;
+                        if group.start != expected_start {
+                            return Err(3);
+                        }
+                        expected_start = end;
+                        Ok(Group {
+                            id: unsafe { borrowed(group.id) }?,
+                            timestamp: group.timestamp,
+                            items: convert(rows.get(group.start..end).ok_or(3_u32)?)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, u32>>()?,
+            )
+        } else {
+            None
+        };
+        if expected_start != rows.len() {
+            return Err(3);
+        }
+        let archive = Archive {
+            history: convert(&rows[..history_count])?,
+            pinned_items: convert(&rows[history_count..pinned_end])?,
+            groups,
+        };
+        if !valid_archive(&archive) {
+            return Err(3);
+        }
+        let bytes = serde_json::to_vec(&archive).map_err(|_| 3_u32)?;
+        store.write_validated(&bytes)
+    })();
+    result.err().unwrap_or(0)
 }

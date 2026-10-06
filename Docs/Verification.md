@@ -173,3 +173,5 @@ sh LaunchAether.command
 - `RustSearchParityTests/testDocumentAggregationMatchesIndividualScoring` 对照逐片段最高分，覆盖 0–79 片段、数值、Unicode、NUL 和长文本。局部桥接基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustSearchParityTests/testDocumentAggregationBenchmark`，只使用合成内容，并核对结果总分一致。
 
 - `RustClipboardArchiveTests` 同时对照 Rust 实际加载与旧 Codable 接受/拒绝；3,000 条合成记录比较完整字段与保存后重载、文本 UTF-8、空/缺省和 Rust 句柄释放后的原生数据可用性。使用隔离目录；`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardArchiveTests/testArchiveLoadBenchmark` 测量 10,000 条合成记录五次读取，对照旧 Rust 校验加 Swift 解码路径，不读取真实剪贴板正文。
+
+- 归档保存迁移运行 `RustClipboardArchiveTests`，检查全字段原生 Codable 读取和 Rust 重载一致、nil/空群组、NaN/无穷日期拒绝且原文件不变、非法分区/跨度不创建文件。保存基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardArchiveTests/testArchiveSaveBenchmark`，保留外部文件校验、原子落盘和结果等价，局部收益不推导整体占用。

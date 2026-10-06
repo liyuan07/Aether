@@ -139,6 +139,11 @@ AetherClipboardArchiveItem aether_clipboard_archive_decoded_item(const void *dec
 AetherBytes aether_clipboard_archive_decoded_url(const void *decoded, uint8_t section, size_t group, size_t index, size_t url);
 AetherClipboardArchiveItem aether_clipboard_archive_decoded_group(const void *decoded, size_t index);
 uint8_t aether_clipboard_archive_decoded_has_groups(const void *decoded);
+typedef struct { AetherClipboardArchiveItem item; size_t url_start; } AetherClipboardArchiveWriteItem;
+typedef struct { AetherBytes id; double timestamp; size_t start, count; } AetherClipboardArchiveWriteGroup;
+uint32_t aether_clipboard_archive_write_records(void *store,
+    const AetherClipboardArchiveWriteItem *rows, size_t row_count, size_t history_count, size_t pinned_count,
+    const AetherBytes *urls, size_t url_count, const AetherClipboardArchiveWriteGroup *groups, size_t group_count, uint8_t has_groups);
 // USB-C/Thunderbolt domain lifecycle; platform notifications remain native.
 typedef struct { int64_t port_id; uint8_t phase; } AetherPortPhase;
 void *aether_port_lifecycle_create(void);

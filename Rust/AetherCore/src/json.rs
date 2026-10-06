@@ -4,6 +4,11 @@ use std::{borrow::Cow, collections::HashSet};
 // Unescaped JSON strings borrow the file buffer; only escaped strings require an owned decode.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Text<'a>(pub Cow<'a, str>);
+impl serde::Serialize for Text<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_ref())
+    }
+}
 impl std::ops::Deref for Text<'_> {
     type Target = str;
     fn deref(&self) -> &str {

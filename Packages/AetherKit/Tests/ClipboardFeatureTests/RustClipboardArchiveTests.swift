@@ -6,6 +6,58 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustClipboardArchiveTests: XCTestCase {
+    func testTypedWriterPreservesNilEmptyAndRejectsInvalidDatesWithoutReplacement() throws {
+        let context = Context(); defer { context.cleanup() }
+        for groups: [ClipboardGroup]? in [nil, [], [ClipboardGroup(items: [])]] {
+            let archive = ClipboardArchive(history: [], pinnedItems: [], groups: groups)
+            try context.store.save(archive)
+            let bytes = try Data(contentsOf: context.file)
+            let native = try JSONDecoder().decode(ClipboardArchive.self, from: bytes)
+            XCTAssertEqual(try encodedObject(native), try encodedObject(archive))
+            for interval in [Double.nan, Double.infinity, -Double.infinity] {
+                let item = ClipboardItem(stringData: "synthetic", type: .text, timestamp: Date(timeIntervalSinceReferenceDate: interval))
+                let invalid = ClipboardArchive(history: [item], pinnedItems: [], groups: groups)
+                XCTAssertThrowsError(try JSONEncoder().encode(invalid))
+                XCTAssertThrowsError(try context.store.save(invalid))
+                XCTAssertEqual(try Data(contentsOf: context.file), bytes)
+            }
+        }
+    }
+
+    func testTypedWriterRejectsMalformedSpanMetadata() throws {
+        let context = Context(); defer { context.cleanup() }
+        let owner = context.file.withUnsafeFileSystemRepresentation { aether_clipboard_archive_create($0) }
+        defer { aether_clipboard_archive_destroy(owner) }
+        for counts in [(1, 0, 0), (0, 1, 0), (0, 0, 1), (Int.max, 1, 0)] {
+            XCTAssertNotEqual(aether_clipboard_archive_write_records(owner, nil, 0, counts.0, counts.1,
+                nil, 0, nil, counts.2, 0), 0)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: context.file.path))
+        }
+        XCTAssertNotEqual(aether_clipboard_archive_write_records(owner, nil, 1, 0, 0, nil, 0, nil, 0, 0), 0)
+        XCTAssertNotEqual(aether_clipboard_archive_write_records(owner, nil, 0, 0, 0, nil, 1, nil, 0, 0), 0)
+    }
+
+    func testArchiveSaveBenchmark() throws {
+        guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { throw XCTSkip("Run explicitly with synthetic archive") }
+        let context = Context(); defer { context.cleanup() }
+        let archive = ClipboardArchive(history: (0..<10_000).map { ClipboardItem(stringData: "synthetic clipboard item \($0)", type: .text) }, pinnedItems: [], groups: [])
+        let old = context.file.withUnsafeFileSystemRepresentation { aether_clipboard_archive_create($0) }
+        defer { aether_clipboard_archive_destroy(old) }
+        let start = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<5 {
+            let bytes = try JSONEncoder().encode(archive)
+            XCTAssertEqual(bytes.withUnsafeBytes {
+                aether_clipboard_archive_write(old, .init(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count))
+            }, 0)
+        }
+        let oldNS = DispatchTime.now().uptimeNanoseconds - start
+        let native = try JSONDecoder().decode(ClipboardArchive.self, from: Data(contentsOf: context.file))
+        let newStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<5 { try context.store.save(archive) }
+        let newNS = DispatchTime.now().uptimeNanoseconds - newStart
+        XCTAssertEqual(try encodedObject(XCTUnwrap(context.store.load())), try encodedObject(native))
+        print("AETHER_ARCHIVE_SAVE_BENCHMARK items=10000 iterations=5 old_ns=\(oldNS) rust_records_ns=\(newNS)")
+    }
     func testDecodedRecordsPreserveEveryFieldAndOutliveRustOwner() throws {
         let context = Context(); defer { context.cleanup() }
         let uuid = "12345678-1234-5678-90AB-1234567890AB"
