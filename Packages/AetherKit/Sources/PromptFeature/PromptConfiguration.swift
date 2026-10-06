@@ -6,7 +6,7 @@ public struct PromptConfiguration: Codable, Equatable, Sendable {
     public var systemPrompt: String
     public var saveHistory: Bool
     public var historyLimit: Int
-    /// A one-way consistency check; the credential itself remains only in Keychain.
+    /// A one-way consistency check; the credential itself stays in local private file storage.
     public var credentialFingerprint: String?
 
     public init(
