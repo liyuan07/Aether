@@ -28,7 +28,7 @@ struct PromptSettingsView: View {
                 } header: {
                     Text("模型服务")
                 } footer: {
-                    Text("使用兼容 OpenAI Chat Completions 的接口。Base URL 可填写服务根地址、/v1 地址或完整 /chat/completions 地址。API Key 保存在 macOS 钥匙串；只有点击“保存设置”后才会更新。")
+                    Text("使用兼容 OpenAI Chat Completions 的接口。Base URL 可填写服务根地址、/v1 地址或完整 /chat/completions 地址。API Key 仅保存在本机私有文件，不需要系统密码；只有点击“保存设置”后才会更新。")
                 }
                 Section {
                     Toggle("保存历史提示词", isOn: $model.draftConfiguration.saveHistory)

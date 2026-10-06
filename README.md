@@ -21,7 +21,7 @@ Aether 是原生 macOS 菜单栏效率工具，提供计时与护眼、剪贴板
 
 ### Prompt 优化
 
-1. 在「设置 → Prompt 优化」填写 Base URL、模型名称和 API Key，然后保存配置。接口采用兼容 OpenAI 的 Chat Completions 格式；API Key 保存在 macOS 钥匙串，可在无需鉴权的本地服务中留空。
+1. 在「设置 → Prompt 优化」填写 Base URL、模型名称和 API Key，然后保存配置。接口采用兼容 OpenAI 的 Chat Completions 格式；API Key 保存在本机私有文件，不需要系统密码，可在无需鉴权的本地服务中留空。
 2. 点击菜单栏第四个「Prompt」分页，在「输入」页直接打字、粘贴，或使用已有输入法的语音输入。Aether 不采集语音，也不会自动读取剪贴板。
 3. 点击「优化」或按 ⌘↩，完成后在「结果」页编辑或复制。收起菜单栏后请求继续，重新打开可查看进度或结果。请求进行中可以取消；载入历史或新建会取消旧请求，避免结果覆盖当前内容。
 4. 成功的优化默认保存原文、结果、时间和模型名，保留最近 200 条，可调整为 1 至 1000 条。历史支持搜索、回看、复用原文、单条删除和清空。设置可关闭后续历史保存；关闭保存不会删除已有记录。
@@ -74,7 +74,7 @@ git diff --check
 
 ## 本地数据
 
-应用数据位于 `~/Library/Application Support/Aether/`，剪贴板、快捷操作、备忘录和提示词分别使用 `Clipboard/`、`Shortcuts/`、`Memo/`、`Prompt/` 子目录。常用内容保存在 `Clipboard/quick-maps.json`，采用带版本的原子本地文件，不受历史数量与过期清理影响，只能由用户主动删除；标题和内容均为本机明文，请自行评估敏感内容。备忘录和 Prompt 历史同样采用带版本的本地文件；Prompt API Key 单独保存在钥匙串。偏好由 Aether 自己的偏好域管理，登录启动统一在通用设置中控制。
+应用数据位于 `~/Library/Application Support/Aether/`，剪贴板、快捷操作、备忘录和提示词分别使用 `Clipboard/`、`Shortcuts/`、`Memo/`、`Prompt/` 子目录。常用内容保存在 `Clipboard/quick-maps.json`，采用带版本的原子本地文件，不受历史数量与过期清理影响，只能由用户主动删除；标题和内容均为本机明文，请自行评估敏感内容。备忘录和 Prompt 历史同样采用带版本的本地文件；Prompt API Key 单独保存在 `Prompt/api-key.txt`，为本机明文，目录/文件权限为 0700/0600，不进行云同步或钥匙串密码验证。旧钥匙串记录不自动读取或删除，升级后请重新填入并保存 API Key。偏好由 Aether 自己的偏好域管理，登录启动统一在通用设置中控制。
 
 背景图片独立复制到 `Clipboard/Backgrounds/`，不依赖原图片或旧 Clipboard 仓库，不受历史清理影响。已完成初次数据迁移的安装会补充导入旧 Clipboard 的背景图片和设置；已有 Aether 背景设置优先，失败保留原数据并支持重试。
 

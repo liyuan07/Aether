@@ -33,7 +33,7 @@ final class PromptModel: ObservableObject {
 
     init(
         storage: PromptStorage? = nil,
-        credentials: any PromptCredentialStore = KeychainPromptCredentialStore(),
+        credentials: any PromptCredentialStore = LocalPromptCredentialStore(directory: AppEnvironment.directory("Prompt")),
         client: any PromptOptimizing = PromptClient()
     ) {
         self.storage = storage ?? PromptStorage(directory: AppEnvironment.directory("Prompt"))

@@ -143,3 +143,5 @@ sh LaunchAether.command
 - SMC 归属迁移运行 `RustSMCContractParityTests`、`SMCContractAttributionTests` 及既有 PortManager 电源归属测试。独立原实现对照 4,000 组多通道、重复 UUID/端口、裸节点、winning contract、方向和开关组合；729 组整数边界各与七种可选输出读数验证一致性与方向阈值。必须保留唯一候选与 resolve/证据查询不同的重复匹配语义；生成数据不替代真实充电硬件验收。
 
 - 第十二批正式安装已恢复成功；实际端口页的 USB 设备识别、充电读数、历史图表更新和导航通过。本机界面响应不证明热插拔、其他硬件环境、Prompt 凭证交互或整机性能目标已达成，相关验收继续保留。
+
+- Prompt 凭证现使用本机私有文件，运行 `LocalPromptCredentialTests` 验证持久化重开、0700/0600、清空、损坏编码和符号链接保护，原有模型的凭证回滚/摘要一致性测试必须通过。实际设置页需能正常打开和切换，不出现系统密码窗口；验收不填写、显示或记录真实 Key，不向模型服务发测试请求。

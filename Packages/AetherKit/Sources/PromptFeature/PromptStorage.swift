@@ -1,10 +1,9 @@
 import Foundation
-import Security
 import RustCore
 import CAetherCore
 
 public enum PromptStorageError: LocalizedError {
-    case unreadable, unsupportedVersion, invalidConfiguration, writeFailed, keychain(OSStatus)
+    case unreadable, unsupportedVersion, invalidConfiguration, writeFailed, credentialReadFailed, credentialWriteFailed
 
     public var errorDescription: String? {
         switch self {
@@ -16,8 +15,10 @@ public enum PromptStorageError: LocalizedError {
             return "历史记录上限应为 1 至 1000 条。"
         case .writeFailed:
             return "无法保存提示词数据，请检查本机存储空间和文件权限。"
-        case .keychain:
-            return "无法访问钥匙串中的 API Key，请检查钥匙串权限后重试。"
+        case .credentialReadFailed:
+            return "无法读取本机 API Key，请检查文件权限后重试。"
+        case .credentialWriteFailed:
+            return "无法保存本机 API Key，请检查存储空间和文件权限。"
         }
     }
 }
@@ -68,57 +69,23 @@ public final class PromptStorage {
 
 public protocol PromptCredentialStore {
     func load() throws -> String
-    /// An empty key removes this feature's stored credential.
+    /// An empty key clears this feature's stored credential.
     func save(_ key: String) throws
 }
 
-public final class KeychainPromptCredentialStore: PromptCredentialStore {
-    private let service: String
-    private let account: String
-
-    public init(service: String = "com.liyuan.aether.prompt", account: String = "api-key") {
-        self.service = service
-        self.account = account
-    }
-
-    private var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account,
-         kSecAttrSynchronizable as String: false]
-    }
-
+/// Local private file storage; no Security/Keychain call can trigger a system password dialog.
+public final class LocalPromptCredentialStore: PromptCredentialStore {
+    private let file: URL
+    public init(directory: URL) { file = directory.appendingPathComponent("api-key.txt") }
     public func load() throws -> String {
-        var query = query
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return "" }
-        guard status == errSecSuccess, let data = result as? Data,
-              let key = String(data: data, encoding: .utf8) else {
-            throw PromptStorageError.keychain(status)
-        }
-        return key
+        do {
+            guard let data = try RustDisk.read(file) else { return "" }
+            guard let value = String(data: data, encoding: .utf8) else { throw PromptStorageError.credentialReadFailed }
+            return value
+        } catch { throw PromptStorageError.credentialReadFailed }
     }
-
     public func save(_ key: String) throws {
-        if key.isEmpty {
-            let status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw PromptStorageError.keychain(status)
-            }
-            return
-        }
-        let attributes: [String: Any] = [kSecValueData as String: Data(key.utf8)]
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var item = query.merging(attributes) { _, new in new }
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            let addStatus = SecItemAdd(item as CFDictionary, nil)
-            guard addStatus == errSecSuccess else { throw PromptStorageError.keychain(addStatus) }
-        } else if status != errSecSuccess {
-            throw PromptStorageError.keychain(status)
-        }
+        do { try RustDisk.write(Data(key.utf8), to: file, privateFile: true, synchronize: true) }
+        catch { throw PromptStorageError.credentialWriteFailed }
     }
 }

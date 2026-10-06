@@ -15,7 +15,7 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 
 `TimerFeature` 管理计时、护眼、刘海和屏幕协调；`ClipboardFeature` 管理历史、搜索、详情、粘贴及独立的常用内容；`ShortcutsFeature` 管理事件监听、应用唤醒、按键映射和快捷面板；`ShortcutCore` 提供快捷键配置与规则模型。
 
-`PromptFeature` 管理提示词编辑状态、优化规则、兼容模型接口、钥匙串凭证及本地历史。应用层的 `MenuBarController` 在原有 300 pt 面板提供一个可排序的 Prompt 分页，输入、结果、历史在分页内切换；设置页仍嵌入原有设置窗口。`.prompt` 路由打开菜单栏并定位该分页，`.settings(.prompt)` 定位配置页，不创建独立编辑窗口。新模块不依赖剪贴板或其他功能实现。
+`PromptFeature` 管理提示词编辑状态、优化规则、兼容模型接口、本机私有凭证文件及本地历史。应用层的 `MenuBarController` 在原有 300 pt 面板提供一个可排序的 Prompt 分页，输入、结果、历史在分页内切换；设置页仍嵌入原有设置窗口。`.prompt` 路由打开菜单栏并定位该分页，`.settings(.prompt)` 定位配置页，不创建独立编辑窗口。新模块不依赖剪贴板或其他功能实现。
 
 `MemoFeature` 管理本机待办。每项记录标题和可选截止时间；完成操作即删除该项，不保留已完成内容。`MemoStorage` 用带版本的原子本地文件保存数据，加载失败或遇到未知版本时保留原文件并停止写入。旧版数据中的废弃字段会被忽略，以保留既有待办内容。控制中心顶部的五个页面标签支持拖动排序，顺序以 `AppEnvironment` 管理的偏好域保存；缺失、重复或未知值会整理为完整的默认页面集合。
 
@@ -42,7 +42,7 @@ Rust 版本固定为 1.90.0，依赖由 Cargo.lock 锁定；JSON 编解码使用
 | 快捷操作配置 | `Aether/Shortcuts/` |
 | 备忘录 | `Aether/Memo/` |
 | Prompt 配置与历史 | `Aether/Prompt/` |
-| Prompt API Key | macOS 钥匙串，服务 `com.liyuan.aether.prompt` |
+| Prompt API Key | `Prompt/api-key.txt`，目录 0700、文件 0600；不使用钥匙串 |
 | 剪贴板偏好 | `com.liyuan.aether.clipboard` |
 | 快捷操作偏好 | `com.liyuan.aether.shortcuts` |
 | 控制中心页面顺序 | 主应用域 `com.liyuan.aether` |
@@ -70,7 +70,7 @@ Swift Package 测试进程默认使用临时根目录和随机偏好域。测试
 
 ### Prompt 请求与持久化
 
-Rust 核心执行 Prompt 请求体/响应协议、接口路径策略、请求代际和历史索引计划；原生 URLSession/URLComponents、Task、locale 匹配和钥匙串保留平台语义。Prompt 配置和历史文件由 Rust 校验并持有独立写入保护状态，各有版本封装，原子写入并限制本地访问权限。加载失败或遇到未知版本时保留原文件并阻止覆盖，以便恢复后重试。API Key 使用独立可注入的钥匙串存储，不进入 JSON、请求错误说明或日志。配置只保存 Key 的摘要用于一致性校验；配置写入失败会回滚 Key，即使回滚失败并重启，下次请求也会先检查摘要，避免旧服务地址误用新 Key。测试使用临时目录、模拟凭证存储和隔离 URLSession。
+Rust 核心执行 Prompt 请求体/响应协议、接口路径策略、请求代际和历史索引计划；原生 URLSession/URLComponents、Task、locale 匹配保留平台语义。Prompt 配置和历史文件由 Rust 校验并持有独立写入保护状态，各有版本封装，原子写入并限制本地访问权限。加载失败或遇到未知版本时保留原文件并阻止覆盖，以便恢复后重试。API Key 使用独立可注入的本机私有文件存储，不进入配置/历史 JSON、请求错误说明或日志；通用 Rust 文件层执行私有权限、符号链接拒绝和同步原子写入。Prompt 不调用 Security/钥匙串，不触发系统密码验证。旧钥匙串记录保留，不自动读取或删除；升级后需重新填写并保存一次 Key。配置只保存 Key 的摘要用于一致性校验；配置写入失败会回滚 Key，即使回滚失败并重启，下次请求也会先检查摘要，避免旧服务地址误用新 Key。测试使用临时目录、模拟凭证存储和隔离 URLSession。
 
 客户端使用非流式 Chat Completions 请求，只发送系统优化规则和本次用户输入；不附带历史，也不自动读取剪贴板。远程地址要求 HTTPS，允许本机回环 HTTP；拒绝地址中混入凭证、查询参数或片段。网络重定向不会继续携带凭证，请求设置超时，错误反馈不显示服务端原始响应正文。
 
