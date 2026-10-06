@@ -26,7 +26,6 @@ final class ApplicationWindowMover {
     private let permissionGranted: () -> Bool
     private let timeLimit: (WindowCaptureScope) -> TimeInterval
     private let notify: (String, ShortcutDisplayContext) -> Void
-    private let feedback = WindowMoveFeedback()
     var onUndoAvailabilityChanged: ((Bool) -> Void)?
 
     init(worker: WindowMoveWorking = WindowMoveWorker(),
@@ -38,8 +37,10 @@ final class ApplicationWindowMover {
         self.screens = screens
         self.permissionGranted = permissionGranted
         self.timeLimit = timeLimit
-        let feedback = feedback
-        self.notify = notify ?? { feedback.show($0, display: $1) }
+        // Window placement failures are internal recovery state, not an interruptive
+        // notification. Keep the hook injectable for tests and diagnostics, but do not
+        // create an on-screen panel during normal application use.
+        self.notify = notify ?? { _, _ in }
     }
 
     func showFeedback(_ message: String, display: ShortcutDisplayContext) {
@@ -133,37 +134,5 @@ final class ApplicationWindowMover {
         request?.lease.cancel()
         request?.timeout?.cancel()
         request?.task?.cancel()
-    }
-}
-
-@MainActor
-private final class WindowMoveFeedback {
-    private var panel: NSPanel?
-    private var dismissal: Task<Void, Never>?
-
-    func show(_ text: String, display: ShortcutDisplayContext) {
-        dismissal?.cancel()
-        panel?.orderOut(nil)
-        guard let screen = NSScreen.screens.first(where: {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID
-        }) ?? NSScreen.main else { return }
-        let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.isReleasedWhenClosed = false
-        panel.ignoresMouseEvents = true
-        let label = NSTextField(wrappingLabelWithString: text)
-        label.font = .systemFont(ofSize: 13)
-        label.frame = NSRect(x: 16, y: 12, width: 388, height: 42)
-        panel.contentView?.addSubview(label)
-        panel.setFrame(NSRect(x: screen.visibleFrame.midX - 210, y: screen.visibleFrame.minY + 40, width: 420, height: 66), display: true)
-        panel.orderFrontRegardless()
-        self.panel = panel
-        dismissal = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled else { return }
-            self?.panel?.orderOut(nil)
-            self?.panel = nil
-        }
     }
 }

@@ -30,7 +30,7 @@ struct EyeCareBreakView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "eye.fill")
                     .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(Color.green)
@@ -39,8 +39,22 @@ struct EyeCareBreakView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("该休息眼睛了")
-                        .font(.system(size: 22, weight: .bold))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("该休息眼睛了")
+                            .font(.system(size: 22, weight: .bold))
+
+                        Spacer(minLength: 4)
+
+                        Button(role: .destructive, action: stopEyeCare) {
+                            Label("结束护眼", systemImage: "stop.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .fixedSize()
+                        .accessibilityHint("停止护眼循环")
+                    }
+
                     Text("看向约 6 米外，让眼睛放松")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.82))
@@ -50,28 +64,19 @@ struct EyeCareBreakView: View {
             breakStatus
                 .frame(maxWidth: .infinity)
 
-            VStack(spacing: 10) {
-                Button(action: completeRest) {
-                    Label(primaryButtonTitle, systemImage: primaryButtonIcon)
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
-                .disabled(!eyeCareManager.canCompleteRest)
-                .accessibilityHint(
-                    eyeCareManager.canCompleteRest
-                        ? "开始下一轮护眼工作时间"
-                        : "休息倒计时结束后可用"
-                )
-
-                Button(role: .destructive, action: stopEyeCare) {
-                    Label("结束护眼", systemImage: "stop.fill")
-                        .font(.system(size: 14, weight: .medium))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
+            Button(action: completeRest) {
+                Label(primaryButtonTitle, systemImage: primaryButtonIcon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .disabled(!eyeCareManager.canCompleteRest)
+            .accessibilityHint(
+                eyeCareManager.canCompleteRest
+                    ? "开始下一轮护眼工作时间"
+                    : "休息倒计时结束后可用"
+            )
         }
         .padding(20)
         .frame(width: 360)

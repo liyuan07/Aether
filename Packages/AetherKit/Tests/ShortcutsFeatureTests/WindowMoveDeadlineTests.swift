@@ -69,6 +69,20 @@ private final class SuspendedWindowWorker: WindowMoveWorking, @unchecked Sendabl
     #expect(reports.count == 1)
 }
 
+@Test @MainActor func noAppearingWindowTimeoutDoesNotShowFeedback() async throws {
+    let worker = SuspendedWindowWorker()
+    var messages: [String] = []
+    let mover = ApplicationWindowMover(worker: worker, screens: { [] }, permissionGranted: { true },
+                                      timeLimit: { _ in 0.025 }, notify: { text, _ in messages.append(text) })
+    let action = ApplicationActionToken(sourcePID: 1, targetPID: 2)
+    mover.move(pid: 2, display: ShortcutDisplayContext(displayID: 1), scope: .appearing(excluding: []),
+               restoreMinimized: true, action: action) { _ in }
+    await worker.waitUntilStarted()
+    defer { worker.complete() }
+    try await Task.sleep(nanoseconds: 80_000_000)
+    #expect(messages.isEmpty)
+}
+
 @Test @MainActor func cancelledIntentCannotActivateFromDeadlineOrLateAXReply() async throws {
     let worker = SuspendedWindowWorker()
     var callbacks = 0

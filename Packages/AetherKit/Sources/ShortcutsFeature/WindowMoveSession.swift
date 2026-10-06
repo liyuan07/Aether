@@ -94,7 +94,10 @@ struct WindowMoveReport: Sendable {
         if displayDisconnected { return "目标显示器已断开，已停止移动窗口。" }
         if timedOut {
             if restoringLayout { return "布局恢复超时，已停止后续操作；可重试未完成的窗口。" }
-            if awaitingWindow { return "未发现可处理的新窗口，已结束本次等待。" }
+            // An application may legitimately expose no standard window after a
+            // background launch or new-window request. Keep the state for the
+            // activation flow, but do not present a non-actionable alert.
+            if awaitingWindow { return nil }
             return "窗口准备超时，已停止后续移动；应用按当前位置唤起。"
         }
         switch readFailure {

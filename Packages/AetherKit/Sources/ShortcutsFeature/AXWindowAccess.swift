@@ -28,10 +28,12 @@ final class AXWindowAccess: WindowAccess {
         guard error == .success, let elements = value as? [AXUIElement] else {
             return .failure(error == .apiDisabled ? .permission : error == .cannotComplete ? .unresponsive : .unavailable)
         }
-        let focused = AXHelpers.value(app, attribute: kAXFocusedWindowAttribute as CFString)
-        let main = AXHelpers.value(app, attribute: kAXMainWindowAttribute as CFString)
         let removed = Set(entries.filter { $0.value.pid == pid && !elements.contains($0.value.element) }.keys)
         remove(removed)
+        var focused: CFTypeRef?
+        var main: CFTypeRef?
+        var loadedFocus = false
+        var loadedMain = false
         var windows: [MovableWindow] = []
         for element in elements {
             guard lease.isActive() else { return .failure(.unresponsive) }
@@ -49,11 +51,27 @@ final class AXWindowAccess: WindowAccess {
                 windows.append(MovableWindow(id: id, pid: pid, frame: .zero, isStandard: false))
                 continue
             }
+            let fullScreen = AXHelpers.bool(element, attribute: "AXFullScreen" as CFString)
+            if fullScreen {
+                // Full-screen windows are deliberately never moved or focused by the
+                // placement flow. Avoid the slower geometry/state queries for them.
+                windows.append(MovableWindow(id: id, pid: pid, frame: .zero,
+                                             isStandard: true, isFullScreen: true))
+                continue
+            }
+            if !loadedFocus {
+                focused = AXHelpers.value(app, attribute: kAXFocusedWindowAttribute as CFString)
+                loadedFocus = true
+            }
+            if !loadedMain {
+                main = AXHelpers.value(app, attribute: kAXMainWindowAttribute as CFString)
+                loadedMain = true
+            }
             let frame = Self.frame(element) ?? .zero
             windows.append(MovableWindow(
                 id: id, pid: pid, frame: frame,
                 isStandard: true,
-                isFullScreen: AXHelpers.bool(element, attribute: "AXFullScreen" as CFString),
+                isFullScreen: false,
                 isMinimized: AXHelpers.bool(element, attribute: kAXMinimizedAttribute as CFString),
                 isResizable: AXHelpers.isAttributeSettable(element, attribute: kAXSizeAttribute as CFString),
                 isFocused: focused.map { CFEqual($0, element) } ?? false,

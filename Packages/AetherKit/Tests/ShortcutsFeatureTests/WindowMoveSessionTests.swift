@@ -269,14 +269,14 @@ private func finish(_ session: WindowMoveSession, lease: WindowMoveLease = Windo
     #expect(access.events.last == "focus:2")
 }
 
-@Test func timeoutMessagesDescribeTheActualOperation() {
+@Test func timeoutMessagesDescribeOnlyActionableOperations() {
     var report = WindowMoveReport()
     report.timedOut = true
     report.restoringLayout = true
     #expect(report.message?.contains("布局恢复超时") == true)
     report.restoringLayout = false
     report.awaitingWindow = true
-    #expect(report.message == "未发现可处理的新窗口，已结束本次等待。")
+    #expect(report.message == nil)
 }
 
 @Test func closedWindowHistoryCannotBeReusedByAnotherWindow() {

@@ -86,6 +86,12 @@ final class ActionExecutor {
         let action = ApplicationIntent.shared.begin(sourcePID: workspace.frontmostApplication?.processIdentifier,
                                                     targetPID: running?.processIdentifier)
         if let running {
+            // Activation is the visible part of an activate-existing shortcut. Start it
+            // immediately and keep window placement as a guarded background refinement.
+            // This is especially important for a full-screen window in another Space:
+            // waiting for AX inspection first makes the shortcut feel stuck even though
+            // there is no movable window to prepare.
+            if mode == .activateExisting { activateImmediately(running) }
             if display == nil, mode == .activateExisting, let applicationURL {
                 openInBackground(applicationURL, mode: mode, display: nil,
                                  restoreMinimized: false, action: action)
@@ -122,6 +128,7 @@ final class ActionExecutor {
                 guard let self, action.isActive() else { return }
                 guard let app else { NSSound.beep(); return }
                 action.setTarget(app.processIdentifier)
+                if mode == .activateExisting { self.activateImmediately(app) }
                 self.prepare(app, display: display, scope: .appearing(excluding: []),
                              restoreMinimized: restoreMinimized, action: action) { [weak self] report in
                     self?.activate(app, mode: mode, display: display, restoreMinimized: restoreMinimized,
@@ -148,8 +155,7 @@ final class ActionExecutor {
     private func activate(_ app: NSRunningApplication, mode: ApplicationOpenMode, display: ShortcutDisplayContext?,
                           restoreMinimized: Bool, report: WindowMoveReport, action: ApplicationActionToken) {
         guard action.isActive(), !app.isTerminated else { return }
-        if app.isHidden { app.unhide() }
-        app.activate()
+        activateImmediately(app)
         guard mode == .newWindow else { return }
         commandTask = Task { [weak self] in
             guard let self else { return }
@@ -173,6 +179,11 @@ final class ActionExecutor {
                 self.windowMover.showFeedback("未能激活目标应用，新建窗口未执行。", display: display)
             }
         }
+    }
+
+    private func activateImmediately(_ app: NSRunningApplication) {
+        if app.isHidden { app.unhide() }
+        app.activate()
     }
 
     private func openFinder(path: String) {
