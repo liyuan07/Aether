@@ -1,3 +1,5 @@
+import CAetherCore
+
 public struct ResolvedShortcutTrigger: Sendable {
     public let action: ShortcutAction
     public let isExactModifierMatch: Bool
@@ -14,47 +16,17 @@ public enum ShortcutTriggerResolver {
         eventModifiers: ShortcutModifiers,
         activePhysicalModifiers: PhysicalModifierKeys
     ) -> ResolvedShortcutTrigger? {
-        guard activePhysicalModifiers.intersection(rule.source.physicalModifiers)
-                == rule.source.physicalModifiers
-        else { return nil }
-
-        let normalizedModifiers = normalizedModifierPair(
-            required: rule.source.modifiers,
-            event: eventModifiers,
-            requiredPhysicalModifiers: rule.source.physicalModifiers
-        )
-
-        if normalizedModifiers.required == normalizedModifiers.event {
-            return ResolvedShortcutTrigger(
-                action: rule.action,
-                isExactModifierMatch: true
-            )
+        let target: KeyCombination?
+        if case let .remap(value) = rule.action { target = value } else { target = nil }
+        let match = aether_shortcut_resolve(rule.source.modifiers.rawValue, eventModifiers.rawValue,
+            rule.source.physicalModifiers.rawValue, activePhysicalModifiers.rawValue, target == nil ? 0 : 1)
+        switch match {
+        case 1: return ResolvedShortcutTrigger(action: rule.action, isExactModifierMatch: true)
+        case 2:
+            guard let target else { return nil }
+            return ResolvedShortcutTrigger(action: .remap(to: KeyCombination(keyCode: target.keyCode,
+                modifiers: target.modifiers.union(.shift), physicalModifiers: target.physicalModifiers)), isExactModifierMatch: false)
+        default: return nil
         }
-
-        guard case let .remap(target) = rule.action,
-              !normalizedModifiers.required.contains(.shift),
-              normalizedModifiers.event == normalizedModifiers.required.union(.shift)
-        else { return nil }
-
-        let shiftedTarget = KeyCombination(
-            keyCode: target.keyCode,
-            modifiers: target.modifiers.union(.shift),
-            physicalModifiers: target.physicalModifiers
-        )
-        return ResolvedShortcutTrigger(
-            action: .remap(to: shiftedTarget),
-            isExactModifierMatch: false
-        )
-    }
-
-    private static func normalizedModifierPair(
-        required: ShortcutModifiers,
-        event: ShortcutModifiers,
-        requiredPhysicalModifiers: PhysicalModifierKeys
-    ) -> (required: ShortcutModifiers, event: ShortcutModifiers) {
-        guard requiredPhysicalModifiers.contains(.capsLock),
-              requiredPhysicalModifiers.intersection([.leftCommand, .rightCommand]).isEmpty
-        else { return (required, event) }
-        return (required.subtracting(.command), event.subtracting(.command))
     }
 }

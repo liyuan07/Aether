@@ -1,4 +1,5 @@
 import AppKit
+import CAetherCore
 
 /// Captured on the event-tap thread, before activation or a delayed chooser.
 struct ShortcutDisplayContext: Equatable, Sendable {
@@ -30,62 +31,31 @@ struct PlacementScreen: Equatable, Sendable {
     }
 }
 
+private extension CGRect {
+    var rustRect: AetherRect { AetherRect(x: minX, y: minY, width: width, height: height) }
+    init(_ rect: AetherRect) { self.init(x: rect.x, y: rect.y, width: rect.width, height: rect.height) }
+}
+
 enum WindowPlacement {
     static func quartzRect(_ rect: CGRect, primaryTop: CGFloat) -> CGRect {
-        CGRect(x: rect.minX, y: primaryTop - rect.maxY, width: rect.width, height: rect.height)
+        CGRect(aether_rect_quartz(rect.rustRect, primaryTop))
     }
-
     static func source(for window: CGRect, screens: [PlacementScreen]) -> PlacementScreen? {
-        screens.max { lhs, rhs in
-            func area(_ screen: PlacementScreen) -> CGFloat {
-                let intersection = window.intersection(screen.frame)
-                return intersection.isNull ? 0 : intersection.width * intersection.height
-            }
-            let a = area(lhs), b = area(rhs)
-            if a != b { return a < b }
-            func distance(_ screen: PlacementScreen) -> CGFloat {
-                pow(window.midX - screen.frame.midX, 2) + pow(window.midY - screen.frame.midY, 2)
-            }
-            return distance(lhs) > distance(rhs)
-        }
+        let frames = screens.map { $0.frame.rustRect }
+        let index = frames.withUnsafeBufferPointer { aether_rect_source(window.rustRect, $0.baseAddress, $0.count) }
+        return index < 0 ? nil : screens[index]
     }
-
     static func destination(for window: CGRect, source: CGRect, target: CGRect, resizable: Bool) -> CGRect {
-        let size = resizable
-            ? CGSize(width: min(window.width, target.width), height: min(window.height, target.height))
-            : window.size
-        func position(_ value: CGFloat, _ sourceStart: CGFloat, _ sourceLength: CGFloat,
-                      _ targetStart: CGFloat, _ targetLength: CGFloat, _ windowLength: CGFloat) -> CGFloat {
-            let relative = (value - sourceStart) / max(sourceLength, 1)
-            return min(max(targetStart + relative * targetLength, targetStart),
-                       targetStart + max(0, targetLength - windowLength))
-        }
-        return CGRect(x: position(window.minX, source.minX, source.width, target.minX, target.width, size.width),
-                      y: position(window.minY, source.minY, source.height, target.minY, target.height, size.height),
-                      width: size.width, height: size.height)
+        CGRect(aether_rect_destination(window.rustRect, source.rustRect, target.rustRect, resizable ? 1 : 0))
     }
-
     static func approximatelyEqual(_ a: CGRect, _ b: CGRect) -> Bool {
-        abs(a.minX - b.minX) <= 3 && abs(a.minY - b.minY) <= 3
-            && abs(a.width - b.width) <= 3 && abs(a.height - b.height) <= 3
+        aether_rect_approximately_equal(a.rustRect, b.rustRect) != 0
     }
-
-    /// Preserve existing target-screen windows and stagger exact collisions.
     static func avoidingOverlap(_ frame: CGRect, occupied: [CGRect], within bounds: CGRect) -> CGRect {
-        func collides(_ candidate: CGRect) -> Bool {
-            occupied.contains { abs($0.minX - candidate.minX) < 20 && abs($0.minY - candidate.minY) < 20 }
+        let frames = occupied.map(\.rustRect)
+        return frames.withUnsafeBufferPointer {
+            CGRect(aether_rect_avoid_overlap(frame.rustRect, $0.baseAddress, $0.count, bounds.rustRect))
         }
-        if !collides(frame) { return frame }
-        for distance in 1...12 {
-            for direction in [CGPoint(x: 1, y: 1), CGPoint(x: -1, y: -1), CGPoint(x: 1, y: -1), CGPoint(x: -1, y: 1)] {
-                let offset = CGFloat(distance * 28)
-                let candidate = CGRect(x: frame.minX + direction.x * offset,
-                                       y: frame.minY + direction.y * offset,
-                                       width: frame.width, height: frame.height)
-                if bounds.contains(candidate), !collides(candidate) { return candidate }
-            }
-        }
-        return frame // No space: do not shrink or move existing windows to manufacture room.
     }
 }
 

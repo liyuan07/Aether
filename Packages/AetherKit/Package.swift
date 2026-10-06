@@ -22,7 +22,7 @@ let package = Package(
         .testTarget(name: "WhatPortCoreTests", dependencies: ["WhatPortCore", "WhatPortIOKit"]),
         .testTarget(name: "PortsFeatureTests", dependencies: ["PortsFeature"]),
         .target(name: "ShortcutCore", dependencies: ["RustCore", "CAetherCore"]),
-        .target(name: "ShortcutsFeature", dependencies: ["ShortcutCore", "SharedSupport"]),
+        .target(name: "ShortcutsFeature", dependencies: ["ShortcutCore", "SharedSupport", "CAetherCore"]),
         .target(name: "ClipboardFeature", dependencies: ["SharedSupport", "RustCore"]),
         .target(name: "PromptFeature", dependencies: ["SharedSupport"]),
         .target(name: "MemoFeature", dependencies: ["SharedSupport"]),
