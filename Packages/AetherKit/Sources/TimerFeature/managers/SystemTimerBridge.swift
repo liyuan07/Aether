@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Atoll (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
@@ -136,6 +137,7 @@ final class SystemTimerBridge {
     }
 
     private func startIfNeeded() {
+        guard !AppEnvironment.isResourceProfiling else { return }
         queue.async { [weak self] in
             guard let self else { return }
             guard !self.isMonitoring else { return }

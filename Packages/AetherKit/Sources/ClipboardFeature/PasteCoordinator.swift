@@ -74,6 +74,7 @@ final class PasteCoordinator {
     }
 
     func pasteIntoCapturedApplication() {
+        guard !AppEnvironment.isResourceProfiling else { return }
         AppRouter.shared.send(.dismissPanels)
         cancelPendingPaste()
         let currentGeneration = generation
@@ -107,6 +108,7 @@ final class PasteCoordinator {
     }
 
     func pasteGroupIntoCapturedApplication(_ group: ClipboardGroup) {
+        guard !AppEnvironment.isResourceProfiling else { return }
         AppRouter.shared.send(.dismissPanels)
         let usesSinglePaste = ClipboardGroupPastePlan.usesSinglePaste(
             for: group.items.map(\.type)

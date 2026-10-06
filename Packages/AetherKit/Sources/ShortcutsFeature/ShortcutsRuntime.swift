@@ -19,6 +19,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        if AppEnvironment.isResourceProfiling { model.rescanConflicts(); return }
 
         let executor = ActionExecutor(preferences: { [weak model] in
             model?.appPreferences.applicationShortcuts ?? ApplicationShortcutPreferences()
@@ -199,6 +200,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
     }
 
     private func refreshPermission(promptIfNeeded: Bool) {
+        guard !AppEnvironment.isResourceProfiling else { return }
         let wasGranted = model.permissionGranted
         let isGranted = AccessibilityPermission.isGranted
         let wasInputMonitoringGranted = model.inputMonitoringGranted

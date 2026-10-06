@@ -255,7 +255,7 @@ final class PromptModel: ObservableObject {
 
     func pasteInput() {
         guard !isOptimizing else { return }
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+        guard let text = AppEnvironment.clipboardPasteboard.string(forType: .string), !text.isEmpty else {
             optimizationError = "剪贴板中没有可粘贴的文本。"
             return
         }
@@ -266,8 +266,8 @@ final class PromptModel: ObservableObject {
 
     func copyOutput() {
         guard !outputText.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(outputText, forType: .string)
+        AppEnvironment.clipboardPasteboard.clearContents()
+        AppEnvironment.clipboardPasteboard.setString(outputText, forType: .string)
     }
 
     @discardableResult

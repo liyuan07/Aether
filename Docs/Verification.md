@@ -179,3 +179,5 @@ sh LaunchAether.command
 - `RustPortEnrichmentTests` 对照 6,000 组来源关联及设备分组（重复/缺失、ID 极值、空首个线缆、跨端口位置碰撞），并验证实际 PortManager 的显示器优先、统计首项、MagSafe UUID/健康及 USB 主设备。枚举全部 UInt16 类别代码和 Int 极值，检查缓存对数组替换/追加/元素修改/反转/清空与独立结构体复制正确。合成缓存读取基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustPortEnrichmentTests/testCachedSelectionBenchmark`；不得推导整应用收益。
 
 - `TimerPreferenceDomainTests` 核对 44 个计时器静态键均使用 AppEnvironment.appDefaults，并以随机探针键验证类型包装与原生 UserDefaults 双向一致，剪贴板、快捷操作和控制中心域不受影响。测试只访问进程独立偏好域；普通安装需核对原页面和既有配置可见性。
+
+- `ResourceProfileTests` 检查无请求、合法清单、域/目录、运行标识、非法位置/版本/ID/计数及符号链接拒绝；不得让非法显式请求退回真实用户数据。`python3 -m unittest discover -s Scripts/tests` 检查新建合成负载不覆盖、内容数量/身份/哈希及非法计数无目录副作用。正式隔离实例必须核对 runtime.json 的 PID、唯一正式可执行文件、合成窗口和退出后普通运行恢复；不在配置中执行系统动作。

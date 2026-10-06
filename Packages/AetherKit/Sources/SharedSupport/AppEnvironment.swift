@@ -5,17 +5,42 @@ import Foundation
 public enum AppEnvironment {
     private static let testing = ProcessInfo.processInfo.processName.contains("xctest") || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     private static let testID = UUID().uuidString
-    public static var root: URL = testing
+    public static let resourceProfile: ResourceProfile? = {
+        if testing { return nil }
+        do { return try ResourceProfile.load(path: ProcessInfo.processInfo.environment["AETHER_RESOURCE_PROFILE"]) }
+        catch { fatalError("Invalid Aether resource profile; user storage was not selected") }
+    }()
+    public static var isResourceProfiling: Bool { resourceProfile != nil }
+    public static var root: URL = resourceProfile?.dataRoot ?? (testing
         ? FileManager.default.temporaryDirectory.appendingPathComponent("AetherTests-" + testID)
-        : FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Aether", isDirectory: true)
-    public static var clipboardDefaults = UserDefaults(suiteName: testing ? "AetherTests.clipboard." + testID : "com.liyuan.aether.clipboard")!
-    public static var shortcutsDefaults = UserDefaults(suiteName: testing ? "AetherTests.shortcuts." + testID : "com.liyuan.aether.shortcuts")!
-    public static var appDefaults = testing
-        ? UserDefaults(suiteName: "AetherTests.app." + testID)!
-        : .standard
-    public static var controlCenterDefaults = testing
-        ? UserDefaults(suiteName: "AetherTests.control-center." + testID)!
-        : .standard
+        : FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Aether", isDirectory: true))
+    private static func preferences(_ feature: String) -> UserDefaults {
+        if let profile = resourceProfile {
+            let domain = profile.domainPrefix + "." + feature
+            let defaults = UserDefaults(suiteName: domain)!
+            defaults.setPersistentDomain(profile.preferences(feature: feature), forName: domain)
+            return defaults
+        }
+        if testing { return UserDefaults(suiteName: "AetherTests." + feature + "." + testID)! }
+        switch feature {
+        case "clipboard": return UserDefaults(suiteName: "com.liyuan.aether.clipboard")!
+        case "shortcuts": return UserDefaults(suiteName: "com.liyuan.aether.shortcuts")!
+        default: return .standard
+        }
+    }
+    public static var clipboardDefaults = preferences("clipboard")
+    public static var shortcutsDefaults = preferences("shortcuts")
+    public static var appDefaults = preferences("app")
+    public static var controlCenterDefaults = preferences("control-center")
+    public static var clipboardPasteboard: NSPasteboard = {
+        if let profile = resourceProfile {
+            let board = NSPasteboard(name: .init(profile.domainPrefix + ".pasteboard"))
+            board.clearContents()
+            return board
+        }
+        if testing { return NSPasteboard(name: .init("AetherTests.pasteboard." + testID)) }
+        return .general
+    }()
     public static func directory(_ feature: String) -> URL { root.appendingPathComponent(feature, isDirectory: true) }
 }
 

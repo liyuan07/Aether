@@ -15,7 +15,8 @@ import PortsFeature
     @Published private(set) var enabled = AppEnvironment.appDefaults.bool(forKey: "launchAtLogin")
     @Published private(set) var error: String?
     var status: String {
-        switch SMAppService.mainApp.status {
+        if AppEnvironment.isResourceProfiling { return enabled ? "已启用" : "未启用" }
+        return switch SMAppService.mainApp.status {
         case .enabled: "已启用"
         case .requiresApproval: "需要在系统设置的登录项中允许"
         case .notRegistered: "未启用"
@@ -25,6 +26,11 @@ import PortsFeature
     }
     func synchronize() { set(AppEnvironment.appDefaults.bool(forKey: "launchAtLogin")) }
     func set(_ value: Bool) {
+        if AppEnvironment.isResourceProfiling {
+            enabled = value
+            AppEnvironment.appDefaults.set(value, forKey: "launchAtLogin")
+            return
+        }
         do {
             if value, SMAppService.mainApp.status != .enabled && SMAppService.mainApp.status != .requiresApproval { try SMAppService.mainApp.register() }
             else if !value, SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval { try SMAppService.mainApp.unregister() }

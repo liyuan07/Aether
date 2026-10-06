@@ -20,3 +20,9 @@ python3 Scripts/measure-installed-resources.py --scenario general-after-ports --
 ## 固定负载的隔离准备
 
 通用与计时偏好已统一经 AppEnvironment.appDefaults 注入；正常安装仍为原标准域，单元测试为独立域。44 个静态计时键和 AppStorage 已显式绑定，避免偏好注入后仍读写真实配置。完整性能配置还须隔离启动迁移、剪贴板监听与系统动作，将相同配置用于旧 Swift 与当前正式产物；目前没有运行该隔离模式，不能把这一步当作旧版基线已经建立。
+
+## 显式隔离配置
+
+`python3 Scripts/create-resource-profile.py --clipboard-items 10000` 创建新的 `.build/resource-profiles/UUID/profile.json` 和合成归档、字段数/内容哈希记录，不读取或复制真实数据。0 条为默认空负载，支持至 100000 条。每次运行独立偏好域重置为固定值；从正式可执行文件启动时显式设置 `AETHER_RESOURCE_PROFILE` 为清单绝对路径，`--resource-scene` 接受 `settings-closed`、`general-visible`、`ports-visible`、`clipboard-visible`。仍必须先退出已有实例，不能运行构建目录副本。
+
+配置跳过迁移、登录项动作及快捷键执行，禁止向外部应用粘贴和监控系统计时器；剪贴板保持原频率读取私有板，端口仍采样硬件。它衡量同配置下的固定场景差异，不能代替正常服务、权限或完整页面验收。`runtime.json` 记录就绪 PID 和清单 ID，应与实时唯一正式进程核对；状态文件本身不是存活证明。测量后退出配置实例并恢复普通正式启动。旧 Swift 基线需要相同适配才能运行比较，不可直接启动未适配产物。

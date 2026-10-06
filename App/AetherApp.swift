@@ -27,6 +27,7 @@ import PortsFeature
     private let startup = StartupController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = AppEnvironment.resourceProfile
         NSApp.setActivationPolicy(.accessory)
         let peers = NSRunningApplication.runningApplications(withBundleIdentifier: "com.liyuan.aether")
         if peers.contains(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
@@ -38,7 +39,7 @@ import PortsFeature
         status = MenuBarController(startup: startup)
         startup.onReady = { [weak self] in self?.startFeatures() }
         startup.prepare()
-        if DataMigration(destination: AppEnvironment.root).receipt()?.phase != "complete" {
+        if !AppEnvironment.isResourceProfiling, DataMigration(destination: AppEnvironment.root).receipt()?.phase != "complete" {
             settings?.show(.general)
         }
     }
@@ -54,6 +55,21 @@ import PortsFeature
         ClipboardModule.shared.start()
         TimerModule.shared.start()
         LoginService.shared.synchronize()
+        if let profile = AppEnvironment.resourceProfile {
+            do { try profile.recordLaunch(processIdentifier: ProcessInfo.processInfo.processIdentifier) }
+            catch { NSApp.terminate(nil); return }
+            if let index = CommandLine.arguments.firstIndex(of: "--resource-scene") {
+                guard index + 1 < CommandLine.arguments.count else { NSApp.terminate(nil); return }
+                switch CommandLine.arguments[index + 1] {
+                case "settings-closed": break
+                case "general-visible": settings?.show(.general)
+                case "ports-visible": settings?.show(.ports)
+                case "clipboard-visible": route(.clipboard)
+                default: NSApp.terminate(nil); return
+                }
+                return
+            }
+        }
         if CommandLine.arguments.contains("--show-settings") { settings?.show(.general) }
     }
     private func route(_ route: AppRoute) {

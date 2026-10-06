@@ -311,7 +311,7 @@ final class ClipboardStore: ObservableObject {
     @Published private(set) var isMonitoring = false
 
     private var timer: Timer?
-    private var captureCore = AetherClipboardCapture(last_change: Int64(NSPasteboard.general.changeCount), pending_change: 0, pending: 0, failures: 0, needed: 0)
+    private var captureCore = AetherClipboardCapture(last_change: Int64(AppEnvironment.clipboardPasteboard.changeCount), pending_change: 0, pending: 0, failures: 0, needed: 0)
     private var workCore = AetherClipboardWork(history_revision: 0, maintenance_generation: 0,
         last_maintenance: Date.distantPast.timeIntervalSinceReferenceDate)
     private let persistenceCoordinator = ClipboardPersistenceCoordinator()
@@ -385,7 +385,7 @@ final class ClipboardStore: ObservableObject {
 
         let item = NSPasteboardItem()
         guard item.setString(value, forType: .string) else { return false }
-        let pasteboard = NSPasteboard.general
+        let pasteboard = AppEnvironment.clipboardPasteboard
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects([item])
         captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
@@ -399,7 +399,7 @@ final class ClipboardStore: ObservableObject {
 
         captureCurrentClipboardChangeIfNeeded(protecting: [item.id])
 
-        let pasteboard = NSPasteboard.general
+        let pasteboard = AppEnvironment.clipboardPasteboard
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects(prepared)
         captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
@@ -441,7 +441,7 @@ final class ClipboardStore: ObservableObject {
         guard !prepared.isEmpty else { return false }
 
         captureCurrentClipboardChangeIfNeeded()
-        let pasteboard = NSPasteboard.general
+        let pasteboard = AppEnvironment.clipboardPasteboard
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects(prepared)
         captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
@@ -584,7 +584,7 @@ final class ClipboardStore: ObservableObject {
     private func captureCurrentClipboardChangeIfNeeded(
         protecting protectedIDs: Set<UUID> = []
     ) -> Bool {
-        let changeCount = NSPasteboard.general.changeCount
+        let changeCount = AppEnvironment.clipboardPasteboard.changeCount
         captureCore = aether_clipboard_capture_probe(captureCore, Int64(changeCount))
         guard captureCore.needed != 0 else { return false }
         guard let snapshot = currentClipboardSnapshot() else {
@@ -625,7 +625,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func currentClipboardSnapshot() -> ClipboardSnapshot? {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = AppEnvironment.clipboardPasteboard
         let timestamp = Date()
         let fileURLs = (
             pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]

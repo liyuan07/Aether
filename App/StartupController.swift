@@ -13,6 +13,11 @@ import Foundation
 
     func prepare() {
         guard !ready, !importing else { return }
+        if AppEnvironment.isResourceProfiling {
+            ready = true
+            onReady?()
+            return
+        }
         let running = Self.legacy.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
         if !running.isEmpty {
             message = "请先退出旧应用：\(running.compactMap(\.localizedName).joined(separator: "、"))。如果倒计时或护眼正在运行，请先完成或停止。退出后点击“继续迁移”。原数据和应用会保留。"
