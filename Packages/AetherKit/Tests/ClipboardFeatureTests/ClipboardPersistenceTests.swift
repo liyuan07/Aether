@@ -42,6 +42,29 @@ final class ClipboardPersistenceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: context.images.appendingPathComponent("unreferenced.png").path))
         XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: context.root.path)), ["Images", "Payloads", "history.json"])
     }
+    func testCorruptArchiveBlocksCleanupUntilExplicitRepairLoad() throws {
+        let context = try Context()
+        defer { context.cleanup() }
+        let archive = ClipboardArchive(history: [], pinnedItems: [], groups: [])
+        let valid = try JSONEncoder().encode(archive)
+        try valid.write(to: context.archive)
+        _ = try context.writer.load()
+        let corrupt = Data("{invalid archive}".utf8)
+        try corrupt.write(to: context.archive)
+        try context.create("unreferenced.png", in: context.images)
+        context.writer.enqueue(archive, cleanup: true)
+        context.writer.flush(archive)
+        XCTAssertEqual(try Data(contentsOf: context.archive), corrupt)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: context.images.appendingPathComponent("unreferenced.png").path))
+        try valid.write(to: context.archive)
+        context.writer.enqueue(archive, cleanup: true)
+        context.writer.flush(archive)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: context.images.appendingPathComponent("unreferenced.png").path))
+        _ = try context.writer.load()
+        context.writer.enqueue(archive, cleanup: true)
+        context.writer.flush(archive)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: context.images.appendingPathComponent("unreferenced.png").path))
+    }
     func testDeferredWriteActuallyPersistsWithoutFlush() async throws {
         let context = try Context()
         defer { context.cleanup() }

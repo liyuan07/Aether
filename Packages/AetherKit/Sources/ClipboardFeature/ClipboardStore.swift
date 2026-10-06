@@ -28,14 +28,14 @@ final class ClipboardPersistenceCoordinator: @unchecked Sendable {
         label: "com.liyuan07.clipboard.archive-writer",
         qos: .utility
     )
-    private let archiveURL: URL
+    private let archiveStore: RustClipboardArchive
     private let imagesDirectory: URL
     private let payloadsDirectory: URL
     private let fileManager: FileManager
 
     init(archiveURL: URL = ClipboardStorage.archiveURL, imagesDirectory: URL = ClipboardStorage.imagesDirectory,
         payloadsDirectory: URL = ClipboardStorage.payloadsDirectory, fileManager: FileManager = .default) {
-        self.archiveURL = archiveURL
+        self.archiveStore = RustClipboardArchive(fileURL: archiveURL)
         self.imagesDirectory = imagesDirectory
         self.payloadsDirectory = payloadsDirectory
         self.fileManager = fileManager
@@ -44,6 +44,8 @@ final class ClipboardPersistenceCoordinator: @unchecked Sendable {
     private var pendingArchive: ClipboardArchive?
     private var writerCore = AetherClipboardWriter()
     private var pendingWorkItem: DispatchWorkItem?
+
+    func load() throws -> ClipboardArchive? { try archiveStore.load() }
 
     func enqueue(_ archive: ClipboardArchive, cleanup: Bool) {
         queue.async { [weak self] in
@@ -85,8 +87,7 @@ final class ClipboardPersistenceCoordinator: @unchecked Sendable {
     }
 
     private func write(_ archive: ClipboardArchive, cleanup: Bool) {
-        guard let data = try? JSONEncoder().encode(archive),
-              (try? RustDisk.write(data, to: archiveURL, privateFile: false)) != nil else {
+        guard (try? archiveStore.save(archive)) != nil else {
             return
         }
         guard cleanup else { return }
@@ -804,13 +805,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func loadArchive() {
-        guard let data = try? RustDisk.read(ClipboardStorage.archiveURL, rejectSymbolicLinks: false),
-              let archive = try? JSONDecoder().decode(
-                  ClipboardArchive.self,
-                  from: data
-              ) else {
-            return
-        }
+        guard let archive = try? persistenceCoordinator.load() else { return }
         history = archive.history
         pinnedItems = archive.pinnedItems
         groups = archive.groups ?? []

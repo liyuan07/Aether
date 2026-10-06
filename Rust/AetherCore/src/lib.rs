@@ -430,3 +430,7 @@ mod clipboard_history;
 mod abi;
 
 mod clipboard_schedule;
+
+mod clipboard_archive;
+
+mod json;

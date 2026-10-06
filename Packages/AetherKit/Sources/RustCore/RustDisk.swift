@@ -4,6 +4,7 @@ import CAetherCore
 
 public struct RustDiskError: Error {
     public let status: UInt32
+    public init(status: UInt32) { self.status = status }
 }
 
 /// Owns the buffer returned by the core; Data receives that ownership without

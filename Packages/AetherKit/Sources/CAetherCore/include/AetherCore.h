@@ -115,4 +115,11 @@ typedef struct { AetherClipboardWriter state; uint8_t write; uint8_t cleanup; } 
 AetherClipboardWriter aether_clipboard_writer_enqueue(AetherClipboardWriter state, uint8_t cleanup);
 AetherClipboardWriteStep aether_clipboard_writer_take(AetherClipboardWriter state);
 size_t aether_clipboard_resource_plan(const AetherBytes *kept, size_t kept_count, const AetherBytes *files, size_t file_count, size_t *output, size_t capacity);
+
+void *aether_clipboard_archive_create(const char *path);
+void aether_clipboard_archive_destroy(void *store);
+void *aether_clipboard_archive_read(void *store);
+void aether_clipboard_archive_block(void *store);
+uint32_t aether_clipboard_archive_write(void *store, AetherBytes data);
+uint32_t aether_clipboard_archive_validate(AetherBytes data);
 #endif

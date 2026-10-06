@@ -131,3 +131,5 @@ sh LaunchAether.command
 - 历史策略迁移运行 `RustClipboardHistoryParityTests`：原 Swift 独立参照覆盖乱序与晚到重复、保护裁剪、清理标志、收藏/分类、规范等价和持久分组身份。重裁剪基准 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardHistoryParityTests/testHistoryTrimBenchmark` 仅验证该合成算法路径，不代表日常或整机收益。
 
 - 调度迁移运行 `RustClipboardScheduleTests` 与 `ClipboardPersistenceTests`：捕获重试、自身写入、计数器/维护代际、原生时间边界和清理标志对照；隔离目录中实际验证延迟落盘、引用保留、失败不清理与 Unicode 文件名。不要将模拟 changeCount 或隔离写入当作正式系统剪贴板/钥匙串页面验收。
+
+- 归档校验运行 `RustClipboardArchiveTests` 和 `ClipboardPersistenceTests`：与原生 DTO 对照字段类型/缺省值/UUID/日期/Base64、重复字段及嵌套未知元数据；隔离目录验证损坏文件不能覆盖、外部破坏后清理被阻止、修复并明确重载后恢复。Rust 字符串借用测试确认普通正文不被校验器额外复制。
