@@ -123,3 +123,5 @@ sh LaunchAether.command
 
 - 存储迁移需运行 `RustDiskTests` 与所有相关格式/损坏/权限测试；备忘录用合成数据验证排序、增删提交/回滚、未知版本、符号链接和明确修复重载。
 - `sh Scripts/build-rust-core.sh licenses` 必须通过；锁文件增加或升级 crate 时同步维护应用内声明，验证命令仅比较许可证字节，不显示用户数据。
+
+- Prompt 迁移运行 `RustPromptParityTests`、原有网络/模型/存储测试：独立旧 Swift 解析参照、取消后晚到结果、locale 历史顺序、版本一日期/整数兼容和损坏载荷保护。模拟 URLSession 不替代真实服务/钥匙串/页面验收。

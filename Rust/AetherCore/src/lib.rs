@@ -417,5 +417,8 @@ pub extern "C" fn aether_eyecare_remaining(s: EyeCare, now: f64) -> f64 {
 
 mod geometry;
 mod memo;
+mod prompt;
+mod prompt_store;
 mod shortcuts;
 mod storage;
+mod versioned;

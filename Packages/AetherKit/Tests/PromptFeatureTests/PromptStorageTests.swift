@@ -112,6 +112,36 @@ final class PromptStorageTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: target), original)
     }
 
+
+    func testNativeVersionOneFixturesKeepDatePrecisionAndIntegralNumbers() throws {
+        let dates = [-987654321.1234567, 0, 0.00000001, 812345678.9876543]
+        let entries = dates.map { PromptHistoryEntry(createdAt: Date(timeIntervalSinceReferenceDate: $0),
+            original: "合成\u{0000}👨‍👩‍👧‍👦\n", optimized: "输出", model: "test") }
+        struct Envelope<T: Encodable>: Encodable { let schemaVersion = 1; let payload: T }
+        try createFile("history.json", data: JSONEncoder().encode(Envelope(payload: entries)))
+        XCTAssertEqual(try storage.loadHistory(), entries)
+        try storage.saveHistory(entries)
+        XCTAssertEqual(try PromptStorage(directory: directory).loadHistory(), entries)
+        let configuration = try JSONEncoder().encode(Envelope(payload: PromptConfiguration()))
+        let fixture = String(decoding: configuration, as: UTF8.self)
+            .replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1.0")
+            .replacingOccurrences(of: "\"historyLimit\":200", with: "\"historyLimit\":2e2")
+        XCTAssertTrue(fixture.contains("2e2"))
+        try createFile("configuration.json", data: Data(fixture.utf8))
+        XCTAssertEqual(try storage.loadConfiguration(), PromptConfiguration())
+    }
+
+    func testMalformedTypedPayloadsRemainProtected() throws {
+        for payload in ["[{\"id\":\"bad-uuid\",\"createdAt\":0,\"original\":\"合成\",\"optimized\":\"输出\",\"model\":\"test\"}]", "[{\"id\":42}]", "{}", "null"] {
+            let bytes = Data("{\"schemaVersion\":1,\"payload\":\(payload)}".utf8)
+            try createFile("history.json", data: bytes)
+            let reader = PromptStorage(directory: directory)
+            XCTAssertThrowsError(try reader.loadHistory())
+            XCTAssertThrowsError(try reader.saveHistory([]))
+            XCTAssertEqual(try Data(contentsOf: file("history.json")), bytes)
+        }
+    }
+
     private func file(_ name: String) -> URL { directory.appendingPathComponent(name) }
 
     private func createFile(_ name: String, data: Data) throws {

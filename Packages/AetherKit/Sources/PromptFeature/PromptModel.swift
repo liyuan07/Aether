@@ -3,6 +3,7 @@ import Combine
 import CryptoKit
 import Foundation
 import SharedSupport
+import CAetherCore
 
 @MainActor
 final class PromptModel: ObservableObject {
@@ -27,8 +28,7 @@ final class PromptModel: ObservableObject {
     private let credentials: any PromptCredentialStore
     private let client: any PromptOptimizing
     private var request: Task<Void, Never>?
-    private var requestID: UUID?
-    private var canWriteHistory = true
+    private var core = AetherPromptGate(generation: 0, active: 0, writable: 1, changed: 0)
     private var pendingHistoryWrite: [PromptHistoryEntry]?
 
     init(
@@ -56,9 +56,9 @@ final class PromptModel: ObservableObject {
     var filteredHistory: [PromptHistoryEntry] {
         let query = historyQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return history }
-        return history.filter {
+        return promptHistoryPlan(history, action: 3, matching: {
             $0.original.localizedCaseInsensitiveContains(query) || $0.optimized.localizedCaseInsensitiveContains(query)
-        }
+        })
     }
 
     var isConfigured: Bool {
@@ -74,7 +74,7 @@ final class PromptModel: ObservableObject {
         var next = draftConfiguration
         next.baseURL = next.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         next.model = next.model.trimmingCharacters(in: .whitespacesAndNewlines)
-        next.historyLimit = min(1000, max(1, next.historyLimit))
+        next.historyLimit = aether_prompt_limit(next.historyLimit)
         guard !next.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             settingsMessage = "优化指令不能为空，可以恢复默认指令。"
             settingsSaveFailed = true
@@ -117,7 +117,7 @@ final class PromptModel: ObservableObject {
         credentialInconsistent = false
         let currentHistory = pendingHistoryWrite ?? history
         if next.saveHistory, currentHistory.count > next.historyLimit {
-            if !persistHistory(Array(currentHistory.prefix(next.historyLimit))) {
+            if !persistHistory(promptHistoryPlan(currentHistory, action: 2, limit: next.historyLimit)) {
                 settingsMessage = "设置已保存，但超额历史尚未清理，请在工具窗口重试历史存储。"
                 settingsSaveFailed = true
             }
@@ -140,10 +140,10 @@ final class PromptModel: ObservableObject {
         if let pending = pendingHistoryWrite {
             do {
                 _ = try storage.loadHistory()
-                canWriteHistory = true
+                core = aether_prompt_history_writable(core, 1)
                 persistHistory(pending)
             } catch {
-                canWriteHistory = false
+                core = aether_prompt_history_writable(core, 0)
                 historyMessage = "无法读取历史文件，原数据和待保存记录已保留。\(error.localizedDescription)"
             }
         } else { reloadHistory() }
@@ -151,11 +151,11 @@ final class PromptModel: ObservableObject {
 
     private func reloadHistory() {
         do {
-            history = try storage.loadHistory().sorted { $0.createdAt > $1.createdAt }
-            canWriteHistory = true
+            history = promptHistoryPlan(try storage.loadHistory(), action: 0)
+            core = aether_prompt_history_writable(core, 1)
             historyMessage = nil
         } catch {
-            canWriteHistory = false
+            core = aether_prompt_history_writable(core, 0)
             historyMessage = "无法读取历史文件，已暂停历史写入以保留原数据。\(error.localizedDescription)"
         }
     }
@@ -176,16 +176,16 @@ final class PromptModel: ObservableObject {
             optimizationError = "无法读取 API Key，请在设置中重新保存。\(error.localizedDescription)"
             return
         }
-        if (configuration.credentialFingerprint == nil && !apiKey.isEmpty) ||
-            (configuration.credentialFingerprint != nil && configuration.credentialFingerprint != Self.fingerprint(apiKey)) {
+        if aether_prompt_credential_consistent(configuration.credentialFingerprint == nil ? 0 : 1, apiKey.isEmpty ? 1 : 0,
+            configuration.credentialFingerprint == Self.fingerprint(apiKey) ? 1 : 0) == 0 {
             credentialInconsistent = true
             optimizationError = "API Key 与服务设置不匹配，请前往设置重新保存后再试。"
             return
         }
         let original = inputText
         let snapshot = configuration
-        let id = UUID()
-        requestID = id
+        core = aether_prompt_begin(core)
+        let id = core.generation
         isOptimizing = true
         optimizationError = nil
         selectedHistoryID = nil
@@ -193,22 +193,20 @@ final class PromptModel: ObservableObject {
         request = Task { [weak self, client] in
             do {
                 let result = try await client.optimize(input: original, configuration: snapshot, apiKey: apiKey)
-                guard let self, self.requestID == id, !Task.isCancelled else { return }
+                guard let self, self.finishCoreRequest(id, acceptable: !Task.isCancelled) else { return }
                 self.outputText = result
                 self.outputOriginal = original
                 self.isOptimizing = false
-                self.requestID = nil
                 self.request = nil
                 // Respect the current privacy preference even if it changed during the request.
                 if self.configuration.saveHistory {
                     let entry = PromptHistoryEntry(original: original, optimized: result, model: snapshot.model)
                     self.selectedHistoryID = entry.id
-                    self.persistHistory(Array(([entry] + (self.pendingHistoryWrite ?? self.history)).prefix(self.configuration.historyLimit)))
+                    self.persistHistory(promptHistoryPlan([entry] + (self.pendingHistoryWrite ?? self.history), action: 2, limit: self.configuration.historyLimit))
                 }
             } catch {
-                guard let self, self.requestID == id else { return }
+                guard let self, self.finishCoreRequest(id, acceptable: true) else { return }
                 self.isOptimizing = false
-                self.requestID = nil
                 self.request = nil
                 if !(error is CancellationError) { self.optimizationError = error.localizedDescription }
             }
@@ -216,7 +214,7 @@ final class PromptModel: ObservableObject {
     }
 
     func cancelOptimization() {
-        requestID = nil
+        core = aether_prompt_cancel(core)
         request?.cancel()
         request = nil
         isOptimizing = false
@@ -247,7 +245,7 @@ final class PromptModel: ObservableObject {
     }
 
     func deleteHistory(_ entry: PromptHistoryEntry) {
-        let remaining = (pendingHistoryWrite ?? history).filter { $0.id != entry.id }
+        let remaining = promptHistoryPlan(pendingHistoryWrite ?? history, action: 1, id: entry.id)
         if persistHistory(remaining), selectedHistoryID == entry.id { selectedHistoryID = nil }
     }
 
@@ -274,7 +272,7 @@ final class PromptModel: ObservableObject {
 
     @discardableResult
     private func persistHistory(_ next: [PromptHistoryEntry]) -> Bool {
-        guard canWriteHistory else { return false }
+        guard core.writable != 0 else { return false }
         do {
             try storage.saveHistory(next)
             history = next
@@ -286,6 +284,11 @@ final class PromptModel: ObservableObject {
             historyMessage = "历史保存失败，当前优化结果仍可复制。\(error.localizedDescription)"
             return false
         }
+    }
+
+    private func finishCoreRequest(_ token: UInt64, acceptable: Bool) -> Bool {
+        core = aether_prompt_finish(core, token, acceptable ? 1 : 0)
+        return core.changed != 0
     }
 
     private static func fingerprint(_ key: String) -> String {

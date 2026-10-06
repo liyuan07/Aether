@@ -10,6 +10,8 @@ else
     export PATH="${HOME}/.cargo/bin:$PATH"
 fi
 command -v cargo >/dev/null 2>&1 || { echo 'Rust 1.90.0 required; install rustup before building Aether.' >&2; exit 1; }
+notices_dir=${2:-$project_dir/App/ThirdPartyNotices}
+case "$notices_dir" in /*) ;; *) notices_dir="$(pwd)/$notices_dir" ;; esac
 cd "$project_dir/Rust/AetherCore"
 export CARGO_TARGET_DIR="$project_dir/.build/rust"
 # The C ABI library is linked into both SwiftPM tests and the app; no runtime loader.
@@ -17,7 +19,7 @@ archs=${ARCHS:-$(uname -m)}
 mkdir -p "$CARGO_TARGET_DIR/lib"
 if [ "${1:-}" = test ]; then exec cargo test --locked; fi
 if [ "${1:-}" = licenses ]; then
-    cargo metadata --locked --offline --format-version 1 | python3 "$project_dir/Scripts/check-rust-licenses.py" "${2:-$project_dir/App/ThirdPartyNotices}"
+    cargo metadata --locked --offline --format-version 1 | python3 "$project_dir/Scripts/check-rust-licenses.py" "$notices_dir"
     exit 0
 fi
 for arch in $archs; do

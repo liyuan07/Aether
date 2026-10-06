@@ -24,7 +24,7 @@ let package = Package(
         .target(name: "ShortcutCore", dependencies: ["RustCore", "CAetherCore"]),
         .target(name: "ShortcutsFeature", dependencies: ["ShortcutCore", "SharedSupport", "CAetherCore"]),
         .target(name: "ClipboardFeature", dependencies: ["SharedSupport", "RustCore"]),
-        .target(name: "PromptFeature", dependencies: ["SharedSupport", "RustCore"]),
+        .target(name: "PromptFeature", dependencies: ["SharedSupport", "RustCore", "CAetherCore"]),
         .target(name: "MemoFeature", dependencies: ["SharedSupport", "RustCore", "CAetherCore"]),
         .target(name: "TimerFeature", dependencies: ["SharedSupport", "RustCore", "CAetherCore", .product(name: "Defaults", package: "Defaults"), .product(name: "MacroVisionKit", package: "MacroVisionKit"), .product(name: "SkyLightWindow", package: "SkyLightWindow")]),
         .testTarget(name: "ShortcutCoreTests", dependencies: ["ShortcutCore"]),

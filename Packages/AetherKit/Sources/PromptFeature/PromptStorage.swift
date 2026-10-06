@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import RustCore
+import CAetherCore
 
 public enum PromptStorageError: LocalizedError {
     case unreadable, unsupportedVersion, invalidConfiguration, writeFailed, keychain(OSStatus)
@@ -24,87 +25,43 @@ public enum PromptStorageError: LocalizedError {
 /// Each file is validated again before a write, including saves made before the first load.
 /// A corrupt or newer-format file is never replaced with fallback defaults.
 public final class PromptStorage {
-    private let directory: URL
     private let lock = NSRecursiveLock()
-    private var blockedFiles: Set<String> = []
-    private static let schemaVersion = 1
+    private let core: UnsafeMutableRawPointer?
 
-    private struct Envelope<Value: Codable>: Codable {
-        var schemaVersion: Int
-        var payload: Value
-    }
-
-    private struct Version: Decodable { var schemaVersion: Int }
-
-    public init(directory: URL) { self.directory = directory }
-
-    public func loadConfiguration() throws -> PromptConfiguration {
-        lock.lock()
-        defer { lock.unlock() }
-        let value: PromptConfiguration = try load("configuration.json", fallback: .init())
-        guard (1...1000).contains(value.historyLimit) else {
-            blockedFiles.insert("configuration.json")
-            throw PromptStorageError.invalidConfiguration
+    public init(directory: URL) {
+        let fallback = (try? JSONEncoder().encode(PromptConfiguration())) ?? Data()
+        core = directory.withUnsafeFileSystemRepresentation { directory in
+            fallback.withUnsafeBytes { aether_prompt_store_create(directory, AetherBytes(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count)) }
         }
-        return value
     }
+    deinit { aether_prompt_store_destroy(core) }
+    public func loadConfiguration() throws -> PromptConfiguration { try load(slot: 0) }
+    public func saveConfiguration(_ configuration: PromptConfiguration) throws { try save(configuration, slot: 0) }
+    public func loadHistory() throws -> [PromptHistoryEntry] { try load(slot: 1) }
+    public func saveHistory(_ history: [PromptHistoryEntry]) throws { try save(history, slot: 1) }
 
-    public func saveConfiguration(_ configuration: PromptConfiguration) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard (1...1000).contains(configuration.historyLimit) else {
-            throw PromptStorageError.invalidConfiguration
-        }
-        try checkWritable("configuration.json")
-        _ = try loadConfiguration()
-        try save(configuration, name: "configuration.json")
-    }
-
-    public func loadHistory() throws -> [PromptHistoryEntry] {
-        lock.lock()
-        defer { lock.unlock() }
-        return try load("history.json", fallback: [])
-    }
-
-    public func saveHistory(_ history: [PromptHistoryEntry]) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        try checkWritable("history.json")
-        _ = try loadHistory()
-        try save(history, name: "history.json")
-    }
-
-    private func checkWritable(_ name: String) throws {
-        guard !blockedFiles.contains(name) else { throw PromptStorageError.unreadable }
-    }
-
-    private func load<Value: Codable>(_ name: String, fallback: Value) throws -> Value {
+    private func load<T: Decodable>(slot: UInt32) throws -> T {
+        lock.lock(); defer { lock.unlock() }
         do {
-            let file = directory.appendingPathComponent(name)
-            guard let data = try RustDisk.read(file) else {
-                blockedFiles.remove(name)
-                return fallback
-            }
-            let decoder = JSONDecoder()
-            let version = try decoder.decode(Version.self, from: data).schemaVersion
-            guard version == Self.schemaVersion else { throw PromptStorageError.unsupportedVersion }
-            let value = try decoder.decode(Envelope<Value>.self, from: data).payload
-            blockedFiles.remove(name)
-            return value
-        } catch {
-            blockedFiles.insert(name)
-            throw (error as? PromptStorageError) ?? PromptStorageError.unreadable
-        }
+            return try JSONDecoder().decode(T.self, from: RustBuffer.take(aether_prompt_store_load(core, slot)))
+        } catch let error as RustDiskError {
+            try check(error.status)
+            throw PromptStorageError.unreadable
+        } catch { throw PromptStorageError.unreadable }
     }
-
-    private func save<Value: Codable>(_ value: Value, name: String) throws {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(Envelope(schemaVersion: Self.schemaVersion, payload: value))
-            try RustDisk.write(data, to: directory.appendingPathComponent(name), synchronize: true)
-        } catch {
-            throw PromptStorageError.writeFailed
+    private func save<T: Encodable>(_ value: T, slot: UInt32) throws {
+        lock.lock(); defer { lock.unlock() }
+        let data: Data
+        do { data = try JSONEncoder().encode(value) } catch { throw PromptStorageError.writeFailed }
+        try check(data.withUnsafeBytes { aether_prompt_store_save(core, slot, AetherBytes(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count)) })
+    }
+    private func check(_ status: UInt32) throws {
+        switch status {
+        case 0: return
+        case 2: throw PromptStorageError.unreadable
+        case 4: throw PromptStorageError.unsupportedVersion
+        case 5: throw PromptStorageError.invalidConfiguration
+        default: throw PromptStorageError.writeFailed
         }
     }
 }

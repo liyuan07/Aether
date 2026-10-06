@@ -1,5 +1,6 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 use crate::storage::{self, Buffer};
+use crate::versioned;
 use serde::{Deserialize, Serialize};
 use std::{ffi::c_char, path::PathBuf};
 #[derive(Serialize, Deserialize)]
@@ -13,15 +14,7 @@ struct Memo {
 }
 impl Memo {
     fn valid(&self) -> bool {
-        let id = self.id.as_bytes();
-        id.len() == 36
-            && id.iter().enumerate().all(|(i, b)| {
-                if [8, 13, 18, 23].contains(&i) {
-                    *b == b'-'
-                } else {
-                    b.is_ascii_hexdigit()
-                }
-            })
+        versioned::valid_uuid(&self.id)
             && self.created_at.is_finite()
             && self.deadline.is_none_or(f64::is_finite)
     }
@@ -32,30 +25,7 @@ pub struct MemoStore {
     items: Vec<Memo>,
 }
 fn read(path: &std::path::Path) -> Result<Vec<Memo>, u32> {
-    let Some(bytes) = storage::read(path, true).map_err(|_| 2_u32)? else {
-        return Ok(vec![]);
-    };
-    #[derive(Deserialize)]
-    struct Envelope<'a> {
-        #[serde(rename = "schemaVersion")]
-        version: serde_json::Number,
-        #[serde(default, borrow)]
-        payload: Option<&'a serde_json::value::RawValue>,
-    }
-    let envelope: Envelope = serde_json::from_slice(&bytes).map_err(|_| 2_u32)?;
-    let version = envelope.version.as_f64().ok_or(2_u32)?;
-    if !version.is_finite()
-        || version.fract() != 0.0
-        || version < i64::MIN as f64
-        || version >= -(i64::MIN as f64)
-    {
-        return Err(2);
-    }
-    if version != 1.0 {
-        return Err(4);
-    }
-    let items: Vec<Memo> =
-        serde_json::from_str(envelope.payload.ok_or(2_u32)?.get()).map_err(|_| 2_u32)?;
+    let items: Vec<Memo> = versioned::read(path)?.unwrap_or_default();
     if !items.iter().all(Memo::valid) {
         return Err(2);
     }
@@ -73,18 +43,7 @@ impl MemoStore {
         Ok(())
     }
     fn write<T: Serialize + ?Sized>(&self, items: &T) -> Result<(), u32> {
-        #[derive(Serialize)]
-        struct Envelope<'a, T: ?Sized> {
-            #[serde(rename = "schemaVersion")]
-            version: u32,
-            payload: &'a T,
-        }
-        let bytes = serde_json::to_vec_pretty(&Envelope {
-            version: 1,
-            payload: items,
-        })
-        .map_err(|_| 3_u32)?;
-        storage::write(&self.path, &bytes, true, false).map_err(|_| 3_u32)
+        versioned::write(&self.path, items, false)
     }
     fn save(&mut self, items: Vec<Memo>) -> Result<(), u32> {
         self.ensure_writable()?;

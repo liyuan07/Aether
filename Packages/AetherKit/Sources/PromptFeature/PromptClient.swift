@@ -1,4 +1,5 @@
 import Foundation
+import CAetherCore
 
 public protocol PromptOptimizing {
     func optimize(input: String, configuration: PromptConfiguration, apiKey: String) async throws -> String
@@ -81,29 +82,15 @@ public final class PromptClient: PromptOptimizing {
               components.port.map({ (1...65535).contains($0) }) ?? true else {
             throw PromptClientError.invalidURL
         }
-        guard scheme == "https" || scheme == "http" else { throw PromptClientError.invalidURL }
-        guard scheme == "https" || isLoopback(host) else { throw PromptClientError.insecureURL }
-        // The API root is conventional only for a bare origin. Custom provider prefixes stay intact.
-        var path = components.percentEncodedPath
-        while path.hasSuffix("/") { path.removeLast() }
-        if path.isEmpty {
-            path = "/v1/chat/completions"
-        } else if !path.hasSuffix("/chat/completions") {
-            path += "/chat/completions"
+        let path = try withPromptUTF8(host.lowercased()) { host in
+            try withPromptUTF8(components.percentEncodedPath) { path in
+                try promptCoreText(aether_prompt_endpoint(scheme == "http" ? 1 : scheme == "https" ? 2 : 0, host, path))
+            }
         }
         components.scheme = scheme
         components.percentEncodedPath = path
         guard let url = components.url else { throw PromptClientError.invalidURL }
         return url
-    }
-
-    private static func isLoopback(_ host: String) -> Bool {
-        let host = host.lowercased()
-        if host == "localhost" || host == "[::1]" || host == "::1" { return true }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
-        return parts.count == 4 && parts.first == "127" && parts.allSatisfy {
-            !$0.isEmpty && $0.allSatisfy(\.isNumber) && Int($0).map({ (0...255).contains($0) }) == true
-        }
     }
 
     public func optimize(input: String, configuration: PromptConfiguration, apiKey: String) async throws -> String {
@@ -125,37 +112,22 @@ public final class PromptClient: PromptOptimizing {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONEncoder().encode(ChatRequest(model: model, messages: [
-            .init(role: "system", content: rules), .init(role: "user", content: input)
-        ], stream: false))
+        request.httpBody = try withPromptUTF8(model) { model in
+            try withPromptUTF8(rules) { rules in
+                try withPromptUTF8(input) { input in try promptCoreData(aether_prompt_request(model, rules, input)) }
+            }
+        }
 
         do {
             // Per-task delegate also blocks redirects when tests inject a custom URLSession.
             let (data, response) = try await session.data(for: request, delegate: redirectDelegate)
             try Task.checkCancellation()
             guard let response = response as? HTTPURLResponse else { throw PromptClientError.invalidResponse }
-            switch response.statusCode {
-            case 200...299: break
-            case 300...399: throw PromptClientError.redirected
-            case 401, 403: throw PromptClientError.authentication
-            case 404: throw PromptClientError.endpointUnavailable
-            case 408, 504: throw PromptClientError.timedOut
-            case 429: throw PromptClientError.rateLimited
-            case 500...599: throw PromptClientError.serverUnavailable
-            default: throw PromptClientError.httpStatus(response.statusCode)
+            let decoded = try data.withUnsafeBytes {
+                try promptCoreData(aether_prompt_response(Int32(clamping: response.statusCode), AetherBytes(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count)), httpStatus: response.statusCode)
             }
-            guard let result = try? JSONDecoder().decode(ChatResponse.self, from: data),
-                  let choice = result.choices.first else { throw PromptClientError.invalidResponse }
-            if let reason = choice.finishReason {
-                switch reason {
-                case "stop": break
-                case "length": throw PromptClientError.incompleteResponse
-                case "content_filter": throw PromptClientError.refused
-                default: throw PromptClientError.incompleteResponse
-                }
-            }
-            guard choice.message.refusal?.isEmpty != false else { throw PromptClientError.refused }
-            let text = choice.message.content?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let raw = String(data: decoded, encoding: .utf8) else { throw PromptClientError.invalidResponse }
+            let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw PromptClientError.emptyResponse }
             return text
         } catch is CancellationError {
@@ -180,42 +152,4 @@ final class PromptRedirectBlocker: NSObject, URLSessionTaskDelegate, @unchecked 
                     completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(nil)
     }
-}
-
-private struct ChatRequest: Encodable {
-    struct Message: Encodable { let role: String; let content: String }
-    let model: String
-    let messages: [Message]
-    let stream: Bool
-}
-
-private struct ChatResponse: Decodable {
-    struct Choice: Decodable {
-        let message: Message
-        let finishReason: String?
-        enum CodingKeys: String, CodingKey { case message; case finishReason = "finish_reason" }
-    }
-    struct Message: Decodable { let content: Content?; let refusal: String? }
-    enum Content: Decodable {
-        case string(String)
-        case parts([Part])
-
-        struct Part: Decodable { let type: String; let text: String? }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.singleValueContainer()
-            if let string = try? container.decode(String.self) { self = .string(string) }
-            else { self = .parts(try container.decode([Part].self)) }
-        }
-
-        var text: String {
-            switch self {
-            case .string(let value): return value
-            case .parts(let parts):
-                return parts.filter { $0.type == "text" || $0.type == "output_text" }
-                    .compactMap(\.text).joined(separator: "\n")
-            }
-        }
-    }
-    let choices: [Choice]
 }

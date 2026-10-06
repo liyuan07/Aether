@@ -23,11 +23,11 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 
 `Rust/AetherCore` 是 GPL-3.0-or-later 业务静态库，通过 `CAetherCore` 的版本化 C ABI 与 Swift 交互。`RustCore` 管理不可变 Rust 搜索句柄的 ARC 生命周期；计时、快捷面板状态、快捷键策略和窗口几何使用 C 值结构，复制 Swift 模型不会共享可变指针。Rust 不回调界面、不创建额外进程、不持有系统剪贴板、钥匙串、窗口或 IOKit 句柄。具体迁移进度见 [Rust 重构记录](RustMigration.md)。
 
-Swift 继续负责 SwiftUI/AppKit 页面、系统权限、事件监听、系统时钟与线程调度。搜索归一化继续使用 Foundation 和当前 locale，非 ASCII 字符边界由 Swift Character 提供，Rust 执行前缀、子串和有界模糊评分；快捷键解析、规则冲突/映射环与菜单过滤在 Rust 中计算，窗口几何通过批量借用屏幕/已占用矩形输入完成；ASCII 索引不保存逐字边界。不可变搜索句柄可并发只读，调用期间借用输入，析构只释放一次。ABI 不传日志正文或 JSON，已有数据格式与路径保持不变。
+Swift 继续负责 SwiftUI/AppKit 页面、系统权限、事件监听、系统时钟与线程调度。搜索归一化继续使用 Foundation 和当前 locale，非 ASCII 字符边界由 Swift Character 提供，Rust 执行前缀、子串和有界模糊评分；快捷键解析、规则冲突/映射环与菜单过滤在 Rust 中计算，窗口几何通过批量借用屏幕/已占用矩形输入完成；ASCII 索引不保存逐字边界。不可变搜索句柄可并发只读，调用期间借用输入，析构只释放一次。ABI 不输出日志正文；存储/协议使用借用字节跨度和拥有缓冲区的 JSON 桥接，已有数据格式与路径保持不变。
 
 Rust 版本固定为 1.90.0，依赖由 Cargo.lock 锁定；JSON 编解码使用固定版本 serde/serde_json，传递版本在 Cargo.lock 中锁定。`Scripts/build-rust-core.sh` 为指定 ARCHS 生成静态库，同目录临时文件完成后原子替换。Xcode 构建阶段和安装脚本都运行该步骤，Swift Package 单独测试前先执行此脚本。应用发布包不需要 rustup 或动态 Rust 库。Rust 标准库及所有锁定 crate 的许可证随应用安装；安装前自动检查声明文件与锁定源码一致。
 
-备忘录的核心持有记录并执行版本验证、增删事务、排序与持久化；Swift `MemoStorage` 仅将平台 UUID/Date DTO 转为桥接 JSON，`MemoModel` 发布展示快照。排序由 Rust 返回索引，复用同一份原生记录。通用 `RustDisk` 提供原子文件 I/O 与 Rust 缓冲区所有权适配，其他功能仍保留现有 DTO/schema 检查，后续继续迁移各自业务规则。
+备忘录的核心持有记录并执行版本验证、增删事务、排序与持久化；Swift `MemoStorage` 仅将平台 UUID/Date DTO 转为桥接 JSON，`MemoModel` 发布展示快照。排序由 Rust 返回索引，复用同一份原生记录。通用 `RustDisk` 提供原子文件 I/O 与 Rust 缓冲区所有权适配，Prompt 配置/历史的版本与类型校验也由 Rust 持有，原生 DTO 保留 Date/UUID 展示兼容；其他功能后续继续迁移各自业务规则。
 
 ## 存储与启动
 
@@ -70,7 +70,7 @@ Swift Package 测试进程默认使用临时根目录和随机偏好域。测试
 
 ### Prompt 请求与持久化
 
-Prompt 配置和历史文件各有版本封装，原子写入并限制本地访问权限。加载失败或遇到未知版本时保留原文件并阻止覆盖，以便恢复后重试。API Key 使用独立可注入的钥匙串存储，不进入 JSON、请求错误说明或日志。配置只保存 Key 的摘要用于一致性校验；配置写入失败会回滚 Key，即使回滚失败并重启，下次请求也会先检查摘要，避免旧服务地址误用新 Key。测试使用临时目录、模拟凭证存储和隔离 URLSession。
+Rust 核心执行 Prompt 请求体/响应协议、接口路径策略、请求代际和历史索引计划；原生 URLSession/URLComponents、Task、locale 匹配和钥匙串保留平台语义。Prompt 配置和历史文件由 Rust 校验并持有独立写入保护状态，各有版本封装，原子写入并限制本地访问权限。加载失败或遇到未知版本时保留原文件并阻止覆盖，以便恢复后重试。API Key 使用独立可注入的钥匙串存储，不进入 JSON、请求错误说明或日志。配置只保存 Key 的摘要用于一致性校验；配置写入失败会回滚 Key，即使回滚失败并重启，下次请求也会先检查摘要，避免旧服务地址误用新 Key。测试使用临时目录、模拟凭证存储和隔离 URLSession。
 
 客户端使用非流式 Chat Completions 请求，只发送系统优化规则和本次用户输入；不附带历史，也不自动读取剪贴板。远程地址要求 HTTPS，允许本机回环 HTTP；拒绝地址中混入凭证、查询参数或片段。网络重定向不会继续携带凭证，请求设置超时，错误反馈不显示服务端原始响应正文。
 
