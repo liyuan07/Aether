@@ -23,21 +23,34 @@ private enum ClipboardSnapshot: Sendable {
     case richText(Data, String?, Date)
 }
 
-private final class ClipboardPersistenceCoordinator: @unchecked Sendable {
+final class ClipboardPersistenceCoordinator: @unchecked Sendable {
     private let queue = DispatchQueue(
         label: "com.liyuan07.clipboard.archive-writer",
         qos: .utility
     )
+    private let archiveURL: URL
+    private let imagesDirectory: URL
+    private let payloadsDirectory: URL
+    private let fileManager: FileManager
+
+    init(archiveURL: URL = ClipboardStorage.archiveURL, imagesDirectory: URL = ClipboardStorage.imagesDirectory,
+        payloadsDirectory: URL = ClipboardStorage.payloadsDirectory, fileManager: FileManager = .default) {
+        self.archiveURL = archiveURL
+        self.imagesDirectory = imagesDirectory
+        self.payloadsDirectory = payloadsDirectory
+        self.fileManager = fileManager
+    }
+
     private var pendingArchive: ClipboardArchive?
-    private var pendingCleanup = false
+    private var writerCore = AetherClipboardWriter()
     private var pendingWorkItem: DispatchWorkItem?
 
     func enqueue(_ archive: ClipboardArchive, cleanup: Bool) {
         queue.async { [weak self] in
             guard let self else { return }
             pendingArchive = archive
-            pendingCleanup = pendingCleanup || cleanup
-            guard pendingWorkItem == nil else { return }
+            writerCore = aether_clipboard_writer_enqueue(writerCore, cleanup ? 1 : 0)
+            guard writerCore.schedule != 0 else { return }
 
             let workItem = DispatchWorkItem { [weak self] in
                 self?.writePendingArchive()
@@ -55,25 +68,25 @@ private final class ClipboardPersistenceCoordinator: @unchecked Sendable {
             pendingWorkItem?.cancel()
             pendingWorkItem = nil
             pendingArchive = nil
-            let cleanup = pendingCleanup
-            pendingCleanup = false
-            write(archive, cleanup: cleanup)
+            let step = aether_clipboard_writer_take(writerCore)
+            writerCore = step.state
+            write(archive, cleanup: step.cleanup != 0)
         }
     }
 
     private func writePendingArchive() {
         let archive = pendingArchive
-        let cleanup = pendingCleanup
+        let step = aether_clipboard_writer_take(writerCore)
+        writerCore = step.state
         pendingArchive = nil
-        pendingCleanup = false
         pendingWorkItem = nil
-        guard let archive else { return }
-        write(archive, cleanup: cleanup)
+        guard step.write != 0, let archive else { return }
+        write(archive, cleanup: step.cleanup != 0)
     }
 
     private func write(_ archive: ClipboardArchive, cleanup: Bool) {
         guard let data = try? JSONEncoder().encode(archive),
-              (try? RustDisk.write(data, to: ClipboardStorage.archiveURL, privateFile: false)) != nil else {
+              (try? RustDisk.write(data, to: archiveURL, privateFile: false)) != nil else {
             return
         }
         guard cleanup else { return }
@@ -82,28 +95,27 @@ private final class ClipboardPersistenceCoordinator: @unchecked Sendable {
             + archive.pinnedItems
             + (archive.groups ?? []).flatMap(\.items)
         removeUnreferencedFiles(
-            in: ClipboardStorage.imagesDirectory,
-            keeping: Set(allItems.compactMap(\.imageFileName))
+            in: imagesDirectory,
+            keeping: allItems.compactMap(\.imageFileName)
         )
         removeUnreferencedFiles(
-            in: ClipboardStorage.payloadsDirectory,
-            keeping: Set(allItems.compactMap(\.rtfFileName))
+            in: payloadsDirectory,
+            keeping: allItems.compactMap(\.rtfFileName)
         )
     }
 
     private func removeUnreferencedFiles(
         in directory: URL,
-        keeping names: Set<String>
+        keeping names: [String]
     ) {
-        guard let files = try? FileManager.default.contentsOfDirectory(
+        guard let files = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ) else {
             return
         }
-        for file in files where !names.contains(file.lastPathComponent) {
-            try? FileManager.default.removeItem(at: file)
-        }
+        let indices = rustClipboardUnreferencedResources(keeping: names, files: files.map(\.lastPathComponent))
+        for index in indices { try? fileManager.removeItem(at: files[index]) }
     }
 }
 
@@ -290,7 +302,7 @@ final class ClipboardStore: ObservableObject {
 
     @Published private(set) var history: [ClipboardItem] = [] {
         didSet {
-            historyRevision &+= 1
+            workCore = aether_clipboard_history_changed(workCore)
         }
     }
     @Published private(set) var pinnedItems: [ClipboardItem] = []
@@ -298,16 +310,13 @@ final class ClipboardStore: ObservableObject {
     @Published private(set) var isMonitoring = false
 
     private var timer: Timer?
-    private var lastChangeCount = NSPasteboard.general.changeCount
-    private var pendingChangeCount: Int?
-    private var failedCaptureAttempts = 0
-    private var historyRevision: UInt64 = 0
-    private var lastMaintenanceDate = Date.distantPast
+    private var captureCore = AetherClipboardCapture(last_change: Int64(NSPasteboard.general.changeCount), pending_change: 0, pending: 0, failures: 0, needed: 0)
+    private var workCore = AetherClipboardWork(history_revision: 0, maintenance_generation: 0,
+        last_maintenance: Date.distantPast.timeIntervalSinceReferenceDate)
     private let persistenceCoordinator = ClipboardPersistenceCoordinator()
     private let snapshotProcessor = ClipboardSnapshotProcessor()
     private let maintenanceProcessor = ClipboardMaintenanceProcessor()
     private var maintenanceTask: Task<Void, Never>?
-    private var maintenanceGeneration: UInt64 = 0
 
     private var historyLimit: Int {
         max(50, AppEnvironment.clipboardDefaults.integer(forKey: PreferenceKeys.historyLimit))
@@ -378,7 +387,7 @@ final class ClipboardStore: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects([item])
-        lastChangeCount = pasteboard.changeCount
+        captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
         return didWrite
     }
 
@@ -392,7 +401,7 @@ final class ClipboardStore: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects(prepared)
-        lastChangeCount = pasteboard.changeCount
+        captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
         return didWrite
     }
 
@@ -434,7 +443,7 @@ final class ClipboardStore: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let didWrite = pasteboard.writeObjects(prepared)
-        lastChangeCount = pasteboard.changeCount
+        captureCore = aether_clipboard_capture_observed(captureCore, Int64(pasteboard.changeCount))
         return didWrite
     }
 
@@ -502,14 +511,13 @@ final class ClipboardStore: ObservableObject {
 
     func performMaintenance() {
         maintenanceTask?.cancel()
-        maintenanceGeneration &+= 1
-        let pendingGeneration = maintenanceGeneration
         let source = currentArchive
         let sourceIdentity = archiveIdentity(source)
         let expirationDays = self.expirationDays
         let historyLimit = self.historyLimit
         let now = Date()
-        lastMaintenanceDate = Date()
+        workCore = aether_clipboard_maintenance_begin(workCore, Date().timeIntervalSinceReferenceDate)
+        let pendingGeneration = workCore.maintenance_generation
         maintenanceTask = Task { @MainActor [weak self, maintenanceProcessor] in
             do {
                 let maintained = try await maintenanceProcessor.archive(
@@ -519,7 +527,7 @@ final class ClipboardStore: ObservableObject {
                     now: now
                 )
                 guard !Task.isCancelled, let self else { return }
-                guard maintenanceGeneration == pendingGeneration else { return }
+                guard aether_clipboard_maintenance_current(workCore, pendingGeneration) != 0 else { return }
                 defer { maintenanceTask = nil }
                 guard archiveIdentity(currentArchive) == sourceIdentity else {
                     return
@@ -537,7 +545,7 @@ final class ClipboardStore: ObservableObject {
                 saveArchive(cleanup: true)
             } catch {
                 if let self,
-                   maintenanceGeneration == pendingGeneration {
+                   aether_clipboard_maintenance_current(workCore, pendingGeneration) != 0 {
                     maintenanceTask = nil
                 }
             }
@@ -565,7 +573,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func checkClipboard() {
-        if Date().timeIntervalSince(lastMaintenanceDate) >= 86_400 {
+        if aether_clipboard_maintenance_due(workCore, Date().timeIntervalSinceReferenceDate) != 0 {
             performMaintenance()
         }
         captureCurrentClipboardChangeIfNeeded()
@@ -576,30 +584,13 @@ final class ClipboardStore: ObservableObject {
         protecting protectedIDs: Set<UUID> = []
     ) -> Bool {
         let changeCount = NSPasteboard.general.changeCount
-        guard changeCount != lastChangeCount else {
-            pendingChangeCount = nil
-            failedCaptureAttempts = 0
-            return false
-        }
-
-        if pendingChangeCount != changeCount {
-            pendingChangeCount = changeCount
-            failedCaptureAttempts = 0
-        }
-
+        captureCore = aether_clipboard_capture_probe(captureCore, Int64(changeCount))
+        guard captureCore.needed != 0 else { return false }
         guard let snapshot = currentClipboardSnapshot() else {
-            failedCaptureAttempts += 1
-            if failedCaptureAttempts >= 4 {
-                lastChangeCount = changeCount
-                pendingChangeCount = nil
-                failedCaptureAttempts = 0
-            }
+            captureCore = aether_clipboard_capture_failed(captureCore, Int64(changeCount))
             return false
         }
-
-        lastChangeCount = changeCount
-        pendingChangeCount = nil
-        failedCaptureAttempts = 0
+        captureCore = aether_clipboard_capture_committed(captureCore, Int64(changeCount))
         process(snapshot, protecting: protectedIDs)
         return true
     }
@@ -613,14 +604,14 @@ final class ClipboardStore: ObservableObject {
             guard let self, let item else { return }
 
             while !Task.isCancelled {
-                let comparedRevision = historyRevision
+                let comparedRevision = workCore.history_revision
                 let comparedHistory = history
                 let duplicateIDs = await snapshotProcessor.duplicateIDs(
                     for: item,
                     in: comparedHistory
                 )
                 guard !Task.isCancelled else { return }
-                if comparedRevision == historyRevision {
+                if aether_clipboard_revision_current(workCore, comparedRevision) != 0 {
                     addToHistory(
                         item,
                         matchingDuplicateIDs: duplicateIDs,

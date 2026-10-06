@@ -109,3 +109,27 @@ extension ClipboardTab {
         }
     }
 }
+
+func rustClipboardUnreferencedResources(keeping: [String], files: [String]) -> [Int] {
+    // NSData guarantees byte-pointer stability during the borrow; names retain native canonical equality.
+    func withNames<T>(_ names: [String], body: ([AetherBytes]) -> T) -> T {
+        let buffers = names.map { Data($0.precomposedStringWithCanonicalMapping.utf8) as NSData }
+        return withExtendedLifetime(buffers) {
+            body(buffers.map { .init(data: $0.bytes.assumingMemoryBound(to: UInt8.self), length: $0.length) })
+        }
+    }
+    var output = Array(repeating: 0, count: files.count)
+    let count = withNames(keeping) { keeping in
+        withNames(files) { files in
+            keeping.withUnsafeBufferPointer { keeping in
+                files.withUnsafeBufferPointer { files in
+                    output.withUnsafeMutableBufferPointer {
+                        aether_clipboard_resource_plan(keeping.baseAddress, keeping.count, files.baseAddress, files.count, $0.baseAddress, $0.count)
+                    }
+                }
+            }
+        }
+    }
+    output.removeLast(output.count - count)
+    return output
+}

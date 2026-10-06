@@ -129,3 +129,5 @@ sh LaunchAether.command
 - 常用剪贴板迁移运行 `RustQuickClipboardParityTests` 与 `QuickClipboardTests`；独立旧 Swift 模型/存储/搜索参照、生成编辑及 Unicode 排名、未知/损坏文件/符号链接、修复重载与原生格式权限均需通过。局部编辑性能使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustQuickClipboardParityTests/testMutationBenchmark`，不得推导全应用收益。
 
 - 历史策略迁移运行 `RustClipboardHistoryParityTests`：原 Swift 独立参照覆盖乱序与晚到重复、保护裁剪、清理标志、收藏/分类、规范等价和持久分组身份。重裁剪基准 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardHistoryParityTests/testHistoryTrimBenchmark` 仅验证该合成算法路径，不代表日常或整机收益。
+
+- 调度迁移运行 `RustClipboardScheduleTests` 与 `ClipboardPersistenceTests`：捕获重试、自身写入、计数器/维护代际、原生时间边界和清理标志对照；隔离目录中实际验证延迟落盘、引用保留、失败不清理与 Unicode 文件名。不要将模拟 changeCount 或隔离写入当作正式系统剪贴板/钥匙串页面验收。

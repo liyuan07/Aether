@@ -98,4 +98,21 @@ typedef struct { size_t history_count; size_t pinned_count; uint8_t pinned; } Ae
 AetherClipboardPinPlan aether_clipboard_pin_plan(const AetherClipboardRow *history, size_t history_count, const AetherClipboardRow *pinned, size_t pinned_count,
     AetherClipboardRow candidate, uint8_t candidate_pinned, uint8_t action, size_t limit, size_t *history_output, size_t history_capacity,
     size_t *pinned_output, size_t pinned_capacity);
+
+typedef struct { int64_t last_change; int64_t pending_change; uint8_t pending; uint8_t failures; uint8_t needed; } AetherClipboardCapture;
+AetherClipboardCapture aether_clipboard_capture_probe(AetherClipboardCapture state, int64_t change);
+AetherClipboardCapture aether_clipboard_capture_failed(AetherClipboardCapture state, int64_t change);
+AetherClipboardCapture aether_clipboard_capture_observed(AetherClipboardCapture state, int64_t change);
+AetherClipboardCapture aether_clipboard_capture_committed(AetherClipboardCapture state, int64_t change);
+typedef struct { uint64_t history_revision; uint64_t maintenance_generation; double last_maintenance; } AetherClipboardWork;
+AetherClipboardWork aether_clipboard_history_changed(AetherClipboardWork state);
+AetherClipboardWork aether_clipboard_maintenance_begin(AetherClipboardWork state, double now);
+uint8_t aether_clipboard_revision_current(AetherClipboardWork state, uint64_t revision);
+uint8_t aether_clipboard_maintenance_current(AetherClipboardWork state, uint64_t generation);
+uint8_t aether_clipboard_maintenance_due(AetherClipboardWork state, double now);
+typedef struct { uint8_t pending; uint8_t cleanup; uint8_t scheduled; uint8_t schedule; } AetherClipboardWriter;
+typedef struct { AetherClipboardWriter state; uint8_t write; uint8_t cleanup; } AetherClipboardWriteStep;
+AetherClipboardWriter aether_clipboard_writer_enqueue(AetherClipboardWriter state, uint8_t cleanup);
+AetherClipboardWriteStep aether_clipboard_writer_take(AetherClipboardWriter state);
+size_t aether_clipboard_resource_plan(const AetherBytes *kept, size_t kept_count, const AetherBytes *files, size_t file_count, size_t *output, size_t capacity);
 #endif
