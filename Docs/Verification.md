@@ -165,3 +165,5 @@ sh LaunchAether.command
 - `RustApplicationPolicyTests` 独立旧策略对照 5,000 组应用/偏好/拖动操作，核对完整记录和原字符串 UTF-8，覆盖重复、Unicode 等价、缺失应用、空数组与无效拖动。ABC 防护对照 20,000 次按键/判断/重置事件，包含时钟回退、NaN/无穷、五秒边界及无法观察/停用门控；现有快捷操作规则和输入法保护测试继续运行。
 
 - 正式进程资源采样遵循 [ResourceMeasurement.md](ResourceMeasurement.md)，只测单一正式安装；核对签名/路径/启动标识/哈希、实际页面场景和原始样本。先运行 `python3 -m unittest discover -s Scripts/tests`；RSS、footprint、区间 CPU、唤醒分别报告，未建立旧版同条件基线前不宣称整体下降。
+
+- 电池聚合读取运行 `BatterySnapshotTests`，1,000 组合成服务序列对照分开读取的聚合规则，检查所有输出字段、输入/身份字段、空/失败/重复服务、最后成功值和 pool 外 DTO 生命周期。正式端口页核对 USB、功率与实时采集，资源比较至少使用三轮稳定场景，记录设备和供电状态；图形资源不能归因于 Rust/IOKit 分配。

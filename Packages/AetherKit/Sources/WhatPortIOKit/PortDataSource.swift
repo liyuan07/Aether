@@ -116,6 +116,7 @@ public enum SnapshotReader {
         // Read the SMC once and reuse for the per-port channels, the system DC-in
         // power, and the power-metering-available flag.
         let smcPortPower = smc.readPortPowerChannels()
+        let battery = PowerReader.readSnapshot()
 
         // One read of the SMC DC-in rails, shared by two consumers: the
         // laptop charging-power path below (which discards it on desktops,
@@ -128,14 +129,14 @@ public enum SnapshotReader {
         // AppleSmartBattery.SystemPowerIn freezes under load just like
         // PowerOutDetails, so prefer the SMC where it's available.
         let chargingPower = combineChargingPower(
-            battery: PowerReader.readChargingPower(),
+            battery: battery.charging,
             smc: smcSystemPower
         )
 
         // Per-port metering is available if the battery exposes PowerOutDetails
         // (laptops) OR the SMC exposes power channels (desktops).
         let powerMeteringAvailable =
-            PowerReader.isPowerMeteringAvailable() || !smcPortPower.isEmpty
+            battery.meteringAvailable || !smcPortPower.isEmpty
 
         let chargerData = ChargerReader.readAll()
 
@@ -163,11 +164,11 @@ public enum SnapshotReader {
             hpmPorts: HPMReader.readAll(),
             phyData: PhyReader.readAll(),
             thunderboltData: ThunderboltReader.readAll(),
-            powerData: PowerReader.readAll(),
+            powerData: battery.power,
             ccData: CCReader.readAll(),
             chargerData: chargerData,
             chargingPower: chargingPower,
-            chargerIdentity: PowerReader.readChargerIdentity(),
+            chargerIdentity: battery.identity,
             deviceData: DeviceReader.readUSBDevices(),
             displayData: DisplayReader.readDisplays(),
             portStatsData: PortStatsReader.readAll(),

@@ -92,29 +92,46 @@ public enum PowerReader {
             guard let raw = ioProperty(service, key: "PowerOutDetails") else { return }
             let entries = ioArray(raw)
 
-            for entry in entries {
-                let dict = ioDictionary(entry)
-                let data = RawPowerData(
-                    portIndex: ioInt(dict["PortIndex"]),
-                    watts: ioInt(dict["Watts"]),
-                    current: ioInt(dict["Current"]),
-                    adapterVoltage: ioInt(dict["AdapterVoltage"]),
-                    configuredVoltage: ioInt(dict["ConfiguredVoltage"]),
-                    configuredCurrent: ioInt(dict["ConfiguredCurrent"]),
-                    pdPowerMW: ioInt(dict["PDPowermW"]),
-                    filteredPower: ioInt(dict["FilteredPower"]),
-                    vconnCurrent: ioInt(dict["VConnCurrent"]),
-                    vconnPower: ioInt(dict["VConnPower"]),
-                    vconnMaxCurrent: ioInt(dict["VConnMaxCurrent"]),
-                    powerState: ioInt(dict["PowerState"]),
-                    accumulatedPowerMJ: ioInt(dict["AccumulatedPower"]),
-                    accumulatorCount: ioInt(dict["AccumulatorCount"])
-                )
-                results.append(data)
-            }
+            results.append(contentsOf: parsePowerOut(entries))
         }
 
         return results
+    }
+
+    static func parsePowerOut(_ entries: [Any]) -> [RawPowerData] {
+        var results: [RawPowerData] = []
+        for entry in entries {
+            let dict = ioDictionary(entry)
+            let data = RawPowerData(
+                portIndex: ioInt(dict["PortIndex"]),
+                watts: ioInt(dict["Watts"]),
+                current: ioInt(dict["Current"]),
+                adapterVoltage: ioInt(dict["AdapterVoltage"]),
+                configuredVoltage: ioInt(dict["ConfiguredVoltage"]),
+                configuredCurrent: ioInt(dict["ConfiguredCurrent"]),
+                pdPowerMW: ioInt(dict["PDPowermW"]),
+                filteredPower: ioInt(dict["FilteredPower"]),
+                vconnCurrent: ioInt(dict["VConnCurrent"]),
+                vconnPower: ioInt(dict["VConnPower"]),
+                vconnMaxCurrent: ioInt(dict["VConnMaxCurrent"]),
+                powerState: ioInt(dict["PowerState"]),
+                accumulatedPowerMJ: ioInt(dict["AccumulatedPower"]),
+                accumulatorCount: ioInt(dict["AccumulatorCount"])
+            )
+            results.append(data)
+        }
+        return results
+    }
+
+    // A sampling round enumerates the battery once and shares its full properties.
+    // PowerOutDetails remains an independent property read so a failed full-properties
+    // call cannot suppress valid output power or the metering-availability signal.
+    static func readSnapshot() -> BatterySnapshot {
+        var result = BatterySnapshot()
+        withMatchingServices(className: "AppleSmartBattery") { service in
+            result.append(properties: ioProperties(service), powerOut: ioProperty(service, key: "PowerOutDetails"))
+        }
+        return result
     }
 
     // Read live charging power and battery state from AppleSmartBattery.
@@ -235,5 +252,23 @@ public enum PowerReader {
             }
         }
         return available
+    }
+}
+
+struct BatterySnapshot: Sendable {
+    private(set) var power: [RawPowerData] = []
+    private(set) var charging: RawChargingPower?
+    private(set) var identity: RawChargerIdentity?
+    private(set) var meteringAvailable = false
+
+    mutating func append(properties: [String: Any]?, powerOut: Any?) {
+        if let powerOut {
+            meteringAvailable = true
+            power.append(contentsOf: PowerReader.parsePowerOut(ioArray(powerOut)))
+        }
+        if let properties {
+            if let parsed = PowerReader.parseChargingPower(properties: properties) { charging = parsed }
+            if let parsed = PowerReader.parseChargerIdentity(properties: properties) { identity = parsed }
+        }
     }
 }

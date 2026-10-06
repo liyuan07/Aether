@@ -87,6 +87,9 @@ public final class LivePortDataSource: @unchecked Sendable, PortDataSource {
 
     private func read() {
         guard running, !ended else { return }
-        snapshots?.yield(SnapshotReader.takeSnapshot(smc: smc))
+        // Drain temporary Foundation/IOKit bridge objects after every read,
+        // while the typed snapshot retains only values delivered to consumers.
+        let snapshot = autoreleasepool { SnapshotReader.takeSnapshot(smc: smc) }
+        snapshots?.yield(snapshot)
     }
 }
