@@ -1,25 +1,32 @@
 import XCTest
+import Combine
 @testable import ClipboardFeature
 
 final class SearchTests: XCTestCase {
     @MainActor
     func testSearchWaitsForTypingToPause() async throws {
         let search = ClipboardSearchModel(delayNanoseconds: 30_000_000)
+        let applied = expectation(description: "Debounced query published")
+        let subscription = search.$query.filter { $0 == "17" }.first().sink { _ in applied.fulfill() }
+        defer { subscription.cancel() }
 
         search.text = "1"
         try await Task.sleep(nanoseconds: 5_000_000)
         search.text = "17"
 
         XCTAssertEqual(search.query, "")
-        try await Task.sleep(nanoseconds: 60_000_000)
+        await fulfillment(of: [applied], timeout: 2)
         XCTAssertEqual(search.query, "17")
     }
 
     @MainActor
     func testClearingSearchAppliesImmediately() async throws {
         let search = ClipboardSearchModel(delayNanoseconds: 5_000_000)
+        let applied = expectation(description: "Query published before clearing")
+        let subscription = search.$query.filter { $0 == "17" }.first().sink { _ in applied.fulfill() }
+        defer { subscription.cancel() }
         search.text = "17"
-        try await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [applied], timeout: 2)
         XCTAssertEqual(search.query, "17")
 
         search.text = ""
