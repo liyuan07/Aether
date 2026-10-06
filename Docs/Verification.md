@@ -135,3 +135,5 @@ sh LaunchAether.command
 - 归档校验运行 `RustClipboardArchiveTests` 和 `ClipboardPersistenceTests`：与原生 DTO 对照字段类型/缺省值/UUID/日期/Base64、重复字段及嵌套未知元数据；隔离目录验证损坏文件不能覆盖、外部破坏后清理被阻止、修复并明确重载后恢复。Rust 字符串借用测试确认普通正文不被校验器额外复制。
 
 - 端口生命周期迁移运行 `RustPortLifecycleParityTests` 与既有 `PortLifecycleStateMachineTests`/`PortManagerLifecycleTests`/`PortsTests`。独立旧 Swift 参照比较 20,000 次重复、乱序、断开/解析完成、边界超时和时钟回拨；验证 Swift 值副本修改互不影响。硬件与真实页面验收需另行执行，不由生成通知替代。
+
+- 端口历史迁移运行 `RustPortHistoryParityTests` 与 `PortsTests`，独立旧实现对照 10,000 次方向变化/重复端口/无效功率/突发/边界/回拨/会话事件；验证图表 UUID 和值副本独立性。Rust 内部检查缺失读数不产生累积状态、过期空数组释放容量。页面和 IOKit 硬件验收仍须另行验证。

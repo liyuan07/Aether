@@ -436,3 +436,5 @@ mod clipboard_archive;
 mod json;
 
 mod port_lifecycle;
+
+mod port_history;

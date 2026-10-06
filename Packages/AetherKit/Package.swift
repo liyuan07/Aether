@@ -18,7 +18,7 @@ let package = Package(
         .target(name: "SharedSupport"),
         .target(name: "WhatPortCore", dependencies: ["CAetherCore"]),
         .target(name: "WhatPortIOKit", dependencies: ["WhatPortCore"], linkerSettings: [.linkedFramework("IOKit")]),
-        .target(name: "PortsFeature", dependencies: ["SharedSupport", "WhatPortCore", "WhatPortIOKit"]),
+        .target(name: "PortsFeature", dependencies: ["SharedSupport", "WhatPortCore", "WhatPortIOKit", "CAetherCore"]),
         .testTarget(name: "WhatPortCoreTests", dependencies: ["WhatPortCore", "WhatPortIOKit"]),
         .testTarget(name: "PortsFeatureTests", dependencies: ["PortsFeature"]),
         .target(name: "ShortcutCore", dependencies: ["RustCore", "CAetherCore"]),

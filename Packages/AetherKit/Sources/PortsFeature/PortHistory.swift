@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CAetherCore
 import WhatPortCore
 
 struct PortPowerPoint: Identifiable {
@@ -6,41 +8,58 @@ struct PortPowerPoint: Identifiable {
     let timestamp: Date
     let watts: Double
     let segment: Int
+    var coreToken: UInt64 = 0
 }
 
-/// Timestamp windows rather than sample counts: notifications may burst.
+/// Rust owns sampling/segmentation/history; Swift keeps incremental chart projections.
 struct PortHistory {
-    private(set) var points: [Int: [PortPowerPoint]] = [:]
-    private var segments: [Int: Int] = [:]
-    private var directions: [Int: PowerDirection] = [:]
-    private var lastReading: [Int: Date] = [:]
-
-    mutating func breakSession() { lastReading.removeAll() }
-
-    mutating func append(ports: [PortState], at now: Date) {
-        prune(at: now)
-        let readable = Set(ports.filter { $0.power != nil }.map(\.id))
-        for id in Array(lastReading.keys) where !readable.contains(id) { lastReading[id] = nil }
-        for port in ports {
-            guard let power = port.power, power.watts.isFinite, power.watts >= 0 else {
-                lastReading[port.id] = nil
-                continue
-            }
-            if let last = lastReading[port.id], now <= last { continue }
-            let continuous = lastReading[port.id].map { now.timeIntervalSince($0) <= 2.5 && directions[port.id] == power.direction } ?? false
-            if !continuous { segments[port.id, default: 0] += 1 }
-            // Keep at most one point per 100ms even under notification bursts.
-            if let last = lastReading[port.id], now.timeIntervalSince(last) < 0.1 { continue }
-            points[port.id, default: []].append(PortPowerPoint(timestamp: now, watts: power.watts, segment: segments[port.id, default: 0]))
-            lastReading[port.id] = now
-            directions[port.id] = power.direction
-        }
+    private final class Storage {
+        let handle: UnsafeMutableRawPointer?
+        init() { handle = aether_port_history_create() }
+        init(copying source: Storage) { handle = aether_port_history_clone(source.handle) }
+        deinit { aether_port_history_destroy(handle) }
     }
-
+    private var storage = Storage()
+    private(set) var points: [Int: [PortPowerPoint]] = [:]
+    private mutating func makeUnique() {
+        if !isKnownUniquelyReferenced(&storage) { storage = Storage(copying: storage) }
+    }
+    mutating func breakSession() { makeUnique(); aether_port_history_break(storage.handle) }
+    mutating func append(ports: [PortState], at now: Date) {
+        makeUnique()
+        let readings = ports.map { port in
+            AetherPortReading(port_id: Int64(port.id), watts: port.power?.watts ?? 0,
+                has_power: port.power == nil ? 0 : 1, direction: port.power?.direction == .incoming ? 0 : 1)
+        }
+        readings.withUnsafeBufferPointer { rows in
+            aether_port_history_append(storage.handle, rows.baseAddress, rows.count, now.timeIntervalSinceReferenceDate)
+        }
+        applyEvents()
+    }
     mutating func prune(at now: Date) {
-        for id in Array(points.keys) {
-            points[id]?.removeAll { now.timeIntervalSince($0.timestamp) > 60 }
+        makeUnique()
+        aether_port_history_prune(storage.handle, now.timeIntervalSinceReferenceDate)
+        applyEvents()
+    }
+    private mutating func applyEvents() {
+        let count = aether_port_history_events(storage.handle, nil, 0)
+        if count == 0 { return }
+        var events = [AetherPortHistoryEvent](repeating: .init(), count: count)
+        events.withUnsafeMutableBufferPointer { rows in
+            _ = aether_port_history_events(storage.handle, rows.baseAddress, rows.count)
+        }
+        // Batch expired-token removal once per affected port, preserving IDs of retained points.
+        var removed: [Int: Set<UInt64>] = [:]
+        for event in events where event.removed != 0 { removed[Int(event.port_id), default: []].insert(event.token) }
+        for (id, tokens) in removed {
+            points[id]?.removeAll { tokens.contains($0.coreToken) }
             if points[id]?.isEmpty == true { points[id] = nil }
+        }
+        for event in events where event.removed == 0 {
+            var point = PortPowerPoint(timestamp: Date(timeIntervalSinceReferenceDate: event.timestamp),
+                watts: event.watts, segment: Int(event.segment))
+            point.coreToken = event.token
+            points[Int(event.port_id), default: []].append(point)
         }
     }
 }

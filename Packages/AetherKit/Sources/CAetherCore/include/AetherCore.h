@@ -131,4 +131,13 @@ void aether_port_lifecycle_handle(void *core, uint8_t signal, int64_t port_id, d
 void aether_port_lifecycle_reconcile(void *core, const int64_t *disconnected, size_t disconnected_count,
     const int64_t *resolved, size_t resolved_count, double now);
 size_t aether_port_lifecycle_phases(const void *core, AetherPortPhase *output, size_t capacity);
+typedef struct { int64_t port_id; double watts; uint8_t has_power; uint8_t direction; } AetherPortReading;
+typedef struct { int64_t port_id; uint64_t token; double timestamp; double watts; int64_t segment; uint8_t removed; } AetherPortHistoryEvent;
+void *aether_port_history_create(void);
+void *aether_port_history_clone(const void *core);
+void aether_port_history_destroy(void *core);
+void aether_port_history_break(void *core);
+void aether_port_history_append(void *core, const AetherPortReading *ports, size_t count, double now);
+void aether_port_history_prune(void *core, double now);
+size_t aether_port_history_events(const void *core, AetherPortHistoryEvent *output, size_t capacity);
 #endif
