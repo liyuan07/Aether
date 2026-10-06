@@ -159,3 +159,5 @@ sh LaunchAether.command
 - `RustConnectorPowerTests` 独立旧实现对照 6,000 组连接器快照，检查端口 ID/类型/连接状态和全部 PortPower 字段，包含至少 500 次供电归属、重复合同、SMC/USB-C 门控、缺省/零/负遥测、整数极值和非标准类型。固定用例核对首个获选非 USB-C 合同、满电继续供电及 USB-C 节点优先级；既有 MagSafePowerTests/SMC/PortManager 回归继续运行。
 
 - 搜索防抖异步测试等待 `$query` 的实际目标事件（2 秒超时），避免将负载下的任务调度延迟误判为 20/60 毫秒内必须完成。保留更新前为空与清空后立即为空的断言；产品延时和实现不改变。
+
+- `RustPortDecodeTests` 独立旧基础状态构造对照 6,000 组快照，检查两条通道、客户端、USB2、CC、完整雷雳链路、所有输出功率/能量字段及 DP 文案；包含缺省输入、Unicode/NUL、未知类型、组合宽度、非正值及 Int 极值。现有 PHY/TB/能量/PortManager 集成回归继续执行。

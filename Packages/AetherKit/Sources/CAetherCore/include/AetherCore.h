@@ -206,4 +206,8 @@ typedef struct { int64_t id; uint8_t active; } AetherPowerConnector;
 size_t aether_port_connector_power(const AetherPowerConnector *connectors, size_t count,
     const AetherPowerCharger *chargers, size_t charger_count, const int64_t *smc_ports, size_t smc_count,
     AetherPowerTelemetry telemetry, uint8_t usb_node, uint8_t usb_smc, AetherPowerPatch *output, size_t capacity);
+typedef struct { uint8_t transport; uint8_t on; } AetherDecodedLane;
+AetherDecodedLane aether_port_lane(const uint8_t *transport, size_t count, const uint8_t *power, size_t power_count);
+typedef struct { double watts; int64_t tx; int64_t rx; int64_t gbps; uint8_t generation; uint8_t link; uint8_t power; uint8_t energy; } AetherDecodedPort;
+AetherDecodedPort aether_port_decode(uint8_t tb, int64_t width, int64_t speed, uint8_t power, int64_t watts, int64_t samples, int64_t energy);
 #endif
