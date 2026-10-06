@@ -93,27 +93,63 @@ pub extern "C" fn aether_guide_update(mut s: Guide, active: u16, event: u8) -> G
     s
 }
 
+// Most clipboard segments are short. Preserve every native grapheme boundary
+// while storing offsets in the narrowest lossless representation.
+enum Boundaries {
+    Implicit,
+    U8(Box<[u8]>),
+    U16(Box<[u16]>),
+    U32(Box<[u32]>),
+    Native(Box<[usize]>),
+}
+impl Boundaries {
+    fn new(values: &[usize]) -> Self {
+        let Some(&last) = values.last() else {
+            return Self::Implicit;
+        };
+        if u8::try_from(last).is_ok() {
+            Self::U8(values.iter().map(|&v| v as u8).collect())
+        } else if u16::try_from(last).is_ok() {
+            Self::U16(values.iter().map(|&v| v as u16).collect())
+        } else if u32::try_from(last).is_ok() {
+            Self::U32(values.iter().map(|&v| v as u32).collect())
+        } else {
+            Self::Native(values.into())
+        }
+    }
+    fn boundary(&self, index: usize) -> usize {
+        match self {
+            Self::Implicit => index,
+            Self::U8(v) => v[index] as usize,
+            Self::U16(v) => v[index] as usize,
+            Self::U32(v) => v[index] as usize,
+            Self::Native(v) => v[index],
+        }
+    }
+    fn position(&self, byte: usize) -> Option<usize> {
+        match self {
+            Self::Implicit => Some(byte),
+            Self::U8(v) => v.binary_search(&u8::try_from(byte).ok()?).ok(),
+            Self::U16(v) => v.binary_search(&u16::try_from(byte).ok()?).ok(),
+            Self::U32(v) => v.binary_search(&u32::try_from(byte).ok()?).ok(),
+            Self::Native(v) => v.binary_search(&byte).ok(),
+        }
+    }
+}
+
 struct Segment {
     bytes: Vec<u8>,
-    boundaries: Vec<usize>,
+    boundaries: Boundaries,
     character_count: usize,
     mask: u128,
     numeric: bool,
 }
 impl Segment {
     fn boundary(&self, index: usize) -> usize {
-        if self.boundaries.is_empty() {
-            index
-        } else {
-            self.boundaries[index]
-        }
+        self.boundaries.boundary(index)
     }
     fn position(&self, byte: usize) -> Option<usize> {
-        if self.boundaries.is_empty() {
-            Some(byte)
-        } else {
-            self.boundaries.binary_search(&byte).ok()
-        }
+        self.boundaries.position(byte)
     }
     fn score(&self, segment: &Self) -> i32 {
         let qn = self.character_count;
@@ -230,7 +266,7 @@ pub unsafe extern "C" fn aether_search_create(
         .fold(0, |mask, b| mask | (1_u128 << b));
     Box::into_raw(Box::new(Segment {
         bytes: bytes.to_vec(),
-        boundaries: owned_boundaries,
+        boundaries: Boundaries::new(&owned_boundaries),
         character_count,
         mask,
         numeric: numeric != 0,
@@ -311,7 +347,7 @@ mod tests {
     fn ascii(s: &str, numeric: bool) -> Segment {
         Segment {
             bytes: s.as_bytes().to_vec(),
-            boundaries: vec![],
+            boundaries: Boundaries::Implicit,
             character_count: s.len(),
             mask: s.bytes().fold(0, |m, b| m | 1_u128 << b),
             numeric,
@@ -326,6 +362,29 @@ mod tests {
         assert_eq!(ascii("123", true).score(&ascii("1x2x3", false)), -1);
         assert_eq!(ascii("abc", false).score(&ascii("abcde", false)), 19_995);
         assert_eq!(ascii("abc", false).score(&ascii("xxabc", false)), 14_998);
+    }
+    #[test]
+    fn compact_boundaries_preserve_offsets_at_every_width_transition() {
+        let mut limits = vec![255_usize, 256, 65535, 65536, u32::MAX as usize];
+        if usize::BITS > 32 {
+            limits.push(u32::MAX as usize + 1);
+        }
+        for last in limits {
+            let values = [0, 1, last - 1, last];
+            let compact = Boundaries::new(&values);
+            for (index, &offset) in values.iter().enumerate() {
+                assert_eq!(compact.boundary(index), offset);
+                assert_eq!(compact.position(offset), Some(index));
+            }
+            assert_eq!(compact.position(2), None);
+            assert_eq!(compact.position(last + 1), None);
+        }
+        assert!(matches!(Boundaries::new(&[0, 255]), Boundaries::U8(_)));
+        assert!(matches!(Boundaries::new(&[0, 256]), Boundaries::U16(_)));
+        assert!(matches!(Boundaries::new(&[0, 65536]), Boundaries::U32(_)));
+        let implicit = Boundaries::new(&[]);
+        assert_eq!(implicit.boundary(37), 37);
+        assert_eq!(implicit.position(37), Some(37));
     }
 }
 

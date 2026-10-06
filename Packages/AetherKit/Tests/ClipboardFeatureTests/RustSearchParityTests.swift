@@ -4,6 +4,17 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchParityTests: XCTestCase {
+    func testBoundaryCompressionPreservesNativeSearchAcrossOffsetWidths() {
+        for length in [240, 255, 256, 65_520, 65_535, 65_536] {
+            let segment = String(repeating: "a", count: length) + "中文\r\n👨‍👩‍👦 cafe\u{301}"
+            let reference = ReferenceClipboardIndexedSegment(segment)
+            for raw in ["中文", "a中文", "👨", "👨‍👩‍👦", "café", "missing"] {
+                XCTAssertEqual(clipboardSearchScore(query: raw, segment: segment),
+                    referenceClipboardSearchScore(query: ReferenceClipboardNormalizedQuery(raw), segment: reference))
+            }
+        }
+    }
+
     func testDocumentAggregationMatchesIndividualScoring() {
         let corpus = ["", "123456789", "cafe\u{301}", "中文剪贴板", "👨‍👩‍👦 family", "clip board manager", "a\u{0000}b", String(repeating: "x", count: 1_025)]
         for raw in corpus + ["123", "café", "family", "剪板", "clipman", "missing"] {

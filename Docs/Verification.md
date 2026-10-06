@@ -181,3 +181,5 @@ sh LaunchAether.command
 - `TimerPreferenceDomainTests` 核对 44 个计时器静态键均使用 AppEnvironment.appDefaults，并以随机探针键验证类型包装与原生 UserDefaults 双向一致，剪贴板、快捷操作和控制中心域不受影响。测试只访问进程独立偏好域；普通安装需核对原页面和既有配置可见性。
 
 - `ResourceProfileTests` 检查无请求、合法清单、域/目录、运行标识、非法位置/版本/ID/计数及符号链接拒绝；不得让非法显式请求退回真实用户数据。`python3 -m unittest discover -s Scripts/tests` 检查新建合成负载不覆盖、内容数量/身份/哈希及非法计数无目录副作用。正式隔离实例必须核对 runtime.json 的 PID、唯一正式可执行文件、合成窗口和退出后普通运行恢复；不在配置中执行系统动作。
+
+- 搜索边界压缩由 Rust 测试核对所有整数宽度切换点和超范围查找；`RustSearchParityTests.testBoundaryCompressionPreservesNativeSearchAcrossOffsetWidths` 对照原生评分器验证短/长 Unicode、CRLF、完整及部分 emoji 和组合字符。字符边界有效载荷减少仅证明索引内部存储变化，必须另做正式进程同负载复测才能报告整应用收益。
