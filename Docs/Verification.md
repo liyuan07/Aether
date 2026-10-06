@@ -171,3 +171,5 @@ sh LaunchAether.command
 - `RustPreferencesTests` 独立旧 Codable 规则对照 6,000 组文档（至少 500 组成功），覆盖缺省/null/错误类型、旧新字段优先级及默认值；枚举全部 UInt16 键码和 BMP 有效字符核对双向字母键映射、规范等价及物理输入法按键。检查长按 NaN/无穷/边界、窗口覆盖、存储来源及版本极值；临时目录验证不要求迁移时不写、要求时保留旧原文件、未来标签当前文件优先且不覆盖。
 
 - `RustSearchParityTests/testDocumentAggregationMatchesIndividualScoring` 对照逐片段最高分，覆盖 0–79 片段、数值、Unicode、NUL 和长文本。局部桥接基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustSearchParityTests/testDocumentAggregationBenchmark`，只使用合成内容，并核对结果总分一致。
+
+- `RustClipboardArchiveTests` 同时对照 Rust 实际加载与旧 Codable 接受/拒绝；3,000 条合成记录比较完整字段与保存后重载、文本 UTF-8、空/缺省和 Rust 句柄释放后的原生数据可用性。使用隔离目录；`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardArchiveTests/testArchiveLoadBenchmark` 测量 10,000 条合成记录五次读取，对照旧 Rust 校验加 Swift 解码路径，不读取真实剪贴板正文。

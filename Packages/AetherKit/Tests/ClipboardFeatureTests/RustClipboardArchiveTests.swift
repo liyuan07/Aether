@@ -2,9 +2,65 @@
 import Foundation
 import XCTest
 import CAetherCore
+import RustCore
 @testable import ClipboardFeature
 
 final class RustClipboardArchiveTests: XCTestCase {
+    func testDecodedRecordsPreserveEveryFieldAndOutliveRustOwner() throws {
+        let context = Context(); defer { context.cleanup() }
+        let uuid = "12345678-1234-5678-90AB-1234567890AB"
+        let texts = ["", "合成\u{0000}👨‍👩‍👧‍👦", "a\u{301}", "\\\"\r\n", "file:///synthetic/%E4%B8%AD%E6%96%87", String(repeating: "长", count: 128)]
+        let items: [[String: Any]] = (0..<3_000).map { index in
+            var item: [String: Any] = ["id": uuid, "timestamp": Double(index) * 0.125 - 500,
+                "type": ["text", "url", "file", "image", "rtf", "unknown"][index % 6], "isPinned": index % 2 == 0]
+            for (offset, field) in ["preview", "stringData", "imageFileName", "imageContentHash", "rtfFileName"].enumerated() {
+                if index % (offset + 2) != 0 { item[field] = texts[(index + offset) % texts.count] }
+            }
+            if index % 3 != 0 { item["fileURLs"] = index % 2 == 0 ? [] : texts }
+            if index % 4 != 0 { item["rtfData"] = Data(texts[index % texts.count].utf8).base64EncodedString() }
+            return item
+        }
+        let fixture: [String: Any] = ["history": items, "pinnedItems": Array(items.prefix(100)),
+            "groups": [["id": uuid, "timestamp": -1.25, "items": Array(items.suffix(150))]]]
+        let bytes = try JSONSerialization.data(withJSONObject: fixture)
+        try context.put(bytes)
+        let expected = try JSONDecoder().decode(ClipboardArchive.self, from: bytes)
+        // load destroys the Rust owner before returning; all native values must remain usable.
+        let actual = try XCTUnwrap(context.store.load())
+        XCTAssertEqual(try encodedObject(actual), try encodedObject(expected))
+        XCTAssertEqual(actual.history[1].stringData?.utf8.map { $0 }, expected.history[1].stringData?.utf8.map { $0 })
+        XCTAssertEqual(try Data(contentsOf: context.file), bytes)
+        try context.store.save(actual)
+        XCTAssertEqual(try encodedObject(XCTUnwrap(context.store.load())), try encodedObject(expected))
+    }
+
+    func testArchiveLoadBenchmark() throws {
+        guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { throw XCTSkip("Run explicitly with synthetic archive") }
+        let context = Context(); defer { context.cleanup() }
+        let uuid = "12345678-1234-5678-90AB-1234567890AB"
+        let fixture: [String: Any] = ["history": (0..<10_000).map { index in
+            ["id": uuid, "timestamp": index, "type": "text", "stringData": "synthetic clipboard item \(index)", "preview": "synthetic preview", "isPinned": false] as [String: Any]
+        }, "pinnedItems": [], "groups": []]
+        try context.put(JSONSerialization.data(withJSONObject: fixture))
+        let old = context.file.withUnsafeFileSystemRepresentation { aether_clipboard_archive_create($0) }
+        defer { aether_clipboard_archive_destroy(old) }
+        var oldCount = 0, newCount = 0
+        let start = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<5 {
+            let bytes = try RustBuffer.take(aether_clipboard_archive_read(old))
+            oldCount += try JSONDecoder().decode(ClipboardArchive.self, from: bytes).history.count
+        }
+        let oldNS = DispatchTime.now().uptimeNanoseconds - start
+        let newStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<5 { newCount += try XCTUnwrap(context.store.load()).history.count }
+        let newNS = DispatchTime.now().uptimeNanoseconds - newStart
+        XCTAssertEqual(oldCount, newCount)
+        print("AETHER_ARCHIVE_LOAD_BENCHMARK items=10000 iterations=5 old_ns=\(oldNS) rust_owned_ns=\(newNS)")
+    }
+
+    private func encodedObject(_ archive: ClipboardArchive) throws -> NSDictionary {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(archive)) as? NSDictionary)
+    }
     func testSchemaValidationMatchesNativeLegacyDTOCodec() throws {
         let uuid = UUID().uuidString
         let values: [String: [Any]] = [
@@ -45,6 +101,7 @@ final class RustClipboardArchiveTests: XCTestCase {
             let nested = String(repeating: "[", count: depth) + "0" + String(repeating: "]", count: depth)
             let bytes = Data("{\"history\":[],\"pinnedItems\":[],\"unknown\":\(nested)}".utf8)
             XCTAssertEqual(validate(bytes), nativeAccepts(bytes), "depth \(depth)")
+            assertDecodedAcceptance(bytes)
         }
     }
     func testDuplicateKeysKeepNativeFirstOccurrence() {
@@ -56,7 +113,11 @@ final class RustClipboardArchiveTests: XCTestCase {
             "{\"history\":[{\"timestamp\":0,\"timestamp\":\"bad\"}],\"pinnedItems\":[]}",
             "{\"history\":[],\"pinnedItems\":[],\"groups\":null,\"groups\":false}"
         ]
-        for fixture in fixtures { let data=Data(fixture.utf8);XCTAssertEqual(validate(data),nativeAccepts(data)) }
+        for fixture in fixtures {
+            let data = Data(fixture.utf8)
+            XCTAssertEqual(validate(data), nativeAccepts(data))
+            assertDecodedAcceptance(data)
+        }
     }
 
     func testMissingAndLegacyDefaultsAreLoadedWithoutRewritingFile() throws {
@@ -109,6 +170,18 @@ final class RustClipboardArchiveTests: XCTestCase {
     private func assertParity(_ fixture: Any, file: StaticString = #filePath, line: UInt = #line) throws {
         let bytes = try JSONSerialization.data(withJSONObject: fixture, options: [.fragmentsAllowed])
         XCTAssertEqual(validate(bytes), nativeAccepts(bytes), "Synthetic fixture: " + String(decoding: bytes, as: UTF8.self), file: file, line: line)
+        let context = Context(); defer { context.cleanup() }
+        try context.put(bytes)
+        XCTAssertEqual((try? context.store.load()) != nil, nativeAccepts(bytes), file: file, line: line)
+        XCTAssertEqual(try Data(contentsOf: context.file), bytes, file: file, line: line)
+    }
+    private func assertDecodedAcceptance(_ bytes: Data, file: StaticString = #filePath, line: UInt = #line) {
+        let context = Context(); defer { context.cleanup() }
+        do {
+            try context.put(bytes)
+            XCTAssertEqual((try? context.store.load()) != nil, nativeAccepts(bytes), file: file, line: line)
+            XCTAssertEqual(try Data(contentsOf: context.file), bytes, file: file, line: line)
+        } catch { XCTFail("Synthetic fixture setup failed", file: file, line: line) }
     }
     private func validate(_ bytes: Data) -> Bool {
         bytes.withUnsafeBytes { aether_clipboard_archive_validate(.init(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count)) == 0 }

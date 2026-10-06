@@ -123,6 +123,22 @@ void *aether_clipboard_archive_read(void *store);
 void aether_clipboard_archive_block(void *store);
 uint32_t aether_clipboard_archive_write(void *store, AetherBytes data);
 uint32_t aether_clipboard_archive_validate(AetherBytes data);
+// Read-only byte views borrow the decoded owner; copy them before destroying it.
+typedef struct {
+    AetherBytes id, preview, string_data, image_file_name, image_content_hash, rtf_data, rtf_file_name;
+    double timestamp;
+    size_t file_count;
+    uint16_t present;
+    uint8_t kind, pinned;
+} AetherClipboardArchiveItem;
+void *aether_clipboard_archive_load_decoded(void *store);
+void aether_clipboard_archive_decoded_destroy(void *decoded);
+uint32_t aether_clipboard_archive_decoded_status(const void *decoded);
+size_t aether_clipboard_archive_decoded_count(const void *decoded, uint8_t section, size_t group);
+AetherClipboardArchiveItem aether_clipboard_archive_decoded_item(const void *decoded, uint8_t section, size_t group, size_t index);
+AetherBytes aether_clipboard_archive_decoded_url(const void *decoded, uint8_t section, size_t group, size_t index, size_t url);
+AetherClipboardArchiveItem aether_clipboard_archive_decoded_group(const void *decoded, size_t index);
+uint8_t aether_clipboard_archive_decoded_has_groups(const void *decoded);
 // USB-C/Thunderbolt domain lifecycle; platform notifications remain native.
 typedef struct { int64_t port_id; uint8_t phase; } AetherPortPhase;
 void *aether_port_lifecycle_create(void);

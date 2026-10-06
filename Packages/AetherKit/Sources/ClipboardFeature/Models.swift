@@ -320,6 +320,36 @@ struct ClipboardItem: Identifiable, Codable, Sendable {
         ) ?? Self.generatePreview(stringData: stringData ?? "", type: type)
     }
 
+    /// Platform DTO conversion only; Rust owns parsing, validation and field-presence policy.
+    init(archiveRecord record: AetherClipboardArchiveItem, fileURLs: [String]?) throws {
+        func has(_ bit: UInt16) -> Bool { record.present & bit != 0 }
+        func optional(_ bytes: AetherBytes, _ bit: UInt16) -> String? { has(bit) ? clipboardArchiveText(bytes) : nil }
+        if has(1) {
+            guard let uuid = UUID(uuidString: clipboardArchiveText(record.id)) else { throw CocoaError(.fileReadCorruptFile) }
+            id = uuid
+        } else { id = UUID() }
+        switch record.kind {
+        case 0: type = .text
+        case 1: type = .url
+        case 2: type = .file
+        case 3: type = .image
+        case 4: type = .rtf
+        default: type = .unknown
+        }
+        timestamp = has(2) ? Date(timeIntervalSinceReferenceDate: record.timestamp) : Date()
+        isPinned = record.pinned != 0
+        stringData = optional(record.string_data, 8)
+        imageFileName = optional(record.image_file_name, 16)
+        imageContentHash = optional(record.image_content_hash, 32)
+        self.fileURLs = fileURLs
+        if has(128) {
+            guard let data = Data(base64Encoded: clipboardArchiveText(record.rtf_data)) else { throw CocoaError(.fileReadCorruptFile) }
+            rtfData = data
+        } else { rtfData = nil }
+        rtfFileName = optional(record.rtf_file_name, 256)
+        preview = optional(record.preview, 4) ?? Self.generatePreview(stringData: stringData ?? "", type: type)
+    }
+
     var displayPreview: String {
         type == .url ? (stringData ?? preview) : preview
     }
