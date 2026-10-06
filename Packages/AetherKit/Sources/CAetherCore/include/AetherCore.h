@@ -122,4 +122,13 @@ void *aether_clipboard_archive_read(void *store);
 void aether_clipboard_archive_block(void *store);
 uint32_t aether_clipboard_archive_write(void *store, AetherBytes data);
 uint32_t aether_clipboard_archive_validate(AetherBytes data);
+// USB-C/Thunderbolt domain lifecycle; platform notifications remain native.
+typedef struct { int64_t port_id; uint8_t phase; } AetherPortPhase;
+void *aether_port_lifecycle_create(void);
+void *aether_port_lifecycle_clone(const void *core);
+void aether_port_lifecycle_destroy(void *core);
+void aether_port_lifecycle_handle(void *core, uint8_t signal, int64_t port_id, double now);
+void aether_port_lifecycle_reconcile(void *core, const int64_t *disconnected, size_t disconnected_count,
+    const int64_t *resolved, size_t resolved_count, double now);
+size_t aether_port_lifecycle_phases(const void *core, AetherPortPhase *output, size_t capacity);
 #endif

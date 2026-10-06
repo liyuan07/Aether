@@ -119,3 +119,5 @@ Rust 核心执行 Prompt 请求体/响应协议、接口路径策略、请求代
 剪贴板调度使用 Rust 值状态机保存捕获重试、历史修订、维护代际及写入合并/清理状态。原生 Task/DispatchQueue 负责执行，归档 DTO 快照暂由 Swift 保存；系统时间和 changeCount 在调用时借用输入。资源清理由 Rust 对 canonical composition 的文件名集合规划，只在原子归档写入成功后通过原生文件接口执行。写入器的目录可注入，测试不触及真实历史或负载。
 
 剪贴板归档的 Rust 句柄保存路径和覆盖阻止状态，按旧的无版本 history/pinnedItems/groups 格式校验，再移交读取缓冲区给原生 Codable DTO。缺省 UUID/Date/预览仍由原生生成；Rust 校验借用未转义字符串，不保留另一份正文。重复 JSON 字段沿用原生首次出现值，额外 Base64 padding 和未知字段的嵌套深度维持 Foundation 接受边界。读取失败或发现外部损坏后阻止覆盖和负载清理，明确重载有效文件才能恢复。完整记录所有权与展示 DTO 编解码仍需迁移。
+
+端口连接生命周期的 episodes 由 Rust 持有，原生 IOAccessoryManager 信号转为固定 C 枚举，原生快照时钟驱动超时和回拨重置。Swift 的公开值类型适配器采用写时复制，复制后第一次修改才克隆 Rust 状态，保持原 struct 的独立行为；查询只生成端口 ID/阶段展示映射。IOKit 句柄、监听队列、端口关联和电源采样尚在原生层，相关业务仍需继续迁移。

@@ -16,7 +16,7 @@ let package = Package(
         .target(name: "CAetherCore", linkerSettings: [.unsafeFlags(["-L" + rustLibraryPath])]),
         .target(name: "RustCore", dependencies: ["CAetherCore"]),
         .target(name: "SharedSupport"),
-        .target(name: "WhatPortCore"),
+        .target(name: "WhatPortCore", dependencies: ["CAetherCore"]),
         .target(name: "WhatPortIOKit", dependencies: ["WhatPortCore"], linkerSettings: [.linkedFramework("IOKit")]),
         .target(name: "PortsFeature", dependencies: ["SharedSupport", "WhatPortCore", "WhatPortIOKit"]),
         .testTarget(name: "WhatPortCoreTests", dependencies: ["WhatPortCore", "WhatPortIOKit"]),

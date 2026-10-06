@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CAetherCore
 
 // Domain-layer mirror of WhatPortIOKit's RawLifecycleSignal. WhatPortCore
 // never imports WhatPortIOKit, so it carries its own copy of the same four
@@ -38,99 +40,48 @@ public struct PortLifecycleSignalInput: Sendable, Equatable {
 // and the reconciliation clock via applySnapshot); it is public only so the
 // test target can exercise it directly.
 public struct PortLifecycleStateMachine: Sendable {
-    // Signals stop firing partway through a connection more often than they
-    // run to completion (empirical corpus behaviour), so a phase that has
-    // gone quiet this long is assumed abandoned rather than mid-negotiation.
     public static let staleTimeout: TimeInterval = 3
-    // Ceiling on how long any phase may be shown at all, even under
-    // continuous non-progressing signal churn that keeps refreshing
-    // lastSignalAt: never let the UI show a stuck phase forever.
     public static let maxPhaseDuration: TimeInterval = 6
-
-    private struct Episode {
-        var phase: PortLifecyclePhase
-        var startedAt: Date
-        var lastSignalAt: Date
+    private final class Storage: @unchecked Sendable {
+        let handle: UnsafeMutableRawPointer?
+        init() { handle = aether_port_lifecycle_create() }
+        init(copying source: Storage) { handle = aether_port_lifecycle_clone(source.handle) }
+        deinit { aether_port_lifecycle_destroy(handle) }
     }
-
-    private var episodes: [Int: Episode] = [:]
-
+    private var storage = Storage()
     public init() {}
-
+    // Copy-on-write preserves the original public struct's independent value semantics.
+    private mutating func makeUnique() {
+        if !isKnownUniquelyReferenced(&storage) { storage = Storage(copying: storage) }
+    }
     public var phases: [Int: PortLifecyclePhase] {
-        episodes.mapValues(\.phase)
+        let count = aether_port_lifecycle_phases(storage.handle, nil, 0)
+        var rows = [AetherPortPhase](repeating: .init(), count: count)
+        rows.withUnsafeMutableBufferPointer { buffer in
+            _ = aether_port_lifecycle_phases(storage.handle, buffer.baseAddress, buffer.count)
+        }
+        return Dictionary(uniqueKeysWithValues: rows.map { (Int($0.port_id), $0.phase == 0 ? .detecting : .negotiating) })
     }
-
-    // No backward-clock guard needed here: a `now` that is earlier than a
-    // previously stored value only ever shortens or restarts an episode
-    // (never extends one), and any resulting negative interval is caught by
-    // reconcile's own rebase on its next call.
     public mutating func handle(_ signal: LifecycleSignalKind, portID: Int, at now: Date) {
+        makeUnique()
+        let code: UInt8
         switch signal {
-        case .attach:
-            if var episode = episodes[portID] {
-                // Forward-only within an episode: a stray attach arriving
-                // after negotiating has already started must not downgrade it.
-                episode.lastSignalAt = now
-                episodes[portID] = episode
-            } else {
-                episodes[portID] = Episode(phase: .detecting, startedAt: now, lastSignalAt: now)
-            }
-
-        case .negotiating, .contractEstablished:
-            if var episode = episodes[portID] {
-                episode.phase = .negotiating
-                episode.lastSignalAt = now
-                episodes[portID] = episode
-            } else {
-                episodes[portID] = Episode(phase: .negotiating, startedAt: now, lastSignalAt: now)
-            }
-
-        case .transportReady:
-            episodes.removeValue(forKey: portID)
+        case .attach: code = 0
+        case .negotiating: code = 1
+        case .contractEstablished: code = 2
+        case .transportReady: code = 3
         }
+        aether_port_lifecycle_handle(storage.handle, code, Int64(portID), now.timeIntervalSinceReferenceDate)
     }
-
-    // Clears tracked ports the caller already knows are done (disconnected or
-    // resolved to a live PortState), then expires anything left stale or over
-    // the hard ceiling. Called from PortManager.applySnapshot, so the 1s poll
-    // (and the debounced connection-notification path feeding it) double as
-    // this machine's timeout clock; no separate Timer or Task needed.
     public mutating func reconcile(disconnectedPortIDs: Set<Int>, resolvedPortIDs: Set<Int>, now: Date) {
-        for portID in disconnectedPortIDs {
-            episodes.removeValue(forKey: portID)
-        }
-        for portID in resolvedPortIDs {
-            episodes.removeValue(forKey: portID)
-        }
-
-        // Plain interval comparisons: a backwards clock jump produces a
-        // negative interval, which simply never satisfies `>= timeout`, so it
-        // can't crash. But left alone a negative interval also means the
-        // episode keeps reading as fresh for roughly jump+timeout seconds, so
-        // a large backward jump can leave a phase visible far longer than any
-        // timeout is meant to allow. Date is wall-clock and can jump backward
-        // (NTP correction, manual clock change); rebasing startedAt and
-        // lastSignalAt to `now` when either interval goes negative bounds the
-        // episode to at most one timeout window measured from the corrected
-        // clock, same as if it had just started.
-        var expired: [Int] = []
-        for (portID, episode) in episodes {
-            var episode = episode
-            if now < episode.lastSignalAt || now < episode.startedAt {
-                episode.startedAt = now
-                episode.lastSignalAt = now
-                episodes[portID] = episode
-                continue
+        makeUnique()
+        let disconnected = disconnectedPortIDs.map(Int64.init)
+        let resolved = resolvedPortIDs.map(Int64.init)
+        disconnected.withUnsafeBufferPointer { d in
+            resolved.withUnsafeBufferPointer { r in
+                aether_port_lifecycle_reconcile(storage.handle, d.baseAddress, d.count, r.baseAddress, r.count,
+                    now.timeIntervalSinceReferenceDate)
             }
-            let sinceSignal = now.timeIntervalSince(episode.lastSignalAt)
-            let sinceStart = now.timeIntervalSince(episode.startedAt)
-            if sinceSignal >= Self.staleTimeout || sinceStart >= Self.maxPhaseDuration {
-                expired.append(portID)
-            }
-        }
-        for portID in expired {
-            episodes.removeValue(forKey: portID)
         }
     }
 }
