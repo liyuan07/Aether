@@ -1,3 +1,4 @@
+import CAetherCore
 import RustCore
 import Foundation
 import SharedSupport
@@ -64,78 +65,101 @@ enum QuickClipboardStorageError: LocalizedError, Equatable {
 }
 
 final class QuickClipboardStorage {
-    private struct Envelope: Codable {
-        var schemaVersion: Int
-        var collections: [QuickClipboardCollection]
-    }
-
-    private struct Version: Decodable {
-        var schemaVersion: Int
-    }
-
-    private static let schemaVersion = 1
     private let directory: URL
-    private let fileManager: FileManager
     private let lock = NSRecursiveLock()
-    private var blocked = false
+    private let core: UnsafeMutableRawPointer?
 
-    init(
-        directory: URL = AppEnvironment.directory("Clipboard"),
-        fileManager: FileManager = .default
-    ) {
+    init(directory: URL = AppEnvironment.directory("Clipboard"), fileManager: FileManager = .default) {
         self.directory = directory
-        self.fileManager = fileManager
-    }
-
-    var fileURL: URL {
-        directory.appendingPathComponent("quick-maps.json")
-    }
-
-    func load() throws -> [QuickClipboardCollection] {
-        lock.lock()
-        defer { lock.unlock() }
-
-        do {
-            guard let data = try RustDisk.read(fileURL) else {
-                blocked = false
-                return []
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .millisecondsSince1970
-            guard try decoder.decode(Version.self, from: data).schemaVersion == Self.schemaVersion else {
-                throw QuickClipboardStorageError.unsupportedVersion
-            }
-            let collections = try decoder.decode(Envelope.self, from: data).collections
-            blocked = false
-            return collections
-        } catch {
-            blocked = true
-            throw (error as? QuickClipboardStorageError) ?? .unreadable
+        core = directory.appendingPathComponent("quick-maps.json").withUnsafeFileSystemRepresentation {
+            aether_quick_create($0)
         }
     }
+    deinit { aether_quick_destroy(core) }
+    var fileURL: URL { directory.appendingPathComponent("quick-maps.json") }
 
+    func load() throws -> [QuickClipboardCollection] {
+        lock.lock(); defer { lock.unlock() }
+        let collections: [QuickClipboardCollection] = try decode(aether_quick_load(core))
+        try installComparisons(collections)
+        return collections
+    }
     func save(_ collections: [QuickClipboardCollection]) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !blocked else { throw QuickClipboardStorageError.unreadable }
-
-        do {
-            _ = try load()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .millisecondsSince1970
-            let data = try encoder.encode(
-                Envelope(
-                    schemaVersion: Self.schemaVersion,
-                    collections: collections
-                )
-            )
-            try RustDisk.write(data, to: fileURL)
-        } catch {
-            throw (error as? QuickClipboardStorageError) ?? .writeFailed
+        lock.lock(); defer { lock.unlock() }
+        let data = try encode(collections)
+        try check(data.withUnsafeBytes { aether_quick_save(core, span($0)) })
+        try installComparisons(collections)
+    }
+    fileprivate func apply(_ command: QuickClipboardCommand) throws -> QuickClipboardReply {
+        lock.lock(); defer { lock.unlock() }
+        let data = try encode(command)
+        return try data.withUnsafeBytes { try decode(aether_quick_apply(core, span($0))) }
+    }
+    private func installComparisons(_ collections: [QuickClipboardCollection]) throws {
+        struct Comparisons: Encodable { let name: String; let keys: [String] }
+        let data = try encode(collections.map {
+            Comparisons(name: normalizedQuickClipboardName($0.name), keys: $0.entries.map { canonicalQuickClipboardKey($0.key) })
+        })
+        try check(data.withUnsafeBytes { aether_quick_comparisons(core, span($0)) })
+    }
+    private func span(_ bytes: UnsafeRawBufferPointer) -> AetherBytes {
+        AetherBytes(data: bytes.bindMemory(to: UInt8.self).baseAddress, length: bytes.count)
+    }
+    private func encode<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        do { return try encoder.encode(value) } catch { throw QuickClipboardStorageError.writeFailed }
+    }
+    private func decode<T: Decodable>(_ handle: UnsafeMutableRawPointer?) throws -> T {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        do { return try decoder.decode(T.self, from: RustBuffer.take(handle)) }
+        catch let error as RustDiskError { try check(error.status); throw QuickClipboardStorageError.unreadable }
+        catch { throw QuickClipboardStorageError.unreadable }
+    }
+    private func check(_ status: UInt32) throws {
+        switch status {
+        case 0: return
+        case 2: throw QuickClipboardStorageError.unreadable
+        case 4: throw QuickClipboardStorageError.unsupportedVersion
+        default: throw QuickClipboardStorageError.writeFailed
         }
     }
 }
+
+private struct QuickClipboardCommand: Encodable {
+    var action: UInt32
+    var id: UUID? = nil
+    var collectionID: UUID? = nil
+    var entryID: UUID? = nil
+    var name: String? = nil
+    var key: String? = nil
+    var value: String? = nil
+    var comparison: String? = nil
+    var nonempty: Bool? = nil
+    var date: Double? = nil
+    var index: Int? = nil
+    var collection: QuickClipboardCollection? = nil
+    var entry: QuickClipboardEntry? = nil
+    var keys: [String]? = nil
+}
+private struct QuickClipboardReply: Decodable {
+    let error: UInt32
+    let existingID: UUID?
+    let resultID: UUID?
+    let selection: UUID?
+    let patch: Patch?
+    struct Patch: Decodable { let kind: UInt32; let index: Int; let collection: QuickClipboardCollection? }
+    let deletedCollection: QuickClipboardCollection?
+    let deletedEntry: QuickClipboardEntry?
+    let index: Int
+}
+private func normalizedQuickClipboardName(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines)
+        .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
+        .precomposedStringWithCanonicalMapping
+}
+private func canonicalQuickClipboardKey(_ value: String) -> String { value.precomposedStringWithCanonicalMapping }
 
 enum QuickClipboardValidationError: LocalizedError, Equatable {
     case emptyCollectionName
@@ -207,202 +231,121 @@ final class QuickClipboardModel: ObservableObject {
     }
 
     func existingCollectionID(named rawName: String) -> UUID? {
-        let normalized = Self.normalizedCollectionName(rawName)
-        return collections.first {
-            Self.normalizedCollectionName($0.name) == normalized
-        }?.id
+        try? storage.apply(.init(action: 0, comparison: normalizedQuickClipboardName(rawName))).resultID
     }
 
     @discardableResult
     func createDefaultCollection() -> Result<UUID, QuickClipboardValidationError> {
-        var index = 1
-        while existingCollectionID(named: "常用 \(index)") != nil {
-            index += 1
-        }
-        return createCollection(name: "常用 \(index)")
+        createCollectionCommand(action: 2, name: nil)
     }
 
     @discardableResult
     func createCollection(name rawName: String) -> Result<UUID, QuickClipboardValidationError> {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return .failure(.emptyCollectionName) }
-        if let existingID = existingCollectionID(named: name) {
-            return .failure(.duplicateCollectionName(existingID: existingID))
-        }
-        let collection = QuickClipboardCollection(name: name, createdAt: now())
-        guard persist(collections + [collection]) else {
-            return .failure(.missingCollection)
-        }
-        selectedCollectionID = collection.id
-        return .success(collection.id)
+        createCollectionCommand(action: 1, name: rawName.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    func renameCollection(
-        id: UUID,
-        name rawName: String
-    ) -> Result<Void, QuickClipboardValidationError> {
+    private func createCollectionCommand(action: UInt32, name: String?) -> Result<UUID, QuickClipboardValidationError> {
+        let command = QuickClipboardCommand(action: action, id: UUID(), name: name,
+            comparison: name.map(normalizedQuickClipboardName), date: now().timeIntervalSince1970 * 1000)
+        return apply(command).flatMap { reply in
+            guard let id = reply.resultID else { return .failure(.missingCollection) }
+            selectedCollectionID = reply.selection
+            return .success(id)
+        }
+    }
+
+    func renameCollection(id: UUID, name rawName: String) -> Result<Void, QuickClipboardValidationError> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return .failure(.emptyCollectionName) }
-        if let existingID = existingCollectionID(named: name), existingID != id {
-            return .failure(.duplicateCollectionName(existingID: existingID))
-        }
-        guard let index = collections.firstIndex(where: { $0.id == id }) else {
-            return .failure(.missingCollection)
-        }
-        var next = collections
-        next[index].name = name
-        next[index].updatedAt = now()
-        guard persist(next) else { return .failure(.missingCollection) }
-        return .success(())
+        return apply(.init(action: 3, collectionID: id, name: name, comparison: normalizedQuickClipboardName(name),
+            date: now().timeIntervalSince1970 * 1000)).map { _ in () }
     }
 
     @discardableResult
     func deleteCollection(id: UUID) -> QuickClipboardDeletedCollection? {
-        guard let index = collections.firstIndex(where: { $0.id == id }) else {
-            return nil
-        }
-        let deleted = QuickClipboardDeletedCollection(
-            index: index,
-            collection: collections[index]
-        )
-        var next = collections
-        next.remove(at: index)
-        guard persist(next) else { return nil }
-        selectedCollectionID = next.indices.contains(index)
-            ? next[index].id
-            : next.last?.id
-        return deleted
+        guard case let .success(reply) = apply(.init(action: 4, collectionID: id)),
+              let collection = reply.deletedCollection else { return nil }
+        selectedCollectionID = reply.selection
+        return .init(index: reply.index, collection: collection)
     }
 
     func restoreCollection(_ deleted: QuickClipboardDeletedCollection) -> Bool {
-        guard existingCollectionID(named: deleted.collection.name) == nil else {
-            return false
-        }
-        var next = collections
-        next.insert(deleted.collection, at: min(deleted.index, next.count))
-        guard persist(next) else { return false }
-        selectedCollectionID = deleted.collection.id
+        let command = QuickClipboardCommand(action: 5, comparison: normalizedQuickClipboardName(deleted.collection.name),
+            index: deleted.index, collection: deleted.collection, keys: deleted.collection.entries.map { canonicalQuickClipboardKey($0.key) })
+        guard case let .success(reply) = apply(command) else { return false }
+        selectedCollectionID = reply.selection
         return true
     }
 
     @discardableResult
-    func addEntry(
-        collectionID: UUID,
-        key rawKey: String,
-        value: String
-    ) -> Result<UUID, QuickClipboardValidationError> {
-        let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return .failure(.emptyKey) }
-        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return .failure(.emptyValue)
-        }
-        guard let collectionIndex = collections.firstIndex(where: { $0.id == collectionID }) else {
-            return .failure(.missingCollection)
-        }
-        if let existing = collections[collectionIndex].entries.first(where: { $0.key == key }) {
-            return .failure(.duplicateKey(existingID: existing.id))
-        }
-        let date = now()
-        let entry = QuickClipboardEntry(
-            key: key,
-            value: value,
-            createdAt: date
-        )
-        var next = collections
-        next[collectionIndex].entries.append(entry)
-        next[collectionIndex].updatedAt = date
-        guard persist(next) else { return .failure(.missingCollection) }
-        return .success(entry.id)
+    func addEntry(collectionID: UUID, key rawKey: String, value: String) -> Result<UUID, QuickClipboardValidationError> {
+        let id = UUID()
+        return apply(entryCommand(action: 6, collectionID: collectionID, entryID: nil, id: id, key: rawKey, value: value)).map { _ in id }
     }
 
-    func updateEntry(
-        collectionID: UUID,
-        entryID: UUID,
-        key rawKey: String,
-        value: String
-    ) -> Result<Void, QuickClipboardValidationError> {
+    func updateEntry(collectionID: UUID, entryID: UUID, key rawKey: String, value: String) -> Result<Void, QuickClipboardValidationError> {
+        apply(entryCommand(action: 7, collectionID: collectionID, entryID: entryID, id: nil, key: rawKey, value: value)).map { _ in () }
+    }
+
+    private func entryCommand(action: UInt32, collectionID: UUID, entryID: UUID?, id: UUID?, key rawKey: String, value: String) -> QuickClipboardCommand {
         let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return .failure(.emptyKey) }
-        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return .failure(.emptyValue)
-        }
-        guard let collectionIndex = collections.firstIndex(where: { $0.id == collectionID }) else {
-            return .failure(.missingCollection)
-        }
-        guard let entryIndex = collections[collectionIndex].entries.firstIndex(where: { $0.id == entryID }) else {
-            return .failure(.missingCollection)
-        }
-        if let existing = collections[collectionIndex].entries.first(where: {
-            $0.key == key && $0.id != entryID
-        }) {
-            return .failure(.duplicateKey(existingID: existing.id))
-        }
-        let date = now()
-        var next = collections
-        next[collectionIndex].entries[entryIndex].key = key
-        next[collectionIndex].entries[entryIndex].value = value
-        next[collectionIndex].entries[entryIndex].updatedAt = date
-        next[collectionIndex].updatedAt = date
-        guard persist(next) else { return .failure(.missingCollection) }
-        return .success(())
+        return .init(action: action, id: id, collectionID: collectionID, entryID: entryID, key: key, value: value,
+            comparison: canonicalQuickClipboardKey(key), nonempty: !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            date: now().timeIntervalSince1970 * 1000)
     }
 
     @discardableResult
-    func deleteEntry(
-        collectionID: UUID,
-        entryID: UUID
-    ) -> QuickClipboardDeletedEntry? {
-        guard let collectionIndex = collections.firstIndex(where: { $0.id == collectionID }),
-              let entryIndex = collections[collectionIndex].entries.firstIndex(where: { $0.id == entryID }) else {
-            return nil
-        }
-        let deleted = QuickClipboardDeletedEntry(
-            collectionID: collectionID,
-            index: entryIndex,
-            entry: collections[collectionIndex].entries[entryIndex]
-        )
-        var next = collections
-        next[collectionIndex].entries.remove(at: entryIndex)
-        next[collectionIndex].updatedAt = now()
-        guard persist(next) else { return nil }
-        return deleted
+    func deleteEntry(collectionID: UUID, entryID: UUID) -> QuickClipboardDeletedEntry? {
+        guard case let .success(reply) = apply(.init(action: 8, collectionID: collectionID, entryID: entryID,
+            date: now().timeIntervalSince1970 * 1000)), let entry = reply.deletedEntry else { return nil }
+        return .init(collectionID: collectionID, index: reply.index, entry: entry)
     }
 
     func restoreEntry(_ deleted: QuickClipboardDeletedEntry) -> Bool {
-        guard let collectionIndex = collections.firstIndex(where: {
-            $0.id == deleted.collectionID
-        }), !collections[collectionIndex].entries.contains(where: {
-            $0.key == deleted.entry.key
-        }) else {
-            return false
-        }
-        var next = collections
-        next[collectionIndex].entries.insert(
-            deleted.entry,
-            at: min(deleted.index, next[collectionIndex].entries.count)
-        )
-        next[collectionIndex].updatedAt = now()
-        return persist(next)
+        let command = QuickClipboardCommand(action: 9, collectionID: deleted.collectionID, comparison: canonicalQuickClipboardKey(deleted.entry.key),
+            date: now().timeIntervalSince1970 * 1000, index: deleted.index, entry: deleted.entry)
+        if case .success = apply(command) { return true }
+        return false
     }
 
-    private func persist(_ next: [QuickClipboardCollection]) -> Bool {
+    private func apply(_ command: QuickClipboardCommand) -> Result<QuickClipboardReply, QuickClipboardValidationError> {
         do {
-            try storage.save(next)
-            collections = next
-            storageMessage = nil
-            return true
+            let reply = try storage.apply(command)
+            switch reply.error {
+            case 0:
+                if let patch = reply.patch {
+                    // Publish the core's committed projection; validation and transaction policy remain in Rust.
+                    var next = collections
+                    switch patch.kind {
+                    case 1:
+                        guard let collection = patch.collection, (0...next.count).contains(patch.index) else { throw QuickClipboardStorageError.unreadable }
+                        next.insert(collection, at: patch.index)
+                    case 2:
+                        guard let collection = patch.collection, next.indices.contains(patch.index) else { throw QuickClipboardStorageError.unreadable }
+                        next[patch.index] = collection
+                    case 3:
+                        guard next.indices.contains(patch.index) else { throw QuickClipboardStorageError.unreadable }
+                        next.remove(at: patch.index)
+                    default: throw QuickClipboardStorageError.unreadable
+                    }
+                    collections = next
+                    storageMessage = nil
+                }
+                return .success(reply)
+            case 200: return .failure(.emptyCollectionName)
+            case 201:
+                guard let id = reply.existingID else { return .failure(.missingCollection) }
+                return .failure(.duplicateCollectionName(existingID: id))
+            case 203: return .failure(.emptyKey)
+            case 204: return .failure(.emptyValue)
+            case 205:
+                guard let id = reply.existingID else { return .failure(.missingCollection) }
+                return .failure(.duplicateKey(existingID: id))
+            default: return .failure(.missingCollection)
+            }
         } catch {
             storageMessage = error.localizedDescription
-            return false
+            return .failure(.missingCollection)
         }
-    }
-
-    private static func normalizedCollectionName(_ name: String) -> String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                locale: .current
-            )
     }
 }
 
@@ -423,58 +366,46 @@ func quickClipboardSearch(
     let query = normalizedQuickClipboardSearchText(rawQuery)
     guard !query.isEmpty else { return [] }
 
-    return collections.compactMap { collection in
+    var groups: [AetherQuickSearchCollection] = []
+    var rows: [AetherQuickSearchEntry] = []
+    var entries: [QuickClipboardEntry] = []
+    for collection in collections {
         let name = normalizedQuickClipboardSearchText(collection.name)
-        if name == query {
-            return QuickClipboardSearchSection(
-                collectionID: collection.id,
-                collectionName: collection.name,
-                entries: collection.entries,
-                rank: 0,
-                updatedAt: collection.updatedAt
-            )
+        let match = quickClipboardTextMatch(name, query: query)
+        groups.append(.init(match_kind: match, timestamp: collection.updatedAt.timeIntervalSinceReferenceDate,
+            start: rows.count, count: collection.entries.count))
+        for entry in collection.entries {
+            let key = match == 1 ? "" : normalizedQuickClipboardSearchText(entry.key)
+            let value = match == 1 ? "" : normalizedQuickClipboardSearchText(entry.value)
+            rows.append(.init(key_match: quickClipboardTextMatch(key, query: query), value_match: value.contains(query) ? 1 : 0,
+                timestamp: entry.updatedAt.timeIntervalSinceReferenceDate))
+            entries.append(entry)
         }
-
-        let collectionRank: Int? = name.hasPrefix(query)
-            ? 2
-            : (name.contains(query) ? 3 : nil)
-        let rankedEntries: [(entry: QuickClipboardEntry, rank: Int, index: Int)] =
-            collection.entries.enumerated().compactMap { index, entry in
-                let key = normalizedQuickClipboardSearchText(entry.key)
-                let value = normalizedQuickClipboardSearchText(entry.value)
-                let rank: Int?
-                if key == query {
-                    rank = 1
-                } else if key.hasPrefix(query) || collectionRank == 2 {
-                    rank = 2
-                } else if key.contains(query) || value.contains(query) || collectionRank == 3 {
-                    rank = 3
-                } else {
-                    rank = nil
-                }
-                return rank.map { (entry, $0, index) }
-            }
-            .sorted {
-                if $0.rank != $1.rank { return $0.rank < $1.rank }
-                if $0.entry.updatedAt != $1.entry.updatedAt {
-                    return $0.entry.updatedAt > $1.entry.updatedAt
-                }
-                return $0.index < $1.index
-            }
-
-        guard collectionRank != nil || !rankedEntries.isEmpty else { return nil }
-        return QuickClipboardSearchSection(
-            collectionID: collection.id,
-            collectionName: collection.name,
-            entries: rankedEntries.map(\.entry),
-            rank: min(collectionRank ?? Int.max, rankedEntries.first?.rank ?? Int.max),
-            updatedAt: collection.updatedAt
-        )
     }
-    .sorted {
-        if $0.rank != $1.rank { return $0.rank < $1.rank }
-        return $0.updatedAt > $1.updatedAt
+    var sections = Array(repeating: AetherQuickSearchSection(), count: collections.count)
+    var indices = Array(repeating: 0, count: entries.count)
+    let count = groups.withUnsafeBufferPointer { groups in
+        rows.withUnsafeBufferPointer { rows in
+            sections.withUnsafeMutableBufferPointer { sections in
+                indices.withUnsafeMutableBufferPointer { indices in
+                    aether_quick_search(groups.baseAddress, groups.count, rows.baseAddress, rows.count,
+                        sections.baseAddress, sections.count, indices.baseAddress, indices.count)
+                }
+            }
+        }
     }
+    return sections.prefix(count).map { section in
+        let collection = collections[section.collection]
+        return .init(collectionID: collection.id, collectionName: collection.name,
+            entries: indices[section.start..<(section.start + section.count)].map { entries[$0] },
+            rank: section.rank, updatedAt: collection.updatedAt)
+    }
+}
+
+private func quickClipboardTextMatch(_ text: String, query: String) -> UInt8 {
+    if text == query { return 1 }
+    if text.hasPrefix(query) { return 2 }
+    return text.contains(query) ? 3 : 0
 }
 
 private func normalizedQuickClipboardSearchText(_ value: String) -> String {

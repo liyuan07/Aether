@@ -69,4 +69,18 @@ void *aether_prompt_store_create(const char *directory, AetherBytes fallback);
 void aether_prompt_store_destroy(void *store);
 void *aether_prompt_store_load(void *store, uint32_t slot);
 uint32_t aether_prompt_store_save(void *store, uint32_t slot, AetherBytes data);
+
+void *aether_quick_create(const char *path);
+void aether_quick_destroy(void *store);
+void *aether_quick_load(void *store);
+uint32_t aether_quick_save(void *store, AetherBytes data);
+uint32_t aether_quick_comparisons(void *store, AetherBytes data);
+void *aether_quick_apply(void *store, AetherBytes command);
+
+typedef struct { uint8_t match_kind; double timestamp; size_t start; size_t count; } AetherQuickSearchCollection;
+typedef struct { uint8_t key_match; uint8_t value_match; double timestamp; } AetherQuickSearchEntry;
+typedef struct { size_t collection; size_t start; size_t count; intptr_t rank; } AetherQuickSearchSection;
+size_t aether_quick_search(const AetherQuickSearchCollection *collections, size_t collection_count,
+    const AetherQuickSearchEntry *entries, size_t entry_count, AetherQuickSearchSection *sections, size_t section_capacity,
+    size_t *indices, size_t index_capacity);
 #endif

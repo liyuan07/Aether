@@ -215,6 +215,73 @@ final class QuickClipboardTests: XCTestCase {
         )
     }
 
+
+    @MainActor
+    func testExternalFutureFilePreservesDisplayAndCoreUntilExplicitReload() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = QuickClipboardStorage(directory: directory)
+        let model = QuickClipboardModel(storage: storage)
+        let id = try model.createCollection(name: "合成分组").get()
+        let entry = try model.addEntry(collectionID: id, key: "标题", value: "合成正文").get()
+        let snapshot = model.collections
+        let valid = try Data(contentsOf: storage.fileURL)
+        let future = Data("{\"schemaVersion\":88,\"collections\":{\"future\":true}}".utf8)
+        try future.write(to: storage.fileURL)
+        XCTAssertNil(model.deleteEntry(collectionID: id, entryID: entry))
+        XCTAssertEqual(model.collections, snapshot)
+        XCTAssertEqual(try Data(contentsOf: storage.fileURL), future)
+        try valid.write(to: storage.fileURL)
+        // Repair alone does not clear an observed write blocker.
+        XCTAssertNil(model.deleteCollection(id: id))
+        XCTAssertEqual(model.collections, snapshot)
+        model.reload()
+        XCTAssertNil(model.storageMessage)
+        let deleted = try XCTUnwrap(model.deleteEntry(collectionID: id, entryID: entry))
+        XCTAssertTrue(model.restoreEntry(deleted))
+        XCTAssertEqual(model.collections.first?.entries.first?.id, entry)
+        XCTAssertEqual(try storage.load(), model.collections)
+    }
+
+    func testCorruptTypedFilesAndSymbolicLinksAreNeverOverwritten() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storage = QuickClipboardStorage(directory: directory)
+        for payload in ["{}", "null", "[{\"id\":\"bad\"}]", "[{\"id\":5}]"] {
+            let bytes = Data("{\"schemaVersion\":1,\"collections\":\(payload)}".utf8)
+            try bytes.write(to: storage.fileURL)
+            let reader = QuickClipboardStorage(directory: directory)
+            XCTAssertThrowsError(try reader.load())
+            XCTAssertThrowsError(try reader.save([]))
+            XCTAssertEqual(try Data(contentsOf: storage.fileURL), bytes)
+        }
+        let target = directory.appendingPathComponent("target.json")
+        let original = Data("{\"schemaVersion\":1,\"collections\":[]}".utf8)
+        try original.write(to: target)
+        try FileManager.default.removeItem(at: storage.fileURL)
+        try FileManager.default.createSymbolicLink(at: storage.fileURL, withDestinationURL: target)
+        XCTAssertThrowsError(try QuickClipboardStorage(directory: directory).save([]))
+        XCTAssertEqual(try Data(contentsOf: target),original)
+    }
+
+    func testNativeVersionOneFixtureKeepsMillisecondsAndCanonicalKeyEquality() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = QuickClipboardStorage(directory: directory)
+        let collection = QuickClipboardCollection(name: "合成", createdAt: Date(timeIntervalSince1970: 1_700_000_000.125),
+            entries: [.init(key: "a\u{301}", value: "合成\u{0000}正文", createdAt: Date(timeIntervalSince1970: -123.75))])
+        struct Envelope: Encodable { let schemaVersion = 1; let collections: [QuickClipboardCollection] }
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .millisecondsSince1970
+        let bytes = try encoder.encode(Envelope(collections: [collection]))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fixture = String(decoding:bytes,as:UTF8.self).replacingOccurrences(of:"\"schemaVersion\":1",with:"\"schemaVersion\":1.0")
+        try Data(fixture.utf8).write(to:storage.fileURL)
+        XCTAssertEqual(try storage.load(),[collection])
+        try storage.save([collection])
+        XCTAssertEqual(try QuickClipboardStorage(directory:directory).load(),[collection])
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent(
             "QuickClipboardTests-\(UUID().uuidString)",

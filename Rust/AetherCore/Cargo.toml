@@ -15,5 +15,5 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
-serde = { version = "=1.0.228", features = ["derive"] }
+serde = { version = "=1.0.228", features = ["derive", "rc"] }
 serde_json = { version = "=1.0.145", features = ["float_roundtrip", "raw_value"] }

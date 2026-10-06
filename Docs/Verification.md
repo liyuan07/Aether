@@ -125,3 +125,5 @@ sh LaunchAether.command
 - `sh Scripts/build-rust-core.sh licenses` 必须通过；锁文件增加或升级 crate 时同步维护应用内声明，验证命令仅比较许可证字节，不显示用户数据。
 
 - Prompt 迁移运行 `RustPromptParityTests`、原有网络/模型/存储测试：独立旧 Swift 解析参照、取消后晚到结果、locale 历史顺序、版本一日期/整数兼容和损坏载荷保护。模拟 URLSession 不替代真实服务/钥匙串/页面验收。
+
+- 常用剪贴板迁移运行 `RustQuickClipboardParityTests` 与 `QuickClipboardTests`；独立旧 Swift 模型/存储/搜索参照、生成编辑及 Unicode 排名、未知/损坏文件/符号链接、修复重载与原生格式权限均需通过。局部编辑性能使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustQuickClipboardParityTests/testMutationBenchmark`，不得推导全应用收益。

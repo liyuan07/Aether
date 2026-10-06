@@ -422,3 +422,5 @@ mod prompt_store;
 mod shortcuts;
 mod storage;
 mod versioned;
+
+mod quick_clipboard;
