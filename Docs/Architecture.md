@@ -157,3 +157,5 @@ USB-C 名册规划由 Rust 一次执行 HPM/雷雳/PHY 来源选择、稳定顺�
 端口增强关联由 Rust 批量建立设备分组及显示器、统计、CC 线缆和 MagSafe HPM 来源索引。保留设备枚举顺序、重复端口、来源首项优先；线缆先选择首个 USB-C CC 记录再检查内容，空首项不回退到后续记录。MagSafe 只通过物理编号匹配 MagSafe HPM，不吸收 USB-C 健康记录。原生 DTO 字符串和所有遥测字段按返回索引装配，借用计划在复制索引后销毁。
 
 USB 设备类别、首个非 hub（否则首个 hub）及附加非 hub 数量由 Rust 执行。PortState 的设备数组每次修改更新值缓存，页面读取不重复扫描/过滤。数组元素原地修改、追加/删除、反转和结构体复制保持原生值语义，不持有 Rust 可变句柄；不改变页面或采样频率。
+
+通用、登录项、计时器及 SMC 开关的偏好访问统一经过 AppEnvironment.appDefaults。普通运行仍为 UserDefaults.standard，保留原键名和注册默认值；测试为每个进程独立的应用域。计时器 44 个 Defaults.Key 及 AppStorage 显式绑定该域，避免静态键或协调器绕过测试隔离。WhatPortCore 通过 SharedSupport 消费环境域，不引入功能模块依赖或反向访问。

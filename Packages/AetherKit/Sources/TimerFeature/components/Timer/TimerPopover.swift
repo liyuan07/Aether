@@ -48,7 +48,7 @@ struct TimerPopover: View {
     @Default(.timerPresets) private var timerPresets
     @Default(.showRealtimeClock) private var showRealtimeClock
     @Default(.eyeCareEnabled) private var eyeCareEnabled
-    @AppStorage("customTimerDuration") private var customTimerDuration: Double = 600
+    @AppStorage("customTimerDuration", store: AppEnvironment.appDefaults) private var customTimerDuration: Double = 600
     @State private var customHours: Int = 0
     @State private var customMinutes: Int = 10
     @State private var customSeconds: Int = 0

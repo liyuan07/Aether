@@ -10,6 +10,9 @@ public enum AppEnvironment {
         : FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Aether", isDirectory: true)
     public static var clipboardDefaults = UserDefaults(suiteName: testing ? "AetherTests.clipboard." + testID : "com.liyuan.aether.clipboard")!
     public static var shortcutsDefaults = UserDefaults(suiteName: testing ? "AetherTests.shortcuts." + testID : "com.liyuan.aether.shortcuts")!
+    public static var appDefaults = testing
+        ? UserDefaults(suiteName: "AetherTests.app." + testID)!
+        : .standard
     public static var controlCenterDefaults = testing
         ? UserDefaults(suiteName: "AetherTests.control-center." + testID)!
         : .standard

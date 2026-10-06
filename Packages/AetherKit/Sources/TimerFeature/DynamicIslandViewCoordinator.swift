@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * package counter
  * Derived from Atoll (DynamicIsland)
@@ -18,10 +19,10 @@ final class DynamicIslandViewCoordinator: ObservableObject {
 
     @Published var currentView: NotchViews = .timer
     @Published var selectedScreen: String
-    @AppStorage("timerLiveActivityEnabled") var timerLiveActivityEnabled = true
+    @AppStorage("timerLiveActivityEnabled", store: AppEnvironment.appDefaults) var timerLiveActivityEnabled = true
     @Published var preferredScreen: String {
         didSet {
-            UserDefaults.standard.set(preferredScreen, forKey: "preferred_screen_name")
+            AppEnvironment.appDefaults.set(preferredScreen, forKey: "preferred_screen_name")
             selectedScreen = preferredScreen
             NotificationCenter.default.post(name: .selectedScreenChanged, object: nil)
         }
@@ -29,7 +30,7 @@ final class DynamicIslandViewCoordinator: ObservableObject {
 
     private init() {
         let screenName = NSScreen.main?.localizedName ?? "Unknown"
-        let persisted = UserDefaults.standard.string(forKey: "preferred_screen_name") ?? screenName
+        let persisted = AppEnvironment.appDefaults.string(forKey: "preferred_screen_name") ?? screenName
         preferredScreen = persisted
         selectedScreen = persisted
     }

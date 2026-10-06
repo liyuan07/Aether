@@ -1,10 +1,11 @@
+import SharedSupport
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 import CAetherCore
 
 /// Rust executes fail-closed SMC contract attribution; native readers and String semantics stay native.
 public enum SMCContractAttribution {
-    public static var isEnabled: Bool { !UserDefaults.standard.bool(forKey: "SMCContractDisabled") }
+    public static var isEnabled: Bool { !AppEnvironment.appDefaults.bool(forKey: "SMCContractDisabled") }
     public static func normalisedUUID(_ uuid: String) -> String {
         uuid.replacingOccurrences(of: "-", with: "").lowercased()
     }

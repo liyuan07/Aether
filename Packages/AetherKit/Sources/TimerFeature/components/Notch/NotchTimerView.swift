@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * Atoll (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
@@ -35,7 +36,7 @@ struct NotchTimerView: View {
     @Default(.timerProgressStyle) private var progressStyle
     @Default(.showTimerPresetsInNotchTab) private var showTimerPresetsInNotchTab
 
-    @AppStorage("customTimerDuration") private var customTimerDuration: Double = 600
+    @AppStorage("customTimerDuration", store: AppEnvironment.appDefaults) private var customTimerDuration: Double = 600
     @State private var customHours: Int = 0
     @State private var customMinutes: Int = 10
     @State private var customSeconds: Int = 0

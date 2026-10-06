@@ -20,7 +20,7 @@ import Foundation
         }
         importing = true
         // Capture preferences before copying; disk I/O does not block AppKit.
-        let defaults = UserDefaults.standard
+        let defaults = AppEnvironment.appDefaults
         let timer = defaults.persistentDomain(forName: "com.liyuan.packagecounter") ?? [:]
         let clipboard = defaults.persistentDomain(forName: "com.liyuan07.clipboard") ?? [:]
         let shortcuts = defaults.persistentDomain(forName: "com.liyuan.keypilot") ?? [:]
@@ -54,7 +54,7 @@ import Foundation
                     switch name {
                     case "Clipboard": destination = AppEnvironment.clipboardDefaults
                     case "Shortcuts": destination = AppEnvironment.shortcutsDefaults
-                    default: destination = .standard
+                    default: destination = AppEnvironment.appDefaults
                     }
                     for (key, value) in values where (key != "launchAtLogin" || name == "General") && !key.hasPrefix("didRequest") {
                         destination.set(value, forKey: key)
@@ -68,7 +68,7 @@ import Foundation
                     defaults: AppEnvironment.clipboardDefaults
                 )
                 DispatchQueue.main.async {
-                    if UserDefaults.standard.object(forKey: "launchAtLogin") == nil { UserDefaults.standard.set(login, forKey: "launchAtLogin") }
+                    if AppEnvironment.appDefaults.object(forKey: "launchAtLogin") == nil { AppEnvironment.appDefaults.set(login, forKey: "launchAtLogin") }
                     self.importing = false
                     self.message = "迁移已完成 · \(result.importedAt.formatted(date: .abbreviated, time: .shortened))。原应用数据保持不变。"
                     self.ready = true

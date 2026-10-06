@@ -177,3 +177,5 @@ sh LaunchAether.command
 - 归档保存迁移运行 `RustClipboardArchiveTests`，检查全字段原生 Codable 读取和 Rust 重载一致、nil/空群组、NaN/无穷日期拒绝且原文件不变、非法分区/跨度不创建文件。保存基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardArchiveTests/testArchiveSaveBenchmark`，保留外部文件校验、原子落盘和结果等价，局部收益不推导整体占用。
 
 - `RustPortEnrichmentTests` 对照 6,000 组来源关联及设备分组（重复/缺失、ID 极值、空首个线缆、跨端口位置碰撞），并验证实际 PortManager 的显示器优先、统计首项、MagSafe UUID/健康及 USB 主设备。枚举全部 UInt16 类别代码和 Int 极值，检查缓存对数组替换/追加/元素修改/反转/清空与独立结构体复制正确。合成缓存读取基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustPortEnrichmentTests/testCachedSelectionBenchmark`；不得推导整应用收益。
+
+- `TimerPreferenceDomainTests` 核对 44 个计时器静态键均使用 AppEnvironment.appDefaults，并以随机探针键验证类型包装与原生 UserDefaults 双向一致，剪贴板、快捷操作和控制中心域不受影响。测试只访问进程独立偏好域；普通安装需核对原页面和既有配置可见性。

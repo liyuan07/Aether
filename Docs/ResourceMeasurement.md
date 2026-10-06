@@ -16,3 +16,7 @@ python3 Scripts/measure-installed-resources.py --scenario general-after-ports --
 计数含义核对 [Apple XNU 进程资源填充](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/bsd_kern.c) 与 [task power 时间计数实现](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/task.c)：user/system 来自 Mach 时间统计，physical footprint 来自任务 ledger。保留原始 Mach 计数及 numer/denom，避免将其直接当纳秒。这里只报告进程资源，尚未建立同负载旧 Swift 基线或能耗测量，不能据此宣称 Rust 显著降低整应用占用。
 
 工具验证：`python3 -m unittest discover -s Scripts/tests` 检查 Mach 换算、双模式 CPU、并行超过 100%、内存汇总及无效区间；辅助程序对零/无效 PID 和非正式进程拒绝读取。真实采样仍须核对进程与场景。原始 JSON 保存在 `.build/benchmarks`，记录提交、工作区状态、架构、macOS、产物哈希和全部样本，不提交真实环境数据。
+
+## 固定负载的隔离准备
+
+通用与计时偏好已统一经 AppEnvironment.appDefaults 注入；正常安装仍为原标准域，单元测试为独立域。44 个静态计时键和 AppStorage 已显式绑定，避免偏好注入后仍读写真实配置。完整性能配置还须隔离启动迁移、剪贴板监听与系统动作，将相同配置用于旧 Swift 与当前正式产物；目前没有运行该隔离模式，不能把这一步当作旧版基线已经建立。

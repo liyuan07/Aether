@@ -12,7 +12,7 @@ import PortsFeature
 
 @MainActor final class LoginService: ObservableObject {
     static let shared = LoginService()
-    @Published private(set) var enabled = UserDefaults.standard.bool(forKey: "launchAtLogin")
+    @Published private(set) var enabled = AppEnvironment.appDefaults.bool(forKey: "launchAtLogin")
     @Published private(set) var error: String?
     var status: String {
         switch SMAppService.mainApp.status {
@@ -23,13 +23,13 @@ import PortsFeature
         @unknown default: "未知状态"
         }
     }
-    func synchronize() { set(UserDefaults.standard.bool(forKey: "launchAtLogin")) }
+    func synchronize() { set(AppEnvironment.appDefaults.bool(forKey: "launchAtLogin")) }
     func set(_ value: Bool) {
         do {
             if value, SMAppService.mainApp.status != .enabled && SMAppService.mainApp.status != .requiresApproval { try SMAppService.mainApp.register() }
             else if !value, SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval { try SMAppService.mainApp.unregister() }
             enabled = value
-            UserDefaults.standard.set(value, forKey: "launchAtLogin")
+            AppEnvironment.appDefaults.set(value, forKey: "launchAtLogin")
             error = nil
         } catch { self.error = "无法更新登录项：\(error.localizedDescription)" }
     }

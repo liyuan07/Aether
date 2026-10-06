@@ -1,3 +1,4 @@
+import SharedSupport
 /*
  * package counter
  * Derived from Atoll (DynamicIsland)
@@ -19,7 +20,7 @@ struct SettingsView: View {
     @Default(.eyeCareEnabled) private var eyeCareEnabled
     @Default(.eyeCareWorkDuration) private var eyeCareWorkDuration
     @Default(.eyeCareRestDuration) private var eyeCareRestDuration
-    @AppStorage("customTimerDuration") private var customTimerDuration: Double = 600
+    @AppStorage("customTimerDuration", store: AppEnvironment.appDefaults) private var customTimerDuration: Double = 600
     @State private var expandedPresetID: UUID?
     @State private var showingResetConfirmation = false
 
