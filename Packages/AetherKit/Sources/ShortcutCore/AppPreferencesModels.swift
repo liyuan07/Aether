@@ -1,3 +1,4 @@
+import CAetherCore
 import Foundation
 
 public struct AppGeneralPreferences: Codable, Hashable, Sendable {
@@ -113,14 +114,7 @@ public enum ApplicationOrderResolver {
         _ applications: [RegisteredApplication],
         preferredBundleIdentifiers: [String]
     ) -> [RegisteredApplication] {
-        var applicationsByBundleIdentifier: [String: RegisteredApplication] = [:]
-        for application in applications where applicationsByBundleIdentifier[application.bundleIdentifier] == nil {
-            applicationsByBundleIdentifier[application.bundleIdentifier] = application
-        }
-        let preferred = preferredBundleIdentifiers.compactMap { applicationsByBundleIdentifier[$0] }
-        let preferredIdentifiers = Set(preferred.map(\.bundleIdentifier))
-        var appendedIdentifiers = preferredIdentifiers
-        return preferred + applications.filter { appendedIdentifiers.insert($0.bundleIdentifier).inserted }
+        RustApplicationOrder.ordered(applications, preferences: preferredBundleIdentifiers)
     }
 
     public static func updatingPreference(
@@ -129,33 +123,7 @@ public enum ApplicationOrderResolver {
         moving offsets: IndexSet,
         toOffset destination: Int
     ) -> [String]? {
-        let orderedApplications = ordered(
-            availableApplications,
-            preferredBundleIdentifiers: existingPreference
-        )
-        guard !offsets.isEmpty,
-              offsets.allSatisfy(orderedApplications.indices.contains),
-              destination >= 0,
-              destination <= orderedApplications.count
-        else { return nil }
-
-        var reordered = orderedApplications.map(\.bundleIdentifier)
-        let movingIdentifiers = offsets.map { reordered[$0] }
-        let removedBeforeDestination = offsets.filter { $0 < destination }.count
-        let insertionIndex = destination - removedBeforeDestination
-        for index in offsets.reversed() { reordered.remove(at: index) }
-        reordered.insert(contentsOf: movingIdentifiers, at: insertionIndex)
-
-        var seen = Set<String>()
-        let normalizedPreference = existingPreference.filter { seen.insert($0).inserted }
-        let availableIdentifiers = Set(reordered)
-        var reorderedIterator = reordered.makeIterator()
-        var result = normalizedPreference.map { identifier in
-            availableIdentifiers.contains(identifier) ? reorderedIterator.next()! : identifier
-        }
-        let existingIdentifiers = Set(normalizedPreference)
-        result.append(contentsOf: reordered.filter { !existingIdentifiers.contains($0) })
-        return result
+        RustApplicationOrder.move(existingPreference, applications: availableApplications, offsets: offsets, destination: destination)
     }
 }
 
@@ -215,22 +183,12 @@ public struct ABCSwitchGuardState: Equatable, Sendable {
         canObservePhysicalKey: Bool,
         uptime: TimeInterval
     ) -> ABCSwitchDecision {
-        guard switchedToABC else {
-            isManualABCSessionActive = false
-            physicalInputSwitchKeyPressedAt = nil
-            return .ignore
-        }
-        guard blockAutomaticABC, canObservePhysicalKey else { return .ignore }
-        if isManualABCSessionActive { return .allowManualSwitch }
-        if let pressedAt = physicalInputSwitchKeyPressedAt,
-           uptime >= pressedAt,
-           uptime - pressedAt <= Self.manualAuthorizationDuration {
-            physicalInputSwitchKeyPressedAt = nil
-            isManualABCSessionActive = true
-            return .allowManualSwitch
-        }
-        physicalInputSwitchKeyPressedAt = nil
-        return .restoreDoubao
+        let result = aether_abc_decide(.init(pressed: physicalInputSwitchKeyPressedAt ?? 0,
+            has_pressed: physicalInputSwitchKeyPressedAt == nil ? 0 : 1, manual: isManualABCSessionActive ? 1 : 0, decision: 0),
+            blockAutomaticABC ? 1 : 0, switchedToABC ? 1 : 0, canObservePhysicalKey ? 1 : 0, uptime, Self.manualAuthorizationDuration)
+        physicalInputSwitchKeyPressedAt = result.has_pressed != 0 ? result.pressed : nil
+        isManualABCSessionActive = result.manual != 0
+        return result.decision == 1 ? .allowManualSwitch : result.decision == 2 ? .restoreDoubao : .ignore
     }
 
     public mutating func reset() {

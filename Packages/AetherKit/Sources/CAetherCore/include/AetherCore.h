@@ -210,4 +210,11 @@ typedef struct { uint8_t transport; uint8_t on; } AetherDecodedLane;
 AetherDecodedLane aether_port_lane(const uint8_t *transport, size_t count, const uint8_t *power, size_t power_count);
 typedef struct { double watts; int64_t tx; int64_t rx; int64_t gbps; uint8_t generation; uint8_t link; uint8_t power; uint8_t energy; } AetherDecodedPort;
 AetherDecodedPort aether_port_decode(uint8_t tb, int64_t width, int64_t speed, uint8_t power, int64_t watts, int64_t samples, int64_t energy);
+typedef struct { uint8_t source; size_t index; } AetherAppReference;
+typedef struct { size_t count; uint8_t valid; } AetherAppMoveResult;
+size_t aether_app_order(const uint64_t *apps, size_t count, const uint64_t *prefs, size_t pref_count, size_t *output, size_t capacity);
+AetherAppMoveResult aether_app_move(const uint64_t *apps, size_t count, const uint64_t *prefs, size_t pref_count,
+    const int64_t *offsets, size_t offset_count, int64_t destination, AetherAppReference *output, size_t capacity);
+typedef struct { double pressed; uint8_t has_pressed; uint8_t manual; uint8_t decision; } AetherABCGuard;
+AetherABCGuard aether_abc_decide(AetherABCGuard state, uint8_t block, uint8_t abc, uint8_t observe, double now, double duration);
 #endif
