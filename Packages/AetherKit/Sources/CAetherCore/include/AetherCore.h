@@ -23,6 +23,19 @@ typedef struct {
 AetherEyeCare aether_eyecare_event(AetherEyeCare state, uint32_t event, double now, double duration, double threshold, uint32_t reason);
 double aether_eyecare_remaining(AetherEyeCare state, double now);
 uint32_t aether_core_abi_version(void);
+typedef struct { int64_t id; uint8_t magsafe; } AetherEnrichmentPort;
+typedef struct { int64_t id; uint8_t flags; } AetherEnrichmentSource;
+typedef struct { int64_t display, stats, cable, hpm; size_t device_start, device_count; } AetherEnrichmentRow;
+typedef struct { const AetherEnrichmentRow *rows; size_t count; const size_t *devices; size_t device_count; } AetherEnrichmentView;
+void *aether_port_enrichment_create(const AetherEnrichmentPort *ports, size_t count,
+    const AetherEnrichmentSource *displays, size_t display_count, const AetherEnrichmentSource *stats, size_t stats_count,
+    const AetherEnrichmentSource *cables, size_t cable_count, const AetherEnrichmentSource *hpm, size_t hpm_count,
+    const int64_t *devices, size_t device_count);
+AetherEnrichmentView aether_port_enrichment_view(const void *plan);
+void aether_port_enrichment_destroy(void *plan);
+typedef struct { int64_t primary; size_t additional; } AetherUSBSelection;
+AetherUSBSelection aether_usb_device_selection(const uint8_t *hubs, size_t count);
+uint8_t aether_usb_device_class(int64_t code);
 typedef struct { uint16_t code, physical; uint8_t modifiers; } AetherKey;
 typedef struct { AetherKey source, target; uint8_t enabled, remap; } AetherRule;
 uint8_t aether_shortcut_resolve(uint8_t required, uint8_t event, uint16_t physical, uint16_t active, uint8_t remap);

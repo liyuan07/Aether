@@ -1,4 +1,5 @@
 import Foundation
+import CAetherCore
 
 // All domain model types for WhatPort.
 // These are pure value types with no IOKit or UI dependencies.
@@ -34,7 +35,10 @@ public struct PortState: Identifiable, Sendable {
     // Full device tree behind this port, pre-order (parents before
     // children, siblings in enumeration order). Empty when nothing is
     // attached or the port carries no USB data.
-    public var usbDevices: [USBDeviceInfo] = []
+    public var usbDevices: [USBDeviceInfo] = [] {
+        didSet { usbSelection = RustPortEnrichment.selection(usbDevices) }
+    }
+    private var usbSelection: (index: Int?, additional: Int) = (nil, 0)
     public var cable: CableInfo?
     public var portStats: PortStatistics?
     // USB-PD port-controller lifetime reliability counters. Nil on machines
@@ -153,7 +157,7 @@ public struct PortState: Identifiable, Sendable {
     // prefer the first real device in tree order and fall back to a hub only
     // when hubs are all the port has.
     public var usbDevice: USBDeviceInfo? {
-        usbDevices.first { $0.deviceClass != .hub } ?? usbDevices.first
+        usbSelection.index.map { usbDevices[$0] }
     }
 
     // Stable identity for the event pipeline. usbDevice (above) is what the UI
@@ -181,15 +185,7 @@ public struct PortState: Identifiable, Sendable {
     // Hubs are plumbing, not something the user plugged in, so they are
     // not counted.
     public var additionalDeviceCount: Int {
-        guard usbDevice != nil else { return 0 }
-        let realDevices = usbDevices.filter { $0.deviceClass != .hub }
-        guard realDevices.count > 0 else { return 0 }
-        // Once realDevices is non-empty, usbDevice is guaranteed non-hub: it
-        // only resolves to a hub when every device on the port is a hub, and
-        // that would make realDevices empty (guarded above). So usbDevice is
-        // always one of realDevices here, and the count beyond it is simply
-        // realDevices.count - 1.
-        return max(0, realDevices.count - 1)
+        usbSelection.additional
     }
 }
 
@@ -586,16 +582,16 @@ public enum USBDeviceClass: Sendable, Equatable {
     case vendorSpecific
 
     public init?(code: Int) {
-        switch code {
-        case 0x09: self = .hub
-        case 0x01: self = .audio
-        case 0x0E: self = .video
-        case 0x08: self = .massStorage
-        case 0x0B: self = .smartCard
-        case 0x11: self = .billboard
-        case 0xE0: self = .wireless
-        case 0xEF: self = .miscellaneous
-        case 0xFF: self = .vendorSpecific
+        switch aether_usb_device_class(Int64(code)) {
+        case 1: self = .hub
+        case 2: self = .audio
+        case 3: self = .video
+        case 4: self = .massStorage
+        case 5: self = .smartCard
+        case 6: self = .billboard
+        case 7: self = .wireless
+        case 8: self = .miscellaneous
+        case 9: self = .vendorSpecific
         default: return nil
         }
     }

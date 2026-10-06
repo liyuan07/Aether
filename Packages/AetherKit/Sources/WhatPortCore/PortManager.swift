@@ -976,7 +976,6 @@ extension PortManager {
 
         let roster = RustPortRoster.plan(hpm: hpmPorts, phy: phyData, tb: tbData, power: powerData, cc: ccData)
         let tbBySocket = Dictionary(uniqueKeysWithValues: roster.tbIndices.map { (tbData[$0].socketID, tbData[$0]) })
-        let usbCCC = ccData.filter { $0.portType == "USB-C" }
         let nonUSBCCC = ccData.filter { $0.portType != "USB-C" && !$0.portType.isEmpty }
         portDataTier = roster.tier
         var results = roster.rows.map { row in
@@ -1089,18 +1088,11 @@ extension PortManager {
             results[i].energy = nil
         }
 
-        // Build lookup dictionaries for enrichment data. Devices are grouped
+        // Rust plans source indices for enrichment data. Devices are grouped
         // (not first-wins) because a port can carry a whole tree behind a
         // hub or dock, not just one device.
-        let deviceDataByPort = Dictionary(grouping: deviceData, by: \.portNumber)
-        let displaysByPort = Dictionary(
-            displayData.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { a, _ in a }
-        )
-        let statsByPort = Dictionary(
-            portStatsData.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { a, _ in a }
-        )
+        let enrichment = RustPortEnrichment.plan(ports: results, displays: displayData,
+            stats: portStatsData, cc: ccData, devices: deviceData)
         // Ordinal join, not positional-by-port-number: PortControllerInfo
         // carries no port identity, only array order, and that order is over
         // the machine's USB-C ports sorted ascending by physical port
@@ -1157,10 +1149,6 @@ extension PortManager {
             }
         }
         let pdReliabilityByPortID = pdReliabilityCrossCheck.result
-        let ccByPortFull = Dictionary(
-            usbCCC.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { a, _ in a }
-        )
         let transportPlan = RustPortTransports.plan(ports: results, hpm: hpmPorts,
             usb: usb3Transport, dp: dpTransport, cio: cioTransport)
 
@@ -1171,18 +1159,21 @@ extension PortManager {
             // before children, siblings in enumeration order). Built from
             // this port's own slice only, so a locationID collision on
             // another port can never cross-contaminate this tree.
-            let usbDevices = buildDeviceTree(deviceDataByPort[portID] ?? [])
+            let metadata = enrichment.rows[i]
+            let deviceIndices = enrichment.devices[metadata.device_start..<(metadata.device_start + metadata.device_count)]
+            let usbDevices = buildDeviceTree(deviceIndices.map { deviceData[$0] })
             results[i].usbDevices = usbDevices
 
             // Same primary-selection rule as PortState.usbDevice: the first
             // real (non-hub) device in tree order, falling back to a hub
             // only when hubs are all the port has. Keeps the row title in
             // step with whatever the free tier fronts.
-            let primaryDevice = usbDevices.first { $0.deviceClass != .hub } ?? usbDevices.first
+            let primaryDevice = results[i].usbDevice
 
             // Display name takes priority over USB device name since a USB
             // device on a TB/DP port is usually the hub, not the display.
-            if let display = displaysByPort[portID] {
+            if metadata.display >= 0 {
+                let display = displayData[Int(metadata.display)]
                 results[i].deviceName = display.productName
                 results[i].displayWidth = display.maxWidth
                 results[i].displayHeight = display.maxHeight
@@ -1194,7 +1185,8 @@ extension PortManager {
             }
 
             // Cable identity from CC SOP' data
-            if let cc = ccByPortFull[portID], !cc.cableProductType.isEmpty {
+            if metadata.cable >= 0 {
+                let cc = ccData[Int(metadata.cable)]
                 results[i].cable = CableInfo(
                     productType: cc.cableProductType,
                     pdRevision: cc.cablePDRevision
@@ -1202,7 +1194,8 @@ extension PortManager {
             }
 
             // Port statistics (lifetime counters)
-            if let stats = statsByPort[portID] {
+            if metadata.stats >= 0 {
+                let stats = portStatsData[Int(metadata.stats)]
                 results[i].portStats = PortStatistics(
                     connectCount: stats.connectCount,
                     overcurrentCount: stats.overcurrentCount,
@@ -1471,12 +1464,10 @@ extension PortManager {
     // we map back to the physical number to look up the HPM entry. No-op without HPM.
     private func stampMagSafeHPMData(_ ports: inout [PortState], hpmPorts: [HPMPortInput]) {
         guard !hpmPorts.isEmpty else { return }
-        let magByNumber = Dictionary(
-            hpmPorts.filter { $0.isMagSafe }.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        for i in ports.indices where ports[i].portType == .magSafe {
-            guard let hpm = magByNumber[ports[i].id - 100] else { continue }
+        let plan = RustPortEnrichment.plan(ports: ports, hpm: hpmPorts)
+        for i in ports.indices {
+            guard plan.rows[i].hpm >= 0 else { continue }
+            let hpm = hpmPorts[Int(plan.rows[i].hpm)]
             ports[i].uuid = hpm.uuid
             ports[i].health = PortHealth(
                 overcurrentCount: hpm.overcurrentCount,

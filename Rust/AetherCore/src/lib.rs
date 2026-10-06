@@ -483,4 +483,5 @@ mod port_decode;
 mod abc_guard;
 mod app_order;
 
+mod port_enrichment;
 mod preferences;
