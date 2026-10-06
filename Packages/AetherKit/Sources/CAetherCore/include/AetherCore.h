@@ -144,4 +144,17 @@ typedef struct { size_t index; size_t depth; size_t parent_index; } AetherDevice
 int64_t aether_device_parent(int64_t location_id);
 AetherDeviceTreeRow aether_device_query(const int64_t *ids, size_t count, int64_t location_id);
 size_t aether_device_plan(const int64_t *ids, size_t count, AetherDeviceTreeRow *output, size_t capacity);
+typedef struct { uint64_t key; int64_t power; int64_t voltage; int64_t current; uint8_t outgoing_label; } AetherSMCContract;
+typedef struct { uint64_t key; int64_t id; uint8_t usb; uint8_t connected; uint8_t has_power; uint8_t incoming; } AetherSMCPort;
+typedef struct { int64_t id; uint8_t usb; uint8_t winning; } AetherSMCNode;
+typedef struct { uint64_t key; double watts; } AetherSMCPowerOut;
+typedef struct { int64_t index; int64_t port_id; } AetherSMCResult;
+uint8_t aether_smc_resolution_enabled(uint8_t enabled, uint8_t external);
+uint8_t aether_smc_contract_consistent(int64_t power, int64_t voltage, int64_t current);
+uint8_t aether_smc_contract_plausible(const AetherSMCContract *contract, uint8_t has_out, double watts);
+uint8_t aether_smc_sourcing_power(double watts, uint8_t present);
+uint8_t aether_smc_describes_charging(const AetherSMCNode *nodes, size_t count);
+AetherSMCResult aether_smc_contract_select(const AetherSMCContract *contracts, size_t contract_count,
+    const AetherSMCPort *ports, size_t port_count, const AetherSMCNode *nodes, size_t node_count,
+    const AetherSMCPowerOut *outputs, size_t output_count, uint8_t external, uint8_t enabled, uint8_t candidate_only);
 #endif

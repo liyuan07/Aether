@@ -139,3 +139,7 @@ sh LaunchAether.command
 - 端口历史迁移运行 `RustPortHistoryParityTests` 与 `PortsTests`，独立旧实现对照 10,000 次方向变化/重复端口/无效功率/突发/边界/回拨/会话事件；验证图表 UUID 和值副本独立性。Rust 内部检查缺失读数不产生累积状态、过期空数组释放容量。页面和 IOKit 硬件验收仍须另行验证。
 
 - USB 拓扑迁移运行 `RustDeviceTreeParityTests` 和既有 `DeviceTreeTests`/`PortManagerTests`，对照独立旧实现的顺序、层级、首个重复父节点和缺失/畸形位置 ID。性能命令：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter rustTopologyBatchBenchmark`，核对结果后比较合成 3,000 记录的批量规划；不视为真实 USB 页面或整机资源验收。
+
+- SMC 归属迁移运行 `RustSMCContractParityTests`、`SMCContractAttributionTests` 及既有 PortManager 电源归属测试。独立原实现对照 4,000 组多通道、重复 UUID/端口、裸节点、winning contract、方向和开关组合；729 组整数边界各与七种可选输出读数验证一致性与方向阈值。必须保留唯一候选与 resolve/证据查询不同的重复匹配语义；生成数据不替代真实充电硬件验收。
+
+- 第十二批正式安装已恢复成功；实际端口页的 USB 设备识别、充电读数、历史图表更新和导航通过。本机界面响应不证明热插拔、其他硬件环境、Prompt 凭证交互或整机性能目标已达成，相关验收继续保留。
