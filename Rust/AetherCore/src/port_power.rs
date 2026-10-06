@@ -201,3 +201,57 @@ pub unsafe extern "C" fn aether_port_output_power(
         .collect();
     unsafe { write(&rows, out, cap) }
 }
+
+#[repr(C)]
+pub struct Connector {
+    id: i64,
+    active: u8,
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_port_connector_power(
+    connectors: *const Connector,
+    count: usize,
+    chargers: *const Charger,
+    charger_count: usize,
+    smc_ports: *const i64,
+    smc_count: usize,
+    t: Telemetry,
+    usb_node: u8,
+    usb_smc: u8,
+    output: *mut Patch,
+    capacity: usize,
+) -> usize {
+    let (Some(connectors), Some(chargers), Some(smc_ports)) = (
+        unsafe { span(connectors, count) },
+        unsafe { span(chargers, charger_count) },
+        unsafe { span(smc_ports, smc_count) },
+    ) else {
+        return 0;
+    };
+    if usb_node != 0 || t.present == 0 || t.power <= 0 {
+        return 0;
+    }
+    let mut negotiated = HashMap::new();
+    for charger in chargers {
+        if charger.usb == 0 && charger.winning != 0 {
+            negotiated.entry(charger.id).or_insert(charger);
+        }
+    }
+    let smc_ports: std::collections::HashSet<i64> = smc_ports.iter().copied().collect();
+    let mut rows = Vec::new();
+    for (index, connector) in connectors.iter().enumerate() {
+        let contract = negotiated.get(&connector.id);
+        if connector.active != 0
+            && (contract.is_some() || smc_ports.contains(&connector.id) || usb_smc == 0)
+        {
+            rows.push(incoming(
+                index,
+                contract.map_or(0, |c| c.voltage),
+                contract.map_or(0, |c| c.current),
+                0,
+                t,
+            ));
+        }
+    }
+    unsafe { write(&rows, output, capacity) }
+}

@@ -63,4 +63,24 @@ enum RustPortPower {
         } } }
         apply(patches, count: count, to: &result)
     }
+    static func connectors(_ entries: [CCInput], chargers: [ChargerInput], telemetry t: ChargingPowerInput?,
+                           usbNode: Bool, usbSMC: Bool, smcPorts: Set<Int>) -> [PortState] {
+        var result = entries.map { PortState(id: 100 + $0.portNumber,
+            portType: $0.portType.lowercased().contains("magsafe") ? .magSafe : .usbC, ccConnected: $0.active) }
+        guard !entries.isEmpty else { return result }
+        let entries = entries.map { AetherPowerConnector(id: Int64($0.portNumber), active: $0.active ? 1 : 0) }
+        let chargers = chargers.map { AetherPowerCharger(id: Int64($0.portNumber), max_watts: Int64($0.maxWatts),
+            voltage: Int64($0.voltage), current: Int64($0.maxCurrent), usb: $0.portType == "USB-C" ? 1 : 0, winning: $0.hasWinningContract ? 1 : 0) }
+        let smcPorts = smcPorts.map(Int64.init)
+        var patches = [AetherPowerPatch](repeating: .init(), count: result.count)
+        let count = entries.withUnsafeBufferPointer { e in chargers.withUnsafeBufferPointer { c in
+            smcPorts.withUnsafeBufferPointer { s in patches.withUnsafeMutableBufferPointer { out in
+                aether_port_connector_power(e.baseAddress,e.count,c.baseAddress,c.count,s.baseAddress,s.count,
+                    telemetry(t),usbNode ? 1 : 0,usbSMC ? 1 : 0,out.baseAddress,out.count)
+            } }
+        } }
+        apply(patches, count: count, to: &result)
+        return result
+    }
+
 }

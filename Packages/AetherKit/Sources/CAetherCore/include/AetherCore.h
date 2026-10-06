@@ -202,4 +202,8 @@ size_t aether_port_transports(const AetherTransportPort *ports, size_t count,
     const AetherTransportSource *hpm, size_t hpm_count, const AetherTransportSource *usb, size_t usb_count,
     const AetherTransportSource *dp, size_t dp_count, const AetherTransportSource *cio, size_t cio_count,
     AetherTransportRow *output, size_t capacity);
+typedef struct { int64_t id; uint8_t active; } AetherPowerConnector;
+size_t aether_port_connector_power(const AetherPowerConnector *connectors, size_t count,
+    const AetherPowerCharger *chargers, size_t charger_count, const int64_t *smc_ports, size_t smc_count,
+    AetherPowerTelemetry telemetry, uint8_t usb_node, uint8_t usb_smc, AetherPowerPatch *output, size_t capacity);
 #endif

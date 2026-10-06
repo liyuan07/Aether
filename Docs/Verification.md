@@ -155,3 +155,5 @@ sh LaunchAether.command
 - 身份修复与 PD 关联运行 `RustPortJoinTests`：独立旧实现对照 6,000 组来源组合（含 600 组有效修复），检查恢复身份、顺序、计数值、重复优先级与完整诊断字符串；额外固定用例检查多处冲突的顺序和整批拒绝。既有 HPM 身份消除及 PD 关联测试继续运行，合成数据不访问真实设置。
 
 - `RustPortTransportTests` 独立旧链路构造对照 5,000 组来源组合，检查全部 LiveTransport 值、HPM/CIO 首项、设备身份门控、重复端口、空来源及 Int 极值；固定用例验证未活动的首个 CIO 不向设备身份回退，而实时链路仍使用后续活动节点。PortManager 快照集成验证受限 USB、隧道列表和设备名称，既有传输/显示回归继续运行。
+
+- `RustConnectorPowerTests` 独立旧实现对照 6,000 组连接器快照，检查端口 ID/类型/连接状态和全部 PortPower 字段，包含至少 500 次供电归属、重复合同、SMC/USB-C 门控、缺省/零/负遥测、整数极值和非标准类型。固定用例核对首个获选非 USB-C 合同、满电继续供电及 USB-C 节点优先级；既有 MagSafePowerTests/SMC/PortManager 回归继续运行。
