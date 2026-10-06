@@ -1302,24 +1302,7 @@ extension PortManager {
         _ pdReliabilityData: [PDReliabilityInput],
         usbCPortIDs: [Int]
     ) -> [Int: PDReliabilityInput] {
-        guard !pdReliabilityData.isEmpty, !usbCPortIDs.isEmpty else { return [:] }
-
-        let usbCCount = usbCPortIDs.count
-        guard pdReliabilityData.count == usbCCount || pdReliabilityData.count == usbCCount + 1 else {
-            return [:]
-        }
-
-        let byOffset = Dictionary(
-            pdReliabilityData.map { ($0.entryOffset, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        var result: [Int: PDReliabilityInput] = [:]
-        for (index, portID) in usbCPortIDs.enumerated() {
-            guard let entry = byOffset[index] else { continue }
-            result[portID] = entry
-        }
-        return result
+        RustPortJoin.ordinal(pdReliabilityData, ids: usbCPortIDs)
     }
 
     // Outcome of crossCheckPDJoin. `result` is what correlate() must use for
@@ -1348,47 +1331,8 @@ extension PortManager {
         smcChannels: [SMCPortPowerInput],
         usbCPorts: [PortState]
     ) -> PDReliabilityCrossCheckResult {
-        guard !ordinal.isEmpty, !smcChannels.isEmpty else {
-            return PDReliabilityCrossCheckResult(result: ordinal, disagreement: nil)
-        }
-
-        // Normalised HPM UUID -> port IDs, USB-C ports only, so a MagSafe
-        // port's UUID (or a USB-C port outside the ordinal roster) can never
-        // satisfy a match. Kept as an array per UUID so two ports sharing a
-        // UUID reads as ambiguous rather than silently picking one.
-        var portIDsByUUID: [String: [Int]] = [:]
-        for port in usbCPorts where port.portType == .usbC {
-            guard let uuid = port.uuid else { continue }
-            portIDsByUUID[SMCContractAttribution.normalisedUUID(uuid), default: []].append(port.id)
-        }
-
-        // Grouped by D-channel index rather than first-wins uniqued: the real
-        // reader (the D1...D4 loop) can never publish two channels at the
-        // same index, but defensively, an index with more than one entry is
-        // treated as unresolved for that offset, never resolved by picking
-        // whichever happened to win the uniquing.
-        let channelsByIndex = Dictionary(grouping: smcChannels, by: \.channel)
-            .compactMapValues { channels in channels.count == 1 ? channels[0] : nil }
-
-        var disagreements: [String] = []
-        for (offset, ordinalPortID) in usbCPortIDs.enumerated() {
-            // The ordinal join produced nothing for this offset (e.g. a
-            // missing PD reliability entry): there is no attribution to
-            // cross-check, so a keyed match here can never count as a
-            // disagreement about it.
-            guard ordinal[ordinalPortID] != nil else { continue }
-            let channelIndex = offset + 1
-            guard let channel = channelsByIndex[channelIndex] else { continue }   // unresolved: no channel, or a duplicate index
-            guard let matches = portIDsByUUID[channel.uuid], matches.count == 1 else { continue }   // unresolved: no/ambiguous match
-            let keyedPortID = matches[0]
-            guard keyedPortID != ordinalPortID else { continue }   // agrees
-            disagreements.append("offset \(offset) D\(channelIndex): keyed=port \(keyedPortID) ordinal=port \(ordinalPortID)")
-        }
-
-        guard disagreements.isEmpty else {
-            return PDReliabilityCrossCheckResult(result: [:], disagreement: disagreements.joined(separator: "; "))
-        }
-        return PDReliabilityCrossCheckResult(result: ordinal, disagreement: nil)
+        let disagreement = RustPortJoin.cross(ordinal: ordinal, ids: usbCPortIDs, channels: smcChannels, ports: usbCPorts)
+        return PDReliabilityCrossCheckResult(result: disagreement == nil ? ordinal : [:], disagreement: disagreement)
     }
 
     // Build LiveTransport entries for a port from the transport state services.
@@ -1558,33 +1502,9 @@ extension PortManager {
         hpmPorts: [HPMPortInput],
         smcChannels: [SMCPortPowerInput]
     ) -> [HPMPortInput] {
-        let unidentified = hpmPorts.indices.filter { !hpmPorts[$0].isMagSafe && hpmPorts[$0].uuid.isEmpty }
-        guard unidentified.count == 1, let index = unidentified.first else { return hpmPorts }
-
-        // Every UUID the roster already accounts for, MagSafe included: a
-        // channel matching a MagSafe port is matched, not spare.
-        let claimed = Set(
-            hpmPorts.filter { !$0.uuid.isEmpty }.map { SMCContractAttribution.normalisedUUID($0.uuid) }
-        )
-        let spare = smcChannels.filter { !$0.uuid.isEmpty && !claimed.contains($0.uuid) }
-        guard spare.count == 1, let recovered = spare.first else { return hpmPorts }
-
-        // The two sides have to account for each other. Where there are more
-        // channels than ports, or fewer, some port is present on one side and
-        // absent from the other, and the spare channel is as likely to be that
-        // port's as this one's.
-        guard smcChannels.count == hpmPorts.count else { return hpmPorts }
-
-        // The check the counts cannot make on their own: a port missing from
-        // the roster leaves its channel spare while the counts still line up.
-        // The SMC publishes its channels in USB-C port order, D-channel j + 1
-        // for USB-C offset j, the same relation crossCheckPDJoin leans on, so
-        // the spare channel has to be the one this port's own offset predicts.
-        // If that assumption is ever wrong the join simply refuses, which is
-        // the port keeping no identity, never a wrong one.
-        let usbCPorts = hpmPorts.filter { !$0.isMagSafe }.sorted { $0.portNumber < $1.portNumber }
-        guard let offset = usbCPorts.firstIndex(where: { $0.uuid.isEmpty }),
-              recovered.channel == offset + 1 else { return hpmPorts }
+        guard let recovery = RustPortJoin.recover(hpm: hpmPorts, channels: smcChannels) else { return hpmPorts }
+        let index = recovery.hpm
+        let recovered = smcChannels[recovery.channel]
 
         var joined = hpmPorts
         let port = hpmPorts[index]

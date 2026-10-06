@@ -448,3 +448,5 @@ mod port_policy;
 mod port_power;
 
 mod port_roster;
+
+mod port_join;

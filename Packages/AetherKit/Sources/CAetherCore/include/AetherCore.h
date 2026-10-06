@@ -184,4 +184,15 @@ AetherRosterResult aether_port_roster(const AetherRosterHPM *hpm, size_t hpm_cou
     const AetherPortPhy *phy, size_t phy_count, const AetherPortTB *tb, size_t tb_count,
     const int64_t *power_ids, size_t power_count, const AetherRosterCC *cc, size_t cc_count,
     AetherRosterRow *output, size_t capacity, size_t *tb_output, size_t tb_capacity);
+typedef struct { int64_t id; uint64_t key; uint8_t empty; uint8_t magsafe; } AetherJoinHPM;
+typedef struct { uint64_t key; int64_t channel; uint8_t empty; } AetherJoinChannel;
+typedef struct { int64_t id; uint64_t key; uint8_t usb; } AetherJoinPort;
+typedef struct { int64_t port_id; size_t index; } AetherJoinPair;
+typedef struct { int64_t hpm; int64_t channel; } AetherJoinRecovery;
+typedef struct { size_t offset; int64_t channel; int64_t ordinal; int64_t keyed; } AetherJoinDisagreement;
+AetherJoinRecovery aether_port_identity_recover(const AetherJoinHPM *hpm, size_t count, const AetherJoinChannel *channels, size_t channel_count);
+size_t aether_port_pd_ordinal(const int64_t *offsets, size_t count, const int64_t *ids, size_t port_count, AetherJoinPair *output, size_t capacity);
+size_t aether_port_pd_cross(const int64_t *ordinal_ids, size_t ordinal_count, const int64_t *ids, size_t count,
+    const AetherJoinChannel *channels, size_t channel_count, const AetherJoinPort *ports, size_t port_count,
+    AetherJoinDisagreement *output, size_t capacity);
 #endif
