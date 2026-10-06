@@ -7,6 +7,7 @@ python3 Scripts/measure-installed-resources.py --scenario settings-closed --dura
 python3 Scripts/measure-installed-resources.py --scenario general-visible --duration 30 --output .build/benchmarks/general.json
 python3 Scripts/measure-installed-resources.py --scenario ports-visible --duration 30 --output .build/benchmarks/ports.json
 python3 Scripts/measure-installed-resources.py --scenario general-after-ports --duration 30 --output .build/benchmarks/after-ports.json
+python3 Scripts/measure-installed-resources.py --scenario clipboard-visible --duration 30 --output .build/benchmarks/clipboard.json
 ```
 
 每条命令前通过原生界面准备对应场景，并核对页面；scenario 是操作者标签，脚本不会观察或控制页面。测量期间维持页面、设备连接和设置稳定，避免输入/搜索、硬件热插拔及其他主动工作；至少记录三轮并比较中位值。首次打开页面、暖缓存及返回后的保留内存分别测量，不混作冷启动。不同用户数据量、系统压力、设备和授权环境的结果不可直接比较。
@@ -19,10 +20,12 @@ python3 Scripts/measure-installed-resources.py --scenario general-after-ports --
 
 ## 固定负载的隔离准备
 
-通用与计时偏好已统一经 AppEnvironment.appDefaults 注入；正常安装仍为原标准域，单元测试为独立域。44 个静态计时键和 AppStorage 已显式绑定，避免偏好注入后仍读写真实配置。完整性能配置还须隔离启动迁移、剪贴板监听与系统动作，将相同配置用于旧 Swift 与当前正式产物；目前没有运行该隔离模式，不能把这一步当作旧版基线已经建立。
+通用与计时偏好已统一经 AppEnvironment.appDefaults 注入；正常安装仍为原标准域，单元测试为独立域。44 个静态计时键和 AppStorage 已显式绑定，避免偏好注入后仍读写真实配置。当前正式产物的隔离模式已通过 10000 条合成归档加载与末条搜索验收；旧 Swift 仍须采用相同启动、偏好和系统动作隔离适配，不能把当前模式验收当作旧版基线已经建立。
 
 ## 显式隔离配置
 
 `python3 Scripts/create-resource-profile.py --clipboard-items 10000` 创建新的 `.build/resource-profiles/UUID/profile.json` 和合成归档、字段数/内容哈希记录，不读取或复制真实数据。0 条为默认空负载，支持至 100000 条。每次运行独立偏好域重置为固定值；从正式可执行文件启动时显式设置 `AETHER_RESOURCE_PROFILE` 为清单绝对路径，`--resource-scene` 接受 `settings-closed`、`general-visible`、`ports-visible`、`clipboard-visible`。仍必须先退出已有实例，不能运行构建目录副本。
 
 配置跳过迁移、登录项动作及快捷键执行，禁止向外部应用粘贴和监控系统计时器；剪贴板保持原频率读取私有板，端口仍采样硬件。它衡量同配置下的固定场景差异，不能代替正常服务、权限或完整页面验收。`runtime.json` 记录就绪 PID 和清单 ID，应与实时唯一正式进程核对；状态文件本身不是存活证明。测量后退出配置实例并恢复普通正式启动。旧 Swift 基线需要相同适配才能运行比较，不可直接启动未适配产物。
+
+隔离采样时另传 `--profile /绝对仓库路径/.build/resource-profiles/UUID/profile.json`。工具只接受此显式目录，拒绝相关路径上的符号链接，并在采样前后核对清单、就绪记录 PID、条数及实际合成归档 SHA-256，输出 `synthetic_profile` 元数据。归档被修改、就绪记录属于其他进程或负载不一致时不输出测量结果。未传此参数时不读取任何历史文件，元数据为 null。此核对证明记录与负载一致；操作者仍须确认启动环境及实际页面，不能仅凭就绪文件证明隔离模式或页面状态。

@@ -118,4 +118,4 @@ Aether 以 GPL-3.0-or-later 发布。完整许可见 [LICENSE](LICENSE)，版权
 
 通用与计时偏好通过 `AppEnvironment.appDefaults` 统一管理，普通运行继续使用原应用偏好域；测试使用独立域，为固定负载资源测量提供隔离基础。
 
-固定负载性能配置可用 `Scripts/create-resource-profile.py` 生成合成数据，通过显式 `AETHER_RESOURCE_PROFILE` 选择独立目录、偏好域和私有粘贴板；普通启动不改变现有行为。测量范围与限制见 [资源测量](Docs/ResourceMeasurement.md)。
+固定负载性能配置可用 `Scripts/create-resource-profile.py` 生成合成数据，通过显式 `AETHER_RESOURCE_PROFILE` 选择独立目录、偏好域和私有粘贴板；普通启动不改变现有行为。采样工具支持剪贴板页面，传入 `--profile` 时核对合成负载哈希和实时 PID。测量范围与限制见 [资源测量](Docs/ResourceMeasurement.md)。
