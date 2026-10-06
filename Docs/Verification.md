@@ -127,3 +127,5 @@ sh LaunchAether.command
 - Prompt 迁移运行 `RustPromptParityTests`、原有网络/模型/存储测试：独立旧 Swift 解析参照、取消后晚到结果、locale 历史顺序、版本一日期/整数兼容和损坏载荷保护。模拟 URLSession 不替代真实服务/钥匙串/页面验收。
 
 - 常用剪贴板迁移运行 `RustQuickClipboardParityTests` 与 `QuickClipboardTests`；独立旧 Swift 模型/存储/搜索参照、生成编辑及 Unicode 排名、未知/损坏文件/符号链接、修复重载与原生格式权限均需通过。局部编辑性能使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustQuickClipboardParityTests/testMutationBenchmark`，不得推导全应用收益。
+
+- 历史策略迁移运行 `RustClipboardHistoryParityTests`：原 Swift 独立参照覆盖乱序与晚到重复、保护裁剪、清理标志、收藏/分类、规范等价和持久分组身份。重裁剪基准 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustClipboardHistoryParityTests/testHistoryTrimBenchmark` 仅验证该合成算法路径，不代表日常或整机收益。

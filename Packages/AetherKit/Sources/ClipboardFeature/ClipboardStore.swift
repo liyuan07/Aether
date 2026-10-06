@@ -9,6 +9,7 @@ import SharedSupport
  * (at your option) any later version.
  */
 
+import CAetherCore
 import RustCore
 import AppKit
 import Foundation
@@ -185,7 +186,8 @@ private actor ClipboardSnapshotProcessor {
         for item: ClipboardItem,
         in history: [ClipboardItem]
     ) -> Set<UUID> {
-        Set(history.lazy.filter { $0.hasSameContent(as: item) }.map(\.id))
+        let rows = history.map { rustClipboardRow($0, matching: $0.hasSameContent(as: item)) }
+        return Set(rustClipboardPlan(rows, action: 3).indices.map { history[$0].id })
     }
 }
 
@@ -196,7 +198,8 @@ private actor ClipboardMaintenanceProcessor {
         historyLimit: Int,
         now: Date
     ) throws -> ClipboardArchive {
-        var history = try validItems(source.history)
+        let cutoff = expirationDays > 0 ? Calendar.current.date(byAdding: .day, value: -expirationDays, to: now) : nil
+        let history = try validItems(source.history, cutoff: cutoff, limit: historyLimit)
         let pinnedItems = try validItems(source.pinnedItems)
         var uniqueGroups: [ClipboardGroup] = []
         for (offset, originalGroup) in (source.groups ?? []).enumerated() {
@@ -214,17 +217,6 @@ private actor ClipboardMaintenanceProcessor {
             uniqueGroups.append(group)
         }
 
-        if expirationDays > 0,
-           let cutoff = Calendar.current.date(
-            byAdding: .day,
-            value: -expirationDays,
-            to: now
-           ) {
-            history.removeAll { $0.timestamp < cutoff }
-        }
-        if history.count > historyLimit {
-            history = Array(history.prefix(historyLimit))
-        }
         try Task.checkCancellation()
         return ClipboardArchive(
             history: history,
@@ -233,19 +225,15 @@ private actor ClipboardMaintenanceProcessor {
         )
     }
 
-    private func validItems(
-        _ items: [ClipboardItem]
-    ) throws -> [ClipboardItem] {
-        var valid: [ClipboardItem] = []
-        valid.reserveCapacity(items.count)
+    private func validItems(_ items: [ClipboardItem], cutoff: Date? = nil, limit: Int = Int.max) throws -> [ClipboardItem] {
+        var rows: [AetherClipboardRow] = []
+        rows.reserveCapacity(items.count)
         for (offset, item) in items.enumerated() {
-            if offset.isMultiple(of: 128) {
-                try Task.checkCancellation()
-            }
-            guard payloadExists(for: item) else { continue }
-            valid.append(item)
+            if offset.isMultiple(of: 128) { try Task.checkCancellation() }
+            rows.append(rustClipboardRow(item, valid: payloadExists(for: item)))
         }
-        return valid
+        try Task.checkCancellation()
+        return rustClipboardPlan(rows, action: 2, limit: limit, cutoff: cutoff).indices.map { items[$0] }
     }
 
     private func payloadExists(for item: ClipboardItem) -> Bool {
@@ -269,14 +257,7 @@ private actor ClipboardMaintenanceProcessor {
         _ lhs: [ClipboardItem],
         _ rhs: [ClipboardItem]
     ) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        return zip(lhs, rhs).allSatisfy { left, right in
-            left.type == right.type
-                && left.stringData == right.stringData
-                && left.imageFileName == right.imageFileName
-                && left.fileURLs == right.fileURLs
-                && left.rtfFileName == right.rtfFileName
-        }
+        rustClipboardGroupItemsMatch(lhs, rhs)
     }
 }
 
@@ -293,54 +274,14 @@ func clipboardHistoryByInserting(
     limit: Int,
     protecting protectedIDs: Set<UUID> = []
 ) -> ClipboardHistoryUpdate {
-    let duplicateItems: [ClipboardItem]
-    if let matchingDuplicateIDs {
-        duplicateItems = history.filter { matchingDuplicateIDs.contains($0.id) }
-    } else {
-        duplicateItems = history.filter { $0.hasSameContent(as: item) }
+    let rows = history.map { existing in
+        rustClipboardRow(existing, matching: matchingDuplicateIDs.map { $0.contains(existing.id) } ?? existing.hasSameContent(as: item),
+            protected: protectedIDs.contains(existing.id))
     }
-    if duplicateItems.contains(where: { $0.timestamp >= item.timestamp }) {
-        return ClipboardHistoryUpdate(
-            items: history,
-            didInsert: false,
-            needsPayloadCleanup: item.type == .rtf
-        )
-    }
-
-    let duplicateIDs = Set(duplicateItems.map(\.id))
-    var updated = history.filter { existing in
-        !duplicateIDs.contains(existing.id)
-    }
-    let insertionIndex = updated.firstIndex {
-        $0.timestamp < item.timestamp
-    } ?? updated.endIndex
-    updated.insert(item, at: insertionIndex)
-
-    var removedPayload = duplicateItems.contains {
-        $0.type == .image || $0.type == .rtf
-    }
-    while updated.count > limit {
-        guard let index = updated.lastIndex(where: {
-            !protectedIDs.contains($0.id)
-        }) else {
-            removedPayload = removedPayload || updated.dropFirst(limit).contains {
-                $0.type == .image || $0.type == .rtf
-            }
-            updated = Array(updated.prefix(limit))
-            break
-        }
-        let removed = updated[index]
-        removedPayload = removedPayload
-            || removed.type == .image
-            || removed.type == .rtf
-        updated.remove(at: index)
-    }
-
-    return ClipboardHistoryUpdate(
-        items: updated,
-        didInsert: true,
-        needsPayloadCleanup: removedPayload
-    )
+    let candidate = rustClipboardRow(item, protected: protectedIDs.contains(item.id))
+    let result = rustClipboardPlan(rows, candidate: candidate, action: 0, limit: limit)
+    return ClipboardHistoryUpdate(items: result.plan.inserted == 0 ? history : result.indices.map { $0 == history.count ? item : history[$0] },
+        didInsert: result.plan.inserted != 0, needsPayloadCleanup: result.plan.cleanup != 0)
 }
 
 @MainActor
@@ -512,8 +453,7 @@ final class ClipboardStore: ObservableObject {
 
     @discardableResult
     func createGroup(from items: [ClipboardItem]) -> ClipboardGroup? {
-        var seen = Set<UUID>()
-        let unique = items.filter { seen.insert($0.id).inserted }
+        let unique = rustClipboardUnique(items)
         guard unique.count > 1 else { return nil }
 
         if let index = groups.firstIndex(where: {
@@ -534,16 +474,12 @@ final class ClipboardStore: ObservableObject {
     }
 
     func togglePin(for item: ClipboardItem) {
-        if item.isPinned || pinnedItems.contains(where: { $0.id == item.id }) {
-            unpin(item)
-        } else {
-            pin(item)
-        }
+        applyPin(item, action: 2)
     }
 
     func delete(_ item: ClipboardItem) {
-        history.removeAll { $0.id == item.id }
-        pinnedItems.removeAll { $0.id == item.id }
+        history = rustClipboardRemoving(history) { $0.id == item.id }
+        pinnedItems = rustClipboardRemoving(pinnedItems) { $0.id == item.id }
         saveArchive(cleanup: true)
     }
 
@@ -559,7 +495,7 @@ final class ClipboardStore: ObservableObject {
         case .groups:
             groups.removeAll()
         default:
-            history.removeAll { tab.includes($0) }
+            history = rustClipboardRemoving(history) { tab.includes($0) }
         }
         saveArchive(cleanup: true)
     }
@@ -621,23 +557,11 @@ final class ClipboardStore: ObservableObject {
         performMaintenance()
     }
 
-    private func pin(_ item: ClipboardItem) {
-        var pinned = item
-        pinned.isPinned = true
-        history.removeAll { $0.id == item.id }
-        if !pinnedItems.contains(where: { $0.id == item.id }) {
-            pinnedItems.insert(pinned, at: 0)
-        }
-        saveArchive()
-    }
-
-    private func unpin(_ item: ClipboardItem) {
-        pinnedItems.removeAll { $0.id == item.id }
-        var unpinned = item
-        unpinned.isPinned = false
-        history.insert(unpinned, at: 0)
-        trimHistory()
-        saveArchive(cleanup: true)
+    private func applyPin(_ item: ClipboardItem, action: UInt8) {
+        let result = rustClipboardPin(item, history: history, pinned: pinnedItems, action: action, limit: historyLimit)
+        history = result.history
+        pinnedItems = result.pinned
+        saveArchive(cleanup: !result.isPinned)
     }
 
     private func checkClipboard() {
@@ -854,34 +778,11 @@ final class ClipboardStore: ObservableObject {
         return item
     }
 
-    private func trimHistory(protecting protectedIDs: Set<UUID> = []) {
-        var updated = history
-        while updated.count > historyLimit {
-            guard let index = updated.lastIndex(where: {
-                !protectedIDs.contains($0.id)
-            }) else {
-                updated = Array(updated.prefix(historyLimit))
-                break
-            }
-            updated.remove(at: index)
-        }
-        if updated.count != history.count {
-            history = updated
-        }
-    }
-
     private func hasSameGroupItems(
         _ lhs: [ClipboardItem],
         _ rhs: [ClipboardItem]
     ) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        return zip(lhs, rhs).allSatisfy { left, right in
-            left.type == right.type
-                && left.stringData == right.stringData
-                && left.imageFileName == right.imageFileName
-                && left.fileURLs == right.fileURLs
-                && left.rtfFileName == right.rtfFileName
-        }
+        rustClipboardGroupItemsMatch(lhs, rhs)
     }
 
     private func saveArchive(cleanup: Bool = false) {

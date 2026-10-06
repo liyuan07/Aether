@@ -83,4 +83,19 @@ typedef struct { size_t collection; size_t start; size_t count; intptr_t rank; }
 size_t aether_quick_search(const AetherQuickSearchCollection *collections, size_t collection_count,
     const AetherQuickSearchEntry *entries, size_t entry_count, AetherQuickSearchSection *sections, size_t section_capacity,
     size_t *indices, size_t index_capacity);
+
+uint8_t aether_clipboard_content_fields(uint8_t kind, uint8_t other_kind, uint8_t both_hashes);
+uint8_t aether_clipboard_history_bounded(size_t count, size_t limit);
+uint8_t aether_clipboard_content_match(uint8_t kind, uint8_t other_kind, uint8_t flags);
+uint8_t aether_clipboard_group_equal(const uint8_t *flags, size_t left_count, size_t right_count);
+typedef struct { AetherUUID id; double timestamp; uint8_t kind; uint8_t matching; uint8_t protected; uint8_t valid; } AetherClipboardRow;
+typedef struct { size_t count; uint8_t inserted; uint8_t cleanup; } AetherClipboardPlan;
+AetherClipboardPlan aether_clipboard_history_plan(const AetherClipboardRow *rows, size_t count, AetherClipboardRow candidate,
+    uint8_t action, size_t limit, double cutoff, uint8_t has_cutoff, size_t *output, size_t capacity);
+
+uint8_t aether_clipboard_tab_includes(uint8_t tab, uint8_t kind, uint8_t pinned);
+typedef struct { size_t history_count; size_t pinned_count; uint8_t pinned; } AetherClipboardPinPlan;
+AetherClipboardPinPlan aether_clipboard_pin_plan(const AetherClipboardRow *history, size_t history_count, const AetherClipboardRow *pinned, size_t pinned_count,
+    AetherClipboardRow candidate, uint8_t candidate_pinned, uint8_t action, size_t limit, size_t *history_output, size_t history_capacity,
+    size_t *pinned_output, size_t pinned_capacity);
 #endif

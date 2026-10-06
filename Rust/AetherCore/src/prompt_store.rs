@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{
-    prompt::Bytes,
+    abi::Bytes,
     storage::{self, Buffer},
     versioned,
 };

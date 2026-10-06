@@ -424,3 +424,7 @@ mod storage;
 mod versioned;
 
 mod quick_clipboard;
+
+mod clipboard_history;
+
+mod abi;

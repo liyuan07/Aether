@@ -9,6 +9,7 @@ import SharedSupport
  * (at your option) any later version.
  */
 
+import CAetherCore
 import AppKit
 import CryptoKit
 import Foundation
@@ -396,20 +397,7 @@ struct ClipboardItem: Identifiable, Codable, Sendable {
     }
 
     func hasSameContent(as other: ClipboardItem) -> Bool {
-        guard type == other.type else { return false }
-        switch type {
-        case .image:
-            if let imageContentHash, let otherHash = other.imageContentHash {
-                return imageContentHash == otherHash
-            }
-            return imageFileName == other.imageFileName
-        case .file:
-            return fileURLs == other.fileURLs
-        case .rtf:
-            return stringData == other.stringData && getRTFData() == other.getRTFData()
-        default:
-            return stringData == other.stringData
-        }
+        rustClipboardContentMatches(self, other)
     }
 
     private static func generatePreview(
@@ -587,21 +575,7 @@ enum ClipboardTab: String, CaseIterable, Identifiable, Sendable, Hashable {
     }
 
     func includes(_ item: ClipboardItem) -> Bool {
-        switch self {
-        case .all:
-            return !item.isPinned
-        case .text:
-            return !item.isPinned
-                && [.text, .url, .rtf, .unknown].contains(item.type)
-        case .images:
-            return !item.isPinned && item.type == .image
-        case .files:
-            return !item.isPinned && item.type == .file
-        case .favorites:
-            return item.isPinned
-        case .groups:
-            return false
-        }
+        aether_clipboard_tab_includes(rustTab, item.type.rustKind, item.isPinned ? 1 : 0) != 0
     }
 }
 
