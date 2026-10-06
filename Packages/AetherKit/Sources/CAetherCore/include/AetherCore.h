@@ -176,4 +176,12 @@ size_t aether_port_contract_power(const AetherPowerPort *ports, size_t count, in
     AetherPowerTelemetry telemetry, AetherPowerPatch *output, size_t capacity);
 size_t aether_port_output_power(const AetherPowerPort *ports, size_t count, const AetherPowerOutput *channels, size_t channel_count,
     AetherPowerPatch *output, size_t capacity);
+typedef struct { int64_t id; uint8_t magsafe; } AetherRosterHPM;
+typedef struct { int64_t id; uint8_t usb; uint8_t active; } AetherRosterCC;
+typedef struct { int64_t port_id; int64_t hpm; int64_t phy; int64_t tb; int64_t power; uint8_t cc_active; } AetherRosterRow;
+typedef struct { size_t count; size_t tb_count; uint8_t tier; } AetherRosterResult;
+AetherRosterResult aether_port_roster(const AetherRosterHPM *hpm, size_t hpm_count,
+    const AetherPortPhy *phy, size_t phy_count, const AetherPortTB *tb, size_t tb_count,
+    const int64_t *power_ids, size_t power_count, const AetherRosterCC *cc, size_t cc_count,
+    AetherRosterRow *output, size_t capacity, size_t *tb_output, size_t tb_capacity);
 #endif

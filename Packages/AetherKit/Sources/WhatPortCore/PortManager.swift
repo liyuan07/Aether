@@ -974,99 +974,25 @@ extension PortManager {
             smcChannels: smcPortPower
         )
 
-        // Deduplicate TB data by socket ID (multiple adapters per port, take best)
-        let tbBySocket = bestTBPerSocket(tbData)
-
-        // Deduplicate PHY data by port number (multiple PHYs per port, take best)
-        let dedupedPhys = bestPhyPerPort(phyData)
-        let hasDirectMapping = dedupedPhys.contains { $0.portNumber > 0 }
-
-        // Separate USB-C CC data from non-USB-C (MagSafe, etc.)
-        // They can share the same ParentBuiltInPortNumber, so we must
-        // not let MagSafe's state bleed into USB-C port matching.
+        let roster = RustPortRoster.plan(hpm: hpmPorts, phy: phyData, tb: tbData, power: powerData, cc: ccData)
+        let tbBySocket = Dictionary(uniqueKeysWithValues: roster.tbIndices.map { (tbData[$0].socketID, tbData[$0]) })
         let usbCCC = ccData.filter { $0.portType == "USB-C" }
-        let nonUSBCCC = ccData.filter { $0.portType != "USB-C" && $0.portType != "" }
-
-        let ccByPort = Dictionary(usbCCC.map { ($0.portNumber, $0.active) }, uniquingKeysWith: { a, _ in a })
-
-        // Get unique socket IDs sorted (these are our physical ports)
-        let socketIDs = tbBySocket.keys.sorted()
-
-        // Build PHY lookup for direct mapping
-        let phyByPort: [Int: PhyInput] = hasDirectMapping
-            ? Dictionary(
-                dedupedPhys.compactMap { $0.portNumber > 0 ? ($0.portNumber, $0) : nil },
-                uniquingKeysWith: { existing, _ in existing }
-              )
-            : [:]
-
-        // Picks the PHY for a port: direct by port number, else positional.
-        func phyFor(portNumber: Int, index: Int) -> PhyInput? {
-            if hasDirectMapping { return phyByPort[portNumber] }
-            return index < dedupedPhys.count ? dedupedPhys[index] : nil
-        }
-
-        // Build the USB-C port roster. The HPM controller layer is the
-        // authoritative source of physical ports and their stable UUID, so we
-        // prefer it. When there is no HPM node (Intel, desktop front ports, or
-        // tests) we fall back to Thunderbolt socket IDs, then PHY port numbers.
-        // All sources key the per-port data by the same "@N" number, which
-        // agrees across the HPM / PHY / TB / transport trees.
-        let usbcHPM = hpmPorts.filter { !$0.isMagSafe }.sorted { $0.portNumber < $1.portNumber }
-        var results: [PortState]
-
-        if !usbcHPM.isEmpty {
-            portDataTier = .full
-            results = usbcHPM.enumerated().map { index, hpm in
-                var state = buildPortState(
-                    portID: hpm.portNumber,
-                    phy: phyFor(portNumber: hpm.portNumber, index: index),
-                    tb: tbBySocket[hpm.portNumber],
-                    power: powerData.first { $0.portIndex == hpm.portNumber },
-                    ccActive: ccByPort[hpm.portNumber] ?? false
-                )
-                // A port the elimination could not identify keeps its place in
-                // the roster but carries no UUID: an empty string is not an
-                // identity, and every join downstream keys on this value.
+        let nonUSBCCC = ccData.filter { $0.portType != "USB-C" && !$0.portType.isEmpty }
+        portDataTier = roster.tier
+        var results = roster.rows.map { row in
+            var state = buildPortState(portID: Int(row.port_id),
+                phy: row.phy >= 0 ? phyData[Int(row.phy)] : nil,
+                tb: row.tb >= 0 ? tbData[Int(row.tb)] : nil,
+                power: row.power >= 0 ? powerData[Int(row.power)] : nil,
+                ccActive: row.cc_active != 0)
+            if row.hpm >= 0 {
+                let hpm = hpmPorts[Int(row.hpm)]
                 state.uuid = hpm.uuid.isEmpty ? nil : hpm.uuid
-                state.health = PortHealth(
-                    overcurrentCount: hpm.overcurrentCount,
-                    plugEventCount: hpm.plugEventCount,
-                    connectionCount: hpm.connectionCount,
-                    authorizationStatus: hpm.authorizationStatus,
-                    ldcmStatus: hpm.ldcmStatus,
-                    liquidDetected: hpm.liquidDetected,
-                    mitigationsActive: hpm.mitigationsActive
-                )
-                return state
+                state.health = PortHealth(overcurrentCount: hpm.overcurrentCount, plugEventCount: hpm.plugEventCount,
+                    connectionCount: hpm.connectionCount, authorizationStatus: hpm.authorizationStatus,
+                    ldcmStatus: hpm.ldcmStatus, liquidDetected: hpm.liquidDetected, mitigationsActive: hpm.mitigationsActive)
             }
-        } else if !socketIDs.isEmpty {
-            portDataTier = .thunderboltOnly
-            results = socketIDs.enumerated().map { index, socketID in
-                buildPortState(
-                    portID: socketID,
-                    phy: phyFor(portNumber: socketID, index: index),
-                    tb: tbBySocket[socketID],
-                    power: powerData.first { $0.portIndex == socketID },
-                    ccActive: ccByPort[socketID] ?? false
-                )
-            }
-        } else {
-            // No TB socket roster either: the PHY layer is the last resort.
-            // An empty PHY list too means no roster source had anything at
-            // all for this snapshot (.none); a non-empty one is a real,
-            // fully-detailed roster (.full), just built without TB sockets.
-            portDataTier = dedupedPhys.isEmpty ? .none : .full
-            results = dedupedPhys.map { phy in
-                let portID = phy.portNumber > 0 ? phy.portNumber : (phy.phyID + 1)
-                return buildPortState(
-                    portID: portID,
-                    phy: phy,
-                    tb: nil,
-                    power: powerData.first { $0.portIndex == portID },
-                    ccActive: ccByPort[portID] ?? false
-                )
-            }
+            return state
         }
 
         // Attach charger power to the USB-C port that negotiated a USB-PD
@@ -1212,7 +1138,7 @@ extension PortManager {
         // a wrong one. Without an HPM roster there is nothing to safely
         // ordinal-join against, so feed the join an empty array and fail
         // closed rather than guess.
-        let pdReliabilityInputForJoin = usbcHPM.isEmpty ? [] : pdReliabilityData
+        let pdReliabilityInputForJoin = (roster.rows.first?.hpm ?? -1) < 0 ? [] : pdReliabilityData
         let pdReliabilityCrossCheck = Self.crossCheckPDJoin(
             ordinal: Self.joinPDReliabilityOrdinally(pdReliabilityInputForJoin, usbCPortIDs: usbCPortIDsForPD),
             usbCPortIDs: usbCPortIDsForPD,
@@ -1512,20 +1438,6 @@ extension PortManager {
         }
 
         return transports
-    }
-
-    // Multiple TB adapters exist per socket (one per lane). Pick the one
-    // with the highest link width as the representative.
-    private func bestTBPerSocket(_ tbData: [ThunderboltInput]) -> [Int: ThunderboltInput] {
-        Dictionary(uniqueKeysWithValues: RustPortPolicy.tbIndices(tbData).map { (tbData[$0].socketID, tbData[$0]) })
-    }
-
-    // Multiple PHY controllers can map to the same physical port.
-    // For example, M4 Pro has 4 PHYs for 3 ports (PHY 0 and PHY 2 both
-    // map to port 1). Pick the one with active transport data.
-    // If port-number isn't available, each PHY is treated as unique.
-    private func bestPhyPerPort(_ phyData: [PhyInput]) -> [PhyInput] {
-        RustPortPolicy.phyIndices(phyData).map { phyData[$0] }
     }
 
     // Attach charger (power-IN) data to the USB-C port that negotiated a

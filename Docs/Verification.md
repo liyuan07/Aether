@@ -149,3 +149,5 @@ sh LaunchAether.command
 - 控制器策略迁移运行 `RustPortPolicyTests` 及现有 PortManager 数据级别/PHY/雷雳关联回归；独立旧策略比较 1,000 组重复/缺省/混合映射、负数/零/Int 极值及同宽度选择，20,000 次级别确认序列。真实端口页需在正式应用中重新检查，不以生成记录替代硬件页面验收。
 
 - 电源应用迁移运行 `RustPortPowerTests` 与既有充电/SMC/PortManager 回归。独立旧实现对照 5,000 组充电节点、输出通道与合同应用序列，检查所有 Power 字段、重复 ID/UUID、PD/VConn 保留、缺失/零遥测；整数极值必须不经过浮点折损。另比较半单位、负数和非正/NaN 输出通道，不提前转换未选择的数值。
+
+- 名册迁移运行 `RustPortRosterTests` 和全部现有 HPM/PHY/雷雳/PortManager 回归。6,000 组来源组合对照独立旧规划，逐项核对原数组索引、端口顺序、重复 HPM、正/零/负标识、混合或缺失 PHY 映射、首个电源/CC 和全部 tier；实际正式端口页仍需检查设备与电源显示。

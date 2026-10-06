@@ -2,14 +2,14 @@
 use std::collections::BTreeMap;
 #[repr(C)]
 pub struct TB {
-    socket: i64,
-    width: i64,
+    pub(crate) socket: i64,
+    pub(crate) width: i64,
 }
 #[repr(C)]
 pub struct Phy {
-    port: i64,
-    id: i64,
-    active: u8,
+    pub(crate) port: i64,
+    pub(crate) id: i64,
+    pub(crate) active: u8,
 }
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -44,7 +44,7 @@ unsafe fn output(rows: &[usize], ptr: *mut usize, capacity: usize) -> usize {
     }
     rows.len()
 }
-fn tb_plan(rows: &[TB]) -> Vec<usize> {
+pub(crate) fn tb_plan(rows: &[TB]) -> Vec<usize> {
     let mut best = BTreeMap::new();
     for (index, row) in rows.iter().enumerate() {
         if row.socket <= 0 {
@@ -60,7 +60,7 @@ fn tb_plan(rows: &[TB]) -> Vec<usize> {
     }
     best.into_values().collect()
 }
-fn phy_plan(rows: &[Phy]) -> Vec<usize> {
+pub(crate) fn phy_plan(rows: &[Phy]) -> Vec<usize> {
     if !rows.iter().any(|p| p.port > 0) {
         return (0..rows.len()).collect();
     }
