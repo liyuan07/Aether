@@ -157,4 +157,10 @@ uint8_t aether_smc_describes_charging(const AetherSMCNode *nodes, size_t count);
 AetherSMCResult aether_smc_contract_select(const AetherSMCContract *contracts, size_t contract_count,
     const AetherSMCPort *ports, size_t port_count, const AetherSMCNode *nodes, size_t node_count,
     const AetherSMCPowerOut *outputs, size_t output_count, uint8_t external, uint8_t enabled, uint8_t candidate_only);
+typedef struct { int64_t socket; int64_t width; } AetherPortTB;
+typedef struct { int64_t port; int64_t id; uint8_t active; } AetherPortPhy;
+typedef struct { uint8_t confirmed; uint8_t pending; } AetherPortTier;
+AetherPortTier aether_port_tier_step(AetherPortTier state, uint8_t resolved);
+size_t aether_port_tb_plan(const AetherPortTB *rows, size_t count, size_t *output, size_t capacity);
+size_t aether_port_phy_plan(const AetherPortPhy *rows, size_t count, size_t *output, size_t capacity);
 #endif

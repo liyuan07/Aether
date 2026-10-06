@@ -1,4 +1,5 @@
 import Foundation
+import CAetherCore
 import os
 
 private let portManagerLog = Logger(subsystem: "app.whatport.whatport", category: "PortManager")
@@ -55,32 +56,10 @@ public final class PortManager: @unchecked Sendable {
     public private(set) var confirmedPortDataTier: PortDataTier = .unknown
 
     // The tier a downgrade is waiting to be confirmed by, if any.
-    private var unconfirmedTier: PortDataTier?
-
+    private var tierCore = AetherPortTier(confirmed: 3, pending: 4)
     private func confirmTier(_ resolved: PortDataTier) {
-        // Same tier or better: show it, and drop any downgrade that was
-        // waiting, so two blips either side of a good snapshot never add up to
-        // a confirmed one.
-        if resolved.detailRank <= confirmedPortDataTier.detailRank {
-            unconfirmedTier = nil
-            confirmedPortDataTier = resolved
-            return
-        }
-
-        // Worse: only say so the second time in a row.
-        //
-        // Corner case, deliberately left: a Mac whose roster source flipped
-        // between two *different* poorer tiers on every single poll, never
-        // repeating one twice, would keep resetting the pending value and
-        // never downgrade the wording. Nothing in the corpus behaves that way,
-        // and this only ever holds back a caption: the ports, power and
-        // recorder data all keep moving regardless.
-        if unconfirmedTier == resolved {
-            unconfirmedTier = nil
-            confirmedPortDataTier = resolved
-        } else {
-            unconfirmedTier = resolved
-        }
+        tierCore = aether_port_tier_step(tierCore, UInt8(resolved.detailRank))
+        confirmedPortDataTier = RustPortPolicy.tier(tierCore.confirmed)
     }
 
     // Battery / charging state (system-level, not per-port)
@@ -1538,18 +1517,7 @@ extension PortManager {
     // Multiple TB adapters exist per socket (one per lane). Pick the one
     // with the highest link width as the representative.
     private func bestTBPerSocket(_ tbData: [ThunderboltInput]) -> [Int: ThunderboltInput] {
-        var best: [Int: ThunderboltInput] = [:]
-        for tb in tbData {
-            guard tb.socketID > 0 else { continue }
-            if let existing = best[tb.socketID] {
-                if tb.currentLinkWidth > existing.currentLinkWidth {
-                    best[tb.socketID] = tb
-                }
-            } else {
-                best[tb.socketID] = tb
-            }
-        }
-        return best
+        Dictionary(uniqueKeysWithValues: RustPortPolicy.tbIndices(tbData).map { (tbData[$0].socketID, tbData[$0]) })
     }
 
     // Multiple PHY controllers can map to the same physical port.
@@ -1557,29 +1525,7 @@ extension PortManager {
     // map to port 1). Pick the one with active transport data.
     // If port-number isn't available, each PHY is treated as unique.
     private func bestPhyPerPort(_ phyData: [PhyInput]) -> [PhyInput] {
-        let hasPortNumbers = phyData.contains { $0.portNumber > 0 }
-        guard hasPortNumbers else { return phyData }
-
-        var best: [Int: PhyInput] = [:]
-        for phy in phyData {
-            let key = phy.portNumber > 0 ? phy.portNumber : phy.phyID
-            if let existing = best[key] {
-                // Prefer the PHY with active transport
-                let phyActive = !phy.lane0Transport.isEmpty || !phy.lane1Transport.isEmpty
-                let existingActive = !existing.lane0Transport.isEmpty || !existing.lane1Transport.isEmpty
-                if phyActive && !existingActive {
-                    best[key] = phy
-                }
-            } else {
-                best[key] = phy
-            }
-        }
-
-        return best.values.sorted {
-            let a = $0.portNumber > 0 ? $0.portNumber : $0.phyID
-            let b = $1.portNumber > 0 ? $1.portNumber : $1.phyID
-            return a < b
-        }
+        RustPortPolicy.phyIndices(phyData).map { phyData[$0] }
     }
 
     // Attach charger (power-IN) data to the USB-C port that negotiated a
