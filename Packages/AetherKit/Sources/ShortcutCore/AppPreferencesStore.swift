@@ -1,5 +1,6 @@
 import Foundation
 import RustCore
+import CAetherCore
 
 public struct AppPreferencesStore: Sendable {
     public let fileURL: URL
@@ -22,19 +23,18 @@ public struct AppPreferencesStore: Sendable {
 
     public func load(persistingMigrations: Bool = false) throws -> AppPreferencesConfiguration {
         let sourceURL: URL
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            sourceURL = fileURL
-        } else if let legacyFileURL, FileManager.default.fileExists(atPath: legacyFileURL.path) {
-            sourceURL = legacyFileURL
-        } else {
-            throw CocoaError(.fileNoSuchFile)
+        let currentExists = FileManager.default.fileExists(atPath: fileURL.path)
+        let legacyExists = currentExists ? false : (legacyFileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false)
+        switch aether_preferences_source(currentExists ? 1 : 0, legacyExists ? 1 : 0) {
+        case 0: sourceURL = fileURL
+        case 1: sourceURL = legacyFileURL!
+        default: throw CocoaError(.fileNoSuchFile)
         }
         guard let data = try RustDisk.read(sourceURL, rejectSymbolicLinks: false) else { throw CocoaError(.fileReadNoSuchFile) }
         let decoder = JSONDecoder()
-        let storedSchemaVersion = (try? decoder.decode(SchemaVersion.self, from: data).schemaVersion) ?? 1
+        let storedSchemaVersion = (try? decoder.decode(SchemaVersion.self, from: data).schemaVersion) ?? Int(RustPreferences.defaults.stored_default)
         let configuration = try decoder.decode(AppPreferencesConfiguration.self, from: data)
-        if persistingMigrations,
-           (sourceURL != fileURL || storedSchemaVersion < AppPreferencesConfiguration.currentSchemaVersion) {
+        if aether_preferences_should_write(persistingMigrations ? 1 : 0,sourceURL != fileURL ? 1 : 0,Int64(storedSchemaVersion)) != 0 {
             try save(configuration)
         }
         return configuration

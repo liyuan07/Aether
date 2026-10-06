@@ -2,9 +2,9 @@ import CAetherCore
 import Foundation
 
 public struct AppGeneralPreferences: Codable, Hashable, Sendable {
-    public var launchAtLogin = false
-    public var blockAutomaticABC = false
-    public var showModifierButtons = true
+    public var launchAtLogin = RustPreferences.defaults.launch != 0
+    public var blockAutomaticABC = RustPreferences.defaults.block != 0
+    public var showModifierButtons = RustPreferences.defaults.show != 0
 
     public init() {}
 
@@ -27,8 +27,8 @@ public struct AppGeneralPreferences: Codable, Hashable, Sendable {
 public struct ApplicationShortcutPreferences: Codable, Hashable, Sendable {
     public var defaultBundleIdentifiers: [String: String] = [:]
     public var orderedBundleIdentifiers: [String: [String]] = [:]
-    public var holdDuration: TimeInterval = 0.5
-    public var restoreMinimizedWindows = true
+    public var holdDuration: TimeInterval = RustPreferences.defaults.hold
+    public var restoreMinimizedWindows = RustPreferences.defaults.restore != 0
     public var windowBehaviorOverrides: [String: ApplicationWindowBehavior] = [:]
 
     public init() {}
@@ -49,22 +49,21 @@ public struct ApplicationShortcutPreferences: Codable, Hashable, Sendable {
             forKey: .orderedBundleIdentifiers
         ) ?? orderedBundleIdentifiers
         holdDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .holdDuration) ?? holdDuration
-        restoreMinimizedWindows = try container.decodeIfPresent(Bool.self, forKey: .restoreMinimizedWindows) ?? true
+        restoreMinimizedWindows = try container.decodeIfPresent(Bool.self, forKey: .restoreMinimizedWindows) ?? (RustPreferences.defaults.restore != 0)
         windowBehaviorOverrides = try container.decodeIfPresent([String: ApplicationWindowBehavior].self,
                                                                forKey: .windowBehaviorOverrides) ?? [:]
     }
 
     public func normalizedHoldDuration() -> TimeInterval {
-        min(max(holdDuration, 0.3), 1.5)
+        aether_preferences_hold(holdDuration)
     }
 
     public func windowBehavior(for identifier: String?) -> (moveWindows: Bool, restoreMinimized: Bool) {
-        switch identifier.flatMap({ windowBehaviorOverrides[$0] }) ?? .followGlobal {
-        case .followGlobal: (true, restoreMinimizedWindows)
-        case .keepMinimized: (true, false)
-        case .restoreMinimized: (true, true)
-        case .activateOnly: (false, false)
-        }
+        let behavior = identifier.flatMap { windowBehaviorOverrides[$0] } ?? .followGlobal
+        let tag: UInt8
+        switch behavior { case .followGlobal: tag = 0; case .keepMinimized: tag = 1; case .restoreMinimized: tag = 2; case .activateOnly: tag = 3 }
+        let result = aether_preferences_window(tag, restoreMinimizedWindows ? 1 : 0)
+        return (result & 1 != 0, result & 2 != 0)
     }
 }
 
@@ -137,16 +136,14 @@ public enum ApplicationInitialResolver {
 }
 
 public enum ApplicationLetterKey {
-    private static let lettersByKeyCode: [UInt16: String] = [
-        0: "A", 11: "B", 8: "C", 2: "D", 14: "E", 3: "F", 5: "G",
-        4: "H", 34: "I", 38: "J", 40: "K", 37: "L", 46: "M", 45: "N",
-        31: "O", 35: "P", 12: "Q", 15: "R", 1: "S", 17: "T", 32: "U",
-        9: "V", 13: "W", 7: "X", 16: "Y", 6: "Z"
-    ]
-
-    public static func letter(for keyCode: UInt16) -> String? { lettersByKeyCode[keyCode] }
+    public static func letter(for keyCode: UInt16) -> String? {
+        let letter = aether_application_letter(keyCode)
+        return letter == 0 ? nil : String(UnicodeScalar(letter))
+    }
     public static func keyCode(for letter: String) -> UInt16? {
-        lettersByKeyCode.first { $0.value == letter.uppercased() }?.key
+        var upper = letter.uppercased().precomposedStringWithCanonicalMapping
+        let key = upper.withUTF8 { aether_application_letter_key($0.baseAddress,$0.count) }
+        return key < 0 ? nil : UInt16(key)
     }
 }
 
@@ -158,10 +155,7 @@ public enum ABCSwitchDecision: Equatable, Sendable {
 
 public enum PhysicalInputSwitchKey {
     public static func matches(keyCode: UInt16) -> Bool {
-        switch keyCode {
-        case 57, 63, 102, 104: true // Caps Lock/中英、Globe/Fn、日文英数、日文假名
-        default: false
-        }
+        aether_physical_input_switch(keyCode) != 0
     }
 }
 
@@ -198,7 +192,7 @@ public struct ABCSwitchGuardState: Equatable, Sendable {
 }
 
 public struct AppPreferencesConfiguration: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = Int(RustPreferences.defaults.version)
 
     public var schemaVersion = currentSchemaVersion
     public var app = AppGeneralPreferences()
@@ -221,10 +215,17 @@ public struct AppPreferencesConfiguration: Codable, Hashable, Sendable {
         ) ?? applicationShortcuts
         if container.contains(.general) {
             let legacy = try container.nestedContainer(keyedBy: LegacyGeneralKeys.self, forKey: .general)
-            if !container.contains(.app) {
-                app.launchAtLogin = try legacy.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? app.launchAtLogin
-            }
-            app.blockAutomaticABC = try legacy.decodeIfPresent(Bool.self, forKey: .blockAutomaticABC) ?? app.blockAutomaticABC
+            let hasApp = container.contains(.app)
+            let launch = aether_preferences_legacy_launch(hasApp ? 1 : 0) != 0
+                ? try legacy.decodeIfPresent(Bool.self, forKey: .launchAtLogin) : nil
+            let block = try legacy.decodeIfPresent(Bool.self, forKey: .blockAutomaticABC)
+            let migrated = aether_preferences_migrate(.init(launch: app.launchAtLogin ? 1 : 0,
+                block: app.blockAutomaticABC ? 1 : 0, show: app.showModifierButtons ? 1 : 0),
+                hasApp ? 1 : 0, launch == true ? 1 : 0, launch == nil ? 0 : 1,
+                block == true ? 1 : 0, block == nil ? 0 : 1)
+            app.launchAtLogin = migrated.launch != 0
+            app.blockAutomaticABC = migrated.block != 0
+            app.showModifierButtons = migrated.show != 0
         }
         schemaVersion = Self.currentSchemaVersion
     }
@@ -238,7 +239,7 @@ public struct AppPreferencesConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct KeyPilotConfigurationArchive: Codable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = Int(RustPreferences.defaults.archive_version)
 
     public var schemaVersion = currentSchemaVersion
     public var shortcuts: [ShortcutRule]
@@ -253,7 +254,7 @@ public struct KeyPilotConfigurationArchive: Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? Int(RustPreferences.defaults.archive_default)
         shortcuts = try container.decode([ShortcutRule].self, forKey: .shortcuts)
         preferences = try container.decodeIfPresent(AppPreferencesConfiguration.self, forKey: .preferences)
             ?? container.decode(AppPreferencesConfiguration.self, forKey: .inputAutomation)

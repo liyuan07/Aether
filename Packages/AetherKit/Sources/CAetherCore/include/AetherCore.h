@@ -217,4 +217,16 @@ AetherAppMoveResult aether_app_move(const uint64_t *apps, size_t count, const ui
     const int64_t *offsets, size_t offset_count, int64_t destination, AetherAppReference *output, size_t capacity);
 typedef struct { double pressed; uint8_t has_pressed; uint8_t manual; uint8_t decision; } AetherABCGuard;
 AetherABCGuard aether_abc_decide(AetherABCGuard state, uint8_t block, uint8_t abc, uint8_t observe, double now, double duration);
+typedef struct { int64_t version; int64_t archive_version; int64_t archive_default; int64_t stored_default; double hold; uint8_t launch; uint8_t block; uint8_t show; uint8_t restore; } AetherPreferencesDefaults;
+typedef struct { uint8_t launch; uint8_t block; uint8_t show; } AetherGeneralPreferences;
+AetherPreferencesDefaults aether_preferences_defaults(void);
+double aether_preferences_hold(double value);
+uint8_t aether_preferences_window(uint8_t behavior, uint8_t restore);
+uint8_t aether_preferences_legacy_launch(uint8_t app_key);
+AetherGeneralPreferences aether_preferences_migrate(AetherGeneralPreferences current, uint8_t app_key, uint8_t launch, uint8_t has_launch, uint8_t block, uint8_t has_block);
+int8_t aether_preferences_source(uint8_t current_exists, uint8_t legacy_exists);
+uint8_t aether_preferences_should_write(uint8_t persist, uint8_t legacy, int64_t version);
+uint8_t aether_physical_input_switch(uint16_t code);
+uint8_t aether_application_letter(uint16_t code);
+int32_t aether_application_letter_key(const uint8_t *bytes, size_t count);
 #endif
