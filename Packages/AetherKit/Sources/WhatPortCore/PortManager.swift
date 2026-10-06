@@ -1161,16 +1161,8 @@ extension PortManager {
             usbCCC.map { ($0.portNumber, $0) },
             uniquingKeysWith: { a, _ in a }
         )
-        // HPM transport lists are keyed by physical port number. MagSafe is
-        // charge-only and has no data transports, so only USB-C ports qualify.
-        let hpmByPort = Dictionary(
-            hpmPorts.filter { !$0.isMagSafe }.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { a, _ in a }
-        )
-        let cioByPort = Dictionary(
-            cioTransport.map { ($0.portNumber, $0) },
-            uniquingKeysWith: { a, _ in a }
-        )
+        let transportPlan = RustPortTransports.plan(ports: results, hpm: hpmPorts,
+            usb: usb3Transport, dp: dpTransport, cio: cioTransport)
 
         for i in results.indices {
             let portID = results[i].id
@@ -1250,18 +1242,15 @@ extension PortManager {
             }
 
             // Live transport state (real-time link data per transport)
-            results[i].liveTransports = buildLiveTransports(
-                portID: portID,
-                usb3Transport: usb3Transport,
-                dpTransport: dpTransport,
-                cioTransport: cioTransport
-            )
+            let transportRow = transportPlan[i]
+            results[i].liveTransports = RustPortTransports.live(row: transportRow,
+                usb: usb3Transport, dp: dpTransport, cio: cioTransport)
 
             // Provisioned / blocked / tunnelled transports (the "why doesn't
             // my dock work" answer). HPM lists are M3+; CIO lists need a TB
             // link. Only attach when something is actually present.
-            let hpm = hpmByPort[portID]
-            let cio = cioByPort[portID]
+            let hpm = transportRow.hpm >= 0 ? hpmPorts[Int(transportRow.hpm)] : nil
+            let cio = transportRow.cio >= 0 ? cioTransport[Int(transportRow.cio)] : nil
             let transports = PortTransports(
                 provisioned: hpm?.provisionedTransports ?? [],
                 unauthorized: hpm?.unauthorizedTransports ?? [],
@@ -1275,9 +1264,10 @@ extension PortManager {
             // Name the connected Thunderbolt device from its TB controller.
             // The link itself is built from IOThunderboltPort (no name there);
             // the CIO node carries the dock/hub identity. Require an active CIO
-            // node (matching buildLiveTransports) so a stale node left behind
+            // node so a stale node left behind
             // after a fast device swap can't stamp the old name onto a new one.
-            if let cio, cio.active, results[i].thunderboltLink != nil {
+            if transportRow.identity_cio >= 0 {
+                let cio = cioTransport[Int(transportRow.identity_cio)]
                 if !cio.deviceModel.isEmpty {
                     results[i].thunderboltLink?.deviceName = cio.deviceModel
                 }
@@ -1333,55 +1323,6 @@ extension PortManager {
     ) -> PDReliabilityCrossCheckResult {
         let disagreement = RustPortJoin.cross(ordinal: ordinal, ids: usbCPortIDs, channels: smcChannels, ports: usbCPorts)
         return PDReliabilityCrossCheckResult(result: disagreement == nil ? ordinal : [:], disagreement: disagreement)
-    }
-
-    // Build LiveTransport entries for a port from the transport state services.
-    // Only includes transports that are active on this port.
-    private func buildLiveTransports(
-        portID: Int,
-        usb3Transport: [USB3TransportInput],
-        dpTransport: [DPTransportInput],
-        cioTransport: [CIOTransportInput]
-    ) -> [LiveTransport] {
-        var transports: [LiveTransport] = []
-
-        // Include a restricted link even when it is not active: macOS has
-        // negotiated a speed but blocked data, and we want to show that
-        // rather than silently dropping the port as idle.
-        if let usb3 = usb3Transport.first(where: {
-            $0.portNumber == portID && ($0.active || $0.transportRestricted)
-        }) {
-            transports.append(LiveTransport(
-                kind: .usb,
-                dataRate: usb3.dataRate,
-                generation: usb3.generation,
-                tunneled: usb3.tunneled,
-                restricted: usb3.transportRestricted
-            ))
-        }
-
-        if let dp = dpTransport.first(where: { $0.portNumber == portID && $0.active }) {
-            transports.append(LiveTransport(
-                kind: .displayPort,
-                dataRate: dp.linkRate,
-                laneCount: dp.laneCount,
-                maxLaneCount: dp.maxLaneCount,
-                tunneled: dp.tunneled,
-                sinkCount: dp.sinkCount,
-                branchDevice: dp.branchDevice,
-                dfpType: dp.dfpType
-            ))
-        }
-
-        if let cio = cioTransport.first(where: { $0.portNumber == portID && $0.active }) {
-            transports.append(LiveTransport(
-                kind: .thunderbolt,
-                dataRate: cio.dataRate,
-                tunneled: cio.tunneled
-            ))
-        }
-
-        return transports
     }
 
     // Attach charger (power-IN) data to the USB-C port that negotiated a

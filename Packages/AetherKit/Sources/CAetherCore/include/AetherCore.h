@@ -195,4 +195,11 @@ size_t aether_port_pd_ordinal(const int64_t *offsets, size_t count, const int64_
 size_t aether_port_pd_cross(const int64_t *ordinal_ids, size_t ordinal_count, const int64_t *ids, size_t count,
     const AetherJoinChannel *channels, size_t channel_count, const AetherJoinPort *ports, size_t port_count,
     AetherJoinDisagreement *output, size_t capacity);
+typedef struct { int64_t id; uint8_t tb_link; } AetherTransportPort;
+typedef struct { int64_t id; uint8_t active; uint8_t restricted; } AetherTransportSource;
+typedef struct { int64_t hpm; int64_t cio; int64_t usb; int64_t dp; int64_t live_cio; int64_t identity_cio; } AetherTransportRow;
+size_t aether_port_transports(const AetherTransportPort *ports, size_t count,
+    const AetherTransportSource *hpm, size_t hpm_count, const AetherTransportSource *usb, size_t usb_count,
+    const AetherTransportSource *dp, size_t dp_count, const AetherTransportSource *cio, size_t cio_count,
+    AetherTransportRow *output, size_t capacity);
 #endif
