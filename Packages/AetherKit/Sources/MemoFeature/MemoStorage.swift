@@ -1,4 +1,5 @@
-import Darwin
+import RustCore
+import CAetherCore
 import Foundation
 
 public enum MemoStorageError: LocalizedError {
@@ -13,77 +14,66 @@ public enum MemoStorageError: LocalizedError {
     }
 }
 
-/// A versioned file prevents a damaged or newer user file from being replaced by an empty list.
+/// Rust owns data validation, mutation, atomic persistence and ordering.
+/// Swift serializes platform UUID/Date DTOs for the native view adapter.
 public final class MemoStorage {
-    private let directory: URL
-    private let fileManager = FileManager.default
     private let lock = NSRecursiveLock()
-    private var blocked = false
-    private static let schemaVersion = 1
+    private let core: UnsafeMutableRawPointer?
 
-    private struct Envelope: Codable {
-        var schemaVersion: Int
-        var payload: [MemoItem]
+    public init(directory: URL) {
+        core = directory.withUnsafeFileSystemRepresentation { aether_memo_create($0) }
     }
-
-    private struct Version: Decodable { var schemaVersion: Int }
-
-    public init(directory: URL) { self.directory = directory }
+    deinit { aether_memo_destroy(core) }
 
     public func load() throws -> [MemoItem] {
-        lock.lock()
-        defer { lock.unlock() }
-        let file = directory.appendingPathComponent("items.json")
+        lock.lock(); defer { lock.unlock() }
+        return try decode(aether_memo_load(core))
+    }
+    public func save(_ items: [MemoItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        let data = try encode(items)
+        try check(data.withUnsafeBytes { aether_memo_save(core, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) })
+    }
+    func add(_ item: MemoItem) throws {
+        lock.lock(); defer { lock.unlock() }
+        let data = try encode(item)
+        try check(data.withUnsafeBytes { aether_memo_add(core, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) })
+    }
+    func complete(id: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        try check(id.uuidString.withCString { aether_memo_complete(core, $0) })
+    }
+    func presentation(reloading: Bool = false) throws -> (items: [MemoItem], sorted: [MemoItem]) {
+        lock.lock(); defer { lock.unlock() }
+        let items = try decode(reloading ? aether_memo_load(core) : aether_memo_snapshot(core, 0))
+        var indices = Array(repeating: 0, count: items.count)
+        let count = indices.withUnsafeMutableBufferPointer { aether_memo_order(core, $0.baseAddress, $0.count) }
+        guard count == items.count else { throw MemoStorageError.unreadable }
+        return (items, indices.map { items[$0] })
+    }
+    private func encode<T: Encodable>(_ value: T) throws -> Data {
         do {
-            if let type = try? fileManager.attributesOfItem(atPath: file.path)[.type],
-               type as? FileAttributeType == .typeSymbolicLink {
-                throw MemoStorageError.unreadable
-            }
-            guard fileManager.fileExists(atPath: file.path) else {
-                blocked = false
-                return []
-            }
-            let data = try Data(contentsOf: file)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .millisecondsSince1970
+            return try encoder.encode(value)
+        } catch { throw MemoStorageError.writeFailed }
+    }
+    private func decode(_ buffer: UnsafeMutableRawPointer?) throws -> [MemoItem] {
+        do {
+            let data = try RustBuffer.take(buffer)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .millisecondsSince1970
-            guard try decoder.decode(Version.self, from: data).schemaVersion == Self.schemaVersion else {
-                throw MemoStorageError.unsupportedVersion
-            }
-            let items = try decoder.decode(Envelope.self, from: data).payload
-            blocked = false
-            return items
-        } catch {
-            blocked = true
-            throw (error as? MemoStorageError) ?? MemoStorageError.unreadable
-        }
+            return try decoder.decode([MemoItem].self, from: data)
+        } catch let error as RustDiskError {
+            throw error.status == 4 ? MemoStorageError.unsupportedVersion : MemoStorageError.unreadable
+        } catch { throw MemoStorageError.unreadable }
     }
-
-    public func save(_ items: [MemoItem]) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !blocked else { throw MemoStorageError.unreadable }
-        _ = try load()
-        let temporary = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
-        defer { try? fileManager.removeItem(at: temporary) }
-        do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
-                                            attributes: [.posixPermissions: 0o700])
-            guard try fileManager.attributesOfItem(atPath: directory.path)[.type] as? FileAttributeType == .typeDirectory else {
-                throw MemoStorageError.writeFailed
-            }
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .millisecondsSince1970
-            let data = try encoder.encode(Envelope(schemaVersion: Self.schemaVersion, payload: items))
-            guard fileManager.createFile(atPath: temporary.path, contents: data,
-                                         attributes: [.posixPermissions: 0o600]) else {
-                throw MemoStorageError.writeFailed
-            }
-            let destination = directory.appendingPathComponent("items.json")
-            guard rename(temporary.path, destination.path) == 0 else { throw MemoStorageError.writeFailed }
-        } catch {
-            throw MemoStorageError.writeFailed
+    private func check(_ status: UInt32) throws {
+        switch status {
+        case 0: return
+        case 2: throw MemoStorageError.unreadable
+        case 4: throw MemoStorageError.unsupportedVersion
+        default: throw MemoStorageError.writeFailed
         }
     }
 }

@@ -16,6 +16,10 @@ export CARGO_TARGET_DIR="$project_dir/.build/rust"
 archs=${ARCHS:-$(uname -m)}
 mkdir -p "$CARGO_TARGET_DIR/lib"
 if [ "${1:-}" = test ]; then exec cargo test --locked; fi
+if [ "${1:-}" = licenses ]; then
+    cargo metadata --locked --offline --format-version 1 | python3 "$project_dir/Scripts/check-rust-licenses.py" "${2:-$project_dir/App/ThirdPartyNotices}"
+    exit 0
+fi
 for arch in $archs; do
     case "$arch" in
         arm64) target=aarch64-apple-darwin ;;

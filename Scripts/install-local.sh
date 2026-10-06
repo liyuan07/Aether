@@ -7,10 +7,14 @@ installed=/Applications/Aether.app
 built="$project_dir/.build/Xcode/Build/Products/Release/Aether.app"
 mkdir -p .build/logs
 sh Scripts/build-rust-core.sh > .build/logs/rust-build.log 2>&1 || { tail -60 .build/logs/rust-build.log; exit 1; }
+sh Scripts/build-rust-core.sh licenses > .build/logs/rust-licenses.log 2>&1 || { tail -60 .build/logs/rust-licenses.log; exit 1; }
 sh Scripts/build-rust-core.sh test > .build/logs/rust-tests.log 2>&1 || { tail -60 .build/logs/rust-tests.log; exit 1; }
 swift test --package-path Packages/AetherKit > .build/logs/tests.log 2>&1 || { tail -60 .build/logs/tests.log; exit 1; }
 xcodebuild -project Aether.xcodeproj -scheme Aether -configuration Release -derivedDataPath .build/Xcode -clonedSourcePackagesDirPath Packages/AetherKit/.build -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO build > .build/logs/build.log 2>&1 || { tail -70 .build/logs/build.log; exit 1; }
 [[ -d "$built" ]]
+sh Scripts/build-rust-core.sh licenses "$built/Contents/Resources" > .build/logs/rust-packaged-licenses.log 2>&1 || { tail -60 .build/logs/rust-packaged-licenses.log; exit 1; }
+cmp NOTICE "$built/Contents/Resources/NOTICE"
+cmp LICENSE "$built/Contents/Resources/LICENSE"
 [[ $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$built/Contents/Info.plist") == com.liyuan.aether ]]
 codesign --force --deep --options runtime --sign "$identity" "$built"
 codesign --verify --deep --strict "$built"

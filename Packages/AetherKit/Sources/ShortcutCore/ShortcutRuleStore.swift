@@ -1,4 +1,5 @@
 import Foundation
+import RustCore
 
 public struct ShortcutRuleStore: Sendable {
     public let fileURL: URL
@@ -18,18 +19,14 @@ public struct ShortcutRuleStore: Sendable {
     }
 
     public func load() throws -> [ShortcutRule] {
-        let data = try Data(contentsOf: fileURL)
+        guard let data = try RustDisk.read(fileURL, rejectSymbolicLinks: false) else { throw CocoaError(.fileReadNoSuchFile) }
         return try JSONDecoder().decode([ShortcutRule].self, from: data)
     }
 
     public func save(_ rules: [ShortcutRule], fileManager: FileManager = .default) throws {
-        try fileManager.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(rules)
-        try data.write(to: fileURL, options: .atomic)
+        try RustDisk.write(data, to: fileURL, privateFile: false)
     }
 }

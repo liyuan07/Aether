@@ -34,7 +34,7 @@ Base URL 支持服务根地址（自动使用 `/v1/chat/completions`）、API �
 
 ## 本地构建与安装
 
-需要 macOS 14.6 或更高版本，以及提供 Swift 6.2 或更高版本的 Xcode。首次获取依赖需要网络。业务核心逐步迁入 Rust，页面继续使用原生 SwiftUI/AppKit；计时状态机、搜索评分、快捷键策略与窗口几何已接入；当前迁移范围与剩余工作见 [Rust 重构记录](Docs/RustMigration.md)。
+需要 macOS 14.6 或更高版本，以及提供 Swift 6.2 或更高版本的 Xcode、Python 3（构建时校验 Rust 依赖声明）。首次获取依赖需要网络。业务核心逐步迁入 Rust，页面继续使用原生 SwiftUI/AppKit；计时状态机、搜索评分、快捷键策略、窗口几何、备忘录业务与通用存储已接入；当前迁移范围与剩余工作见 [Rust 重构记录](Docs/RustMigration.md)。
 
 构建另需 rustup 管理的 Rust 1.90.0（仓库锁定版本）；Release 支持 arm64 与 x86_64，首次准备：
 

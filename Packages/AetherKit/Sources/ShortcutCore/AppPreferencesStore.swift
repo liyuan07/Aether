@@ -1,4 +1,5 @@
 import Foundation
+import RustCore
 
 public struct AppPreferencesStore: Sendable {
     public let fileURL: URL
@@ -28,7 +29,7 @@ public struct AppPreferencesStore: Sendable {
         } else {
             throw CocoaError(.fileNoSuchFile)
         }
-        let data = try Data(contentsOf: sourceURL)
+        guard let data = try RustDisk.read(sourceURL, rejectSymbolicLinks: false) else { throw CocoaError(.fileReadNoSuchFile) }
         let decoder = JSONDecoder()
         let storedSchemaVersion = (try? decoder.decode(SchemaVersion.self, from: data).schemaVersion) ?? 1
         let configuration = try decoder.decode(AppPreferencesConfiguration.self, from: data)
@@ -40,10 +41,9 @@ public struct AppPreferencesStore: Sendable {
     }
 
     public func save(_ configuration: AppPreferencesConfiguration, fileManager: FileManager = .default) throws {
-        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(configuration).write(to: fileURL, options: .atomic)
+        try RustDisk.write(encoder.encode(configuration), to: fileURL, privateFile: false)
     }
 
     private struct SchemaVersion: Decodable { let schemaVersion: Int }

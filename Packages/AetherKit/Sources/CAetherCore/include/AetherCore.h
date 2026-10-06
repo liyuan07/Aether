@@ -38,4 +38,17 @@ intptr_t aether_rect_source(AetherRect window, const AetherRect *screens, size_t
 AetherRect aether_rect_destination(AetherRect window, AetherRect source, AetherRect target, uint8_t resizable);
 uint8_t aether_rect_approximately_equal(AetherRect a, AetherRect b);
 AetherRect aether_rect_avoid_overlap(AetherRect frame, const AetherRect *occupied, size_t count, AetherRect bounds);
+typedef struct { uint8_t *bytes; size_t length; uint32_t status; } AetherBufferView;
+void *aether_file_read(const char *path, uint8_t reject_links);
+uint32_t aether_file_write(const char *path, const uint8_t *bytes, size_t length, uint8_t private_file, uint8_t synchronize);
+AetherBufferView aether_buffer_view(void *handle);
+void aether_buffer_destroy(void *handle);
+void *aether_memo_create(const char *directory);
+void aether_memo_destroy(void *store);
+void *aether_memo_load(void *store);
+uint32_t aether_memo_save(void *store, const uint8_t *json, size_t length);
+uint32_t aether_memo_add(void *store, const uint8_t *json, size_t length);
+uint32_t aether_memo_complete(void *store, const char *id);
+void *aether_memo_snapshot(const void *store, uint8_t sorted);
+size_t aether_memo_order(const void *store, size_t *output, size_t capacity);
 #endif

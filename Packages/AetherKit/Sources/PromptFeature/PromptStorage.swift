@@ -1,6 +1,6 @@
 import Foundation
 import Security
-import Darwin
+import RustCore
 
 public enum PromptStorageError: LocalizedError {
     case unreadable, unsupportedVersion, invalidConfiguration, writeFailed, keychain(OSStatus)
@@ -25,7 +25,6 @@ public enum PromptStorageError: LocalizedError {
 /// A corrupt or newer-format file is never replaced with fallback defaults.
 public final class PromptStorage {
     private let directory: URL
-    private let fileManager = FileManager.default
     private let lock = NSRecursiveLock()
     private var blockedFiles: Set<String> = []
     private static let schemaVersion = 1
@@ -82,16 +81,10 @@ public final class PromptStorage {
     private func load<Value: Codable>(_ name: String, fallback: Value) throws -> Value {
         do {
             let file = directory.appendingPathComponent(name)
-            // Reject symbolic links so a malformed local file cannot redirect writes.
-            if let type = try? fileManager.attributesOfItem(atPath: file.path)[.type],
-               type as? FileAttributeType == .typeSymbolicLink {
-                throw PromptStorageError.unreadable
-            }
-            guard fileManager.fileExists(atPath: file.path) else {
+            guard let data = try RustDisk.read(file) else {
                 blockedFiles.remove(name)
                 return fallback
             }
-            let data = try Data(contentsOf: file)
             let decoder = JSONDecoder()
             let version = try decoder.decode(Version.self, from: data).schemaVersion
             guard version == Self.schemaVersion else { throw PromptStorageError.unsupportedVersion }
@@ -105,32 +98,11 @@ public final class PromptStorage {
     }
 
     private func save<Value: Codable>(_ value: Value, name: String) throws {
-        let temporary = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
-        defer { try? fileManager.removeItem(at: temporary) }
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
-                                            attributes: [.posixPermissions: 0o700])
-            let type = try fileManager.attributesOfItem(atPath: directory.path)[.type] as? FileAttributeType
-            guard type == .typeDirectory else { throw PromptStorageError.writeFailed }
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(Envelope(schemaVersion: Self.schemaVersion, payload: value))
-            guard fileManager.createFile(atPath: temporary.path, contents: nil,
-                                         attributes: [.posixPermissions: 0o600]) else {
-                throw PromptStorageError.writeFailed
-            }
-            let handle = try FileHandle(forWritingTo: temporary)
-            do {
-                try handle.write(contentsOf: data)
-                try handle.synchronize()
-                try handle.close()
-            } catch {
-                try? handle.close()
-                throw error
-            }
-            let destination = directory.appendingPathComponent(name)
-            guard rename(temporary.path, destination.path) == 0 else { throw PromptStorageError.writeFailed }
+            try RustDisk.write(data, to: directory.appendingPathComponent(name), synchronize: true)
         } catch {
             throw PromptStorageError.writeFailed
         }

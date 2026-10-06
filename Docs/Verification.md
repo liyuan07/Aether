@@ -120,3 +120,6 @@ sh LaunchAether.command
 - 同时检查 arm64 和 x86_64 静态库与应用架构，Rust 构建失败不能安装。
 - 性能专项：`AETHER_RUN_CORE_BENCHMARKS=1 CLIPBOARD_RUN_SEARCH_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter 'SearchTests/testSearchScaleBenchmark|RustSearchParityTests'`。记录冷索引构建与缓存评分的不同结论；不以微基准代替整机内存、CPU、能耗。
 - 验收倒计时开始、暂停、继续、停止和护眼完成操作，以及快捷面板延迟触发、取消、松键释放；页面源码不变仍需正式安装行为验收。
+
+- 存储迁移需运行 `RustDiskTests` 与所有相关格式/损坏/权限测试；备忘录用合成数据验证排序、增删提交/回滚、未知版本、符号链接和明确修复重载。
+- `sh Scripts/build-rust-core.sh licenses` 必须通过；锁文件增加或升级 crate 时同步维护应用内声明，验证命令仅比较许可证字节，不显示用户数据。

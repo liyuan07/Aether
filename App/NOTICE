@@ -8,13 +8,19 @@ Their existing copyright notices are preserved in the relevant source files.
 Aether is distributed under GPL-3.0-or-later. See LICENSE for the GPL v3 text.
 Dependencies retain their own licenses: Defaults, MacroVisionKit, SkyLightWindow,
 and SwiftSyntax (build-time dependency). Their license texts are included in
-ThirdPartyNotices in the installed app.
+Contents/Resources in the installed app.
 
 Port monitoring is derived from WhatPort, Copyright (c) 2025 Darryl Morley,
 MIT licensed. Source revision: e6727567d0a08ccd9eac7a41cce64e9e5a6cca20.
-See ThirdPartyNotices/WhatPort-LICENSE in the installed app.
+See Contents/Resources/WhatPort-LICENSE in the installed app.
 
 The Rust business core is Copyright (C) 2026 Li Yuan, GPL-3.0-or-later.
 It statically links the Rust 1.90.0 standard library; the library's detailed
 license and copyright notices are included as
-ThirdPartyNotices/Rust-1.90.0-COPYRIGHT-library.html in the installed app.
+Contents/Resources/Rust-1.90.0-COPYRIGHT-library.html in the installed app.
+
+Rust JSON serialization uses serde 1.0.228 and serde_json 1.0.145; exact
+transitive versions are locked in Rust/AetherCore/Cargo.lock. Copyright and
+license texts for all locked crates, including build dependencies, are shipped
+as Rust-<crate>-<version>-LICENSE* files in Contents/Resources.
+The source copies are maintained in App/ThirdPartyNotices.

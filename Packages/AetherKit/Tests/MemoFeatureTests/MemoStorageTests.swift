@@ -13,6 +13,56 @@ final class MemoStorageTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    @MainActor
+    func testRustModelOrdersMutationsAndPreservesStateAfterFailure() throws {
+        let storage = MemoStorage(directory: directory)
+        let date = Date(timeIntervalSince1970: 100)
+        let records = [MemoItem(title: "无截止时间", createdAt: date),
+            MemoItem(title: "后截止", deadline: date.addingTimeInterval(20), createdAt: date),
+            MemoItem(title: "先截止", deadline: date, createdAt: date),
+            MemoItem(title: "同截止较早创建", deadline: date, createdAt: date.addingTimeInterval(-10))]
+        try storage.save(records)
+        let model = MemoModel(storage: storage)
+        XCTAssertEqual(model.sortedItems.map(\.id), [records[3].id, records[2].id, records[1].id, records[0].id])
+        XCTAssertFalse(model.add(title: " \n\t ", deadline: nil))
+        XCTAssertTrue(model.add(title: "  合成新增  ", deadline: nil))
+        XCTAssertEqual(model.items.last?.title, "合成新增")
+        model.complete(records[2])
+        XCTAssertFalse(model.items.contains { $0.id == records[2].id })
+        let reopened = try MemoStorage(directory: directory).load()
+        XCTAssertEqual(reopened, model.items)
+        let previous = model.items
+        let newer = Data("{\"schemaVersion\":99,\"payload\":[]}".utf8)
+        try newer.write(to: directory.appendingPathComponent("items.json"))
+        XCTAssertFalse(model.add(title: "不应写入", deadline: nil))
+        XCTAssertEqual(model.items, previous)
+        XCTAssertNotNil(model.storageMessage)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("items.json")), newer)
+        try Data("{\"schemaVersion\":1,\"payload\":[]}".utf8).write(to: directory.appendingPathComponent("items.json"))
+        model.reload()
+        XCTAssertNil(model.storageMessage)
+        XCTAssertTrue(model.add(title: "修复后重试", deadline: nil))
+    }
+    func testCorruptMissingRequiredFieldsAndLinksRemainUntouched() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("items.json")
+        for invalid in ["{", "{\"schemaVersion\":1,\"payload\":[{\"id\":\"invalid\",\"title\":\"合成\",\"createdAt\":0}]}", "{\"schemaVersion\":1,\"payload\":[{}]}"] {
+            let original = Data(invalid.utf8)
+            try original.write(to: file)
+            let storage = MemoStorage(directory: directory)
+            XCTAssertThrowsError(try storage.save([]))
+            XCTAssertEqual(try Data(contentsOf: file), original)
+        }
+        try FileManager.default.removeItem(at: file)
+        let target = directory.appendingPathComponent("target")
+        let original = Data("{\"schemaVersion\":1,\"payload\":[]}".utf8)
+        try original.write(to: target)
+        try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
+        XCTAssertThrowsError(try MemoStorage(directory: directory).load())
+        XCTAssertThrowsError(try MemoStorage(directory: directory).save([]))
+        XCTAssertEqual(try Data(contentsOf: target), original)
+    }
+
     func testRoundTripPreservesOptionalDeadline() throws {
         let storage = MemoStorage(directory: directory)
         let deadline = Date(timeIntervalSince1970: 1_700_000_000)

@@ -9,6 +9,7 @@ import SharedSupport
  * (at your option) any later version.
  */
 
+import RustCore
 import AppKit
 import Foundation
 import ImageIO
@@ -71,10 +72,7 @@ private final class ClipboardPersistenceCoordinator: @unchecked Sendable {
 
     private func write(_ archive: ClipboardArchive, cleanup: Bool) {
         guard let data = try? JSONEncoder().encode(archive),
-              (try? data.write(
-                to: ClipboardStorage.archiveURL,
-                options: .atomic
-              )) != nil else {
+              (try? RustDisk.write(data, to: ClipboardStorage.archiveURL, privateFile: false)) != nil else {
             return
         }
         guard cleanup else { return }
@@ -914,7 +912,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func loadArchive() {
-        guard let data = try? Data(contentsOf: ClipboardStorage.archiveURL),
+        guard let data = try? RustDisk.read(ClipboardStorage.archiveURL, rejectSymbolicLinks: false),
               let archive = try? JSONDecoder().decode(
                   ClipboardArchive.self,
                   from: data

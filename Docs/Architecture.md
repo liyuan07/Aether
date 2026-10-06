@@ -25,7 +25,9 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 
 Swift 继续负责 SwiftUI/AppKit 页面、系统权限、事件监听、系统时钟与线程调度。搜索归一化继续使用 Foundation 和当前 locale，非 ASCII 字符边界由 Swift Character 提供，Rust 执行前缀、子串和有界模糊评分；快捷键解析、规则冲突/映射环与菜单过滤在 Rust 中计算，窗口几何通过批量借用屏幕/已占用矩形输入完成；ASCII 索引不保存逐字边界。不可变搜索句柄可并发只读，调用期间借用输入，析构只释放一次。ABI 不传日志正文或 JSON，已有数据格式与路径保持不变。
 
-Rust 版本固定为 1.90.0，依赖由 Cargo.lock 锁定；当前核心无第三方 crate。`Scripts/build-rust-core.sh` 为指定 ARCHS 生成静态库，同目录临时文件完成后原子替换。Xcode 构建阶段和安装脚本都运行该步骤，Swift Package 单独测试前先执行此脚本。应用发布包不需要 rustup 或动态 Rust 库。Rust 标准库版权声明随应用安装。
+Rust 版本固定为 1.90.0，依赖由 Cargo.lock 锁定；JSON 编解码使用固定版本 serde/serde_json，传递版本在 Cargo.lock 中锁定。`Scripts/build-rust-core.sh` 为指定 ARCHS 生成静态库，同目录临时文件完成后原子替换。Xcode 构建阶段和安装脚本都运行该步骤，Swift Package 单独测试前先执行此脚本。应用发布包不需要 rustup 或动态 Rust 库。Rust 标准库及所有锁定 crate 的许可证随应用安装；安装前自动检查声明文件与锁定源码一致。
+
+备忘录的核心持有记录并执行版本验证、增删事务、排序与持久化；Swift `MemoStorage` 仅将平台 UUID/Date DTO 转为桥接 JSON，`MemoModel` 发布展示快照。排序由 Rust 返回索引，复用同一份原生记录。通用 `RustDisk` 提供原子文件 I/O 与 Rust 缓冲区所有权适配，其他功能仍保留现有 DTO/schema 检查，后续继续迁移各自业务规则。
 
 ## 存储与启动
 

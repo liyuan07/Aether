@@ -1,4 +1,4 @@
-import Darwin
+import RustCore
 import Foundation
 import SharedSupport
 
@@ -96,15 +96,10 @@ final class QuickClipboardStorage {
         defer { lock.unlock() }
 
         do {
-            if let type = try? fileManager.attributesOfItem(atPath: fileURL.path)[.type],
-               type as? FileAttributeType == .typeSymbolicLink {
-                throw QuickClipboardStorageError.unreadable
-            }
-            guard fileManager.fileExists(atPath: fileURL.path) else {
+            guard let data = try RustDisk.read(fileURL) else {
                 blocked = false
                 return []
             }
-            let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .millisecondsSince1970
             guard try decoder.decode(Version.self, from: data).schemaVersion == Self.schemaVersion else {
@@ -126,20 +121,6 @@ final class QuickClipboardStorage {
 
         do {
             _ = try load()
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            guard try fileManager.attributesOfItem(atPath: directory.path)[.type]
-                    as? FileAttributeType == .typeDirectory else {
-                throw QuickClipboardStorageError.writeFailed
-            }
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o700],
-                ofItemAtPath: directory.path
-            )
-
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .millisecondsSince1970
@@ -149,20 +130,7 @@ final class QuickClipboardStorage {
                     collections: collections
                 )
             )
-            let temporary = directory.appendingPathComponent(
-                ".quick-maps.\(UUID().uuidString).tmp"
-            )
-            defer { try? fileManager.removeItem(at: temporary) }
-            guard fileManager.createFile(
-                atPath: temporary.path,
-                contents: data,
-                attributes: [.posixPermissions: 0o600]
-            ) else {
-                throw QuickClipboardStorageError.writeFailed
-            }
-            guard rename(temporary.path, fileURL.path) == 0 else {
-                throw QuickClipboardStorageError.writeFailed
-            }
+            try RustDisk.write(data, to: fileURL)
         } catch {
             throw (error as? QuickClipboardStorageError) ?? .writeFailed
         }
