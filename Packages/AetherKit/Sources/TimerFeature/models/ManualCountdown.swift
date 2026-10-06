@@ -1,29 +1,19 @@
+// Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import CAetherCore
 
-/// The display timer samples this state; missed callbacks never lose elapsed time.
+/// Rust value state; Swift only supplies the continuous clock and renders it.
 struct ManualCountdown {
-    private var deadline: TimeInterval?
-    private var pausedRemaining: TimeInterval?
-    var isActive: Bool { deadline != nil || pausedRemaining != nil }
-    var isPaused: Bool { pausedRemaining != nil }
+    private var core = AetherCountdown()
+    var isActive: Bool { core.phase != 0 }
+    var isPaused: Bool { core.phase == 2 }
     mutating func start(duration: TimeInterval, now: TimeInterval) -> Bool {
         guard duration.isFinite, duration > 0 else { return false }
-        deadline = now + duration
-        pausedRemaining = nil
+        core = aether_countdown_start(core, duration, now)
         return true
     }
-    func remaining(at now: TimeInterval) -> TimeInterval {
-        pausedRemaining ?? deadline.map { $0 - now } ?? 0
-    }
-    mutating func pause(at now: TimeInterval) {
-        guard deadline != nil else { return }
-        pausedRemaining = remaining(at: now)
-        deadline = nil
-    }
-    mutating func resume(at now: TimeInterval) {
-        guard let pausedRemaining else { return }
-        deadline = now + pausedRemaining
-        self.pausedRemaining = nil
-    }
-    mutating func stop() { deadline = nil; pausedRemaining = nil }
+    func remaining(at now: TimeInterval) -> TimeInterval { aether_countdown_remaining(core, now) }
+    mutating func pause(at now: TimeInterval) { core = aether_countdown_pause(core, now) }
+    mutating func resume(at now: TimeInterval) { core = aether_countdown_resume(core, now) }
+    mutating func stop() { core = AetherCountdown() }
 }

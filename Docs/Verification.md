@@ -5,6 +5,8 @@
 ## 自动检查
 
 ```sh
+sh Scripts/build-rust-core.sh
+sh Scripts/build-rust-core.sh test
 swift test --package-path Packages/AetherKit
 git diff --check
 ```
@@ -110,3 +112,11 @@ sh LaunchAether.command
 - 重启后恢复背景，删除原图片后仍可用；更换无效图片不覆盖原背景，连续导入只采用最后一次结果。历史清理不影响背景目录。
 - 已完成初次迁移的安装补充导入旧背景设置和图片；已有 Aether 设置优先，原文件保留，失败可重试。迁移测试使用合成图片与隔离偏好。
 - 窗口比例适配在当前屏幕内保持中心；检查小屏、竖图和极端比例，保留以太历史、详情与常用内容的可用空间。真实多屏未验收时明确记录。
+
+## Rust 核心迁移
+
+- Rust 单测和 Swift 回归都通过；C ABI 值结构、原生计时日期转换与不可变句柄生命周期通过实际跨语言调用检查。
+- `RustSearchParityTests` 保留迁移前的独立 Swift 评分器，以合成 ASCII、中文、组合字符、CRLF、emoji 和生成数据逐项比较分数。该参照仅存在于测试。
+- 同时检查 arm64 和 x86_64 静态库与应用架构，Rust 构建失败不能安装。
+- 性能专项：`AETHER_RUN_CORE_BENCHMARKS=1 CLIPBOARD_RUN_SEARCH_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter 'SearchTests/testSearchScaleBenchmark|RustSearchParityTests'`。记录冷索引构建与缓存评分的不同结论；不以微基准代替整机内存、CPU、能耗。
+- 验收倒计时开始、暂停、继续、停止和护眼完成操作，以及快捷面板延迟触发、取消、松键释放；页面源码不变仍需正式安装行为验收。

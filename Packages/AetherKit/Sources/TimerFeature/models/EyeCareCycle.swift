@@ -10,6 +10,7 @@
  */
 
 import Foundation
+import CAetherCore
 
 enum EyeCarePhase: Equatable {
     case working
@@ -53,141 +54,59 @@ enum EyeCareCycleState: Equatable {
     }
 }
 
+/// Value state and transitions live in Rust; Date and presentation enums stay native.
 struct EyeCareCycleMachine {
-    private(set) var state: EyeCareCycleState = .stopped
-    private(set) var awayStartedAt: Date?
+    private var core = AetherEyeCare()
 
-    var isActive: Bool {
-        state != .stopped
-    }
-
-    var isPaused: Bool {
-        if case .paused = state { return true }
-        return false
-    }
-
-    var isBreakVisible: Bool {
-        switch state {
-        case .resting, .awaitingCompletion:
-            return true
-        default:
-            return false
+    var state: EyeCareCycleState {
+        switch core.phase {
+        case 1: return .working(deadline: Date(timeIntervalSinceReferenceDate: core.value))
+        case 2: return .resting(deadline: Date(timeIntervalSinceReferenceDate: core.value))
+        case 3: return .awaitingCompletion
+        case 4:
+            let phase: EyeCarePhase = core.paused_phase == 1 ? .working : core.paused_phase == 2 ? .resting : .awaitingCompletion
+            let reason: EyeCarePauseReason = core.reason == 0 ? .user : core.reason == 1 ? .timerConflict : .away
+            return .paused(phase: phase, remaining: core.value, reason: reason)
+        default: return .stopped
         }
     }
-
-    var canCompleteRest: Bool {
-        state == .awaitingCompletion
+    var awayStartedAt: Date? {
+        core.away_active == 0 ? nil : Date(timeIntervalSinceReferenceDate: core.away_date)
     }
+    var isActive: Bool { core.phase != 0 }
+    var isPaused: Bool { core.phase == 4 }
+    var isBreakVisible: Bool { core.phase == 2 || core.phase == 3 }
+    var canCompleteRest: Bool { core.phase == 3 }
 
     mutating func start(workDuration: TimeInterval, now: Date) {
-        awayStartedAt = nil
-        state = .working(deadline: now.addingTimeInterval(max(0, workDuration)))
+        _ = event(0, now: now, duration: workDuration)
     }
-
-    mutating func stop() {
-        awayStartedAt = nil
-        state = .stopped
-    }
-
+    mutating func stop() { _ = event(1, now: Date(timeIntervalSinceReferenceDate: 0)) }
     @discardableResult
     mutating func advanceIfNeeded(now: Date, restDuration: TimeInterval) -> Bool {
-        switch state {
-        case let .working(deadline) where deadline <= now:
-            state = .resting(deadline: now.addingTimeInterval(max(0, restDuration)))
-            return true
-        case let .resting(deadline) where deadline <= now:
-            state = .awaitingCompletion
-            return true
-        default:
-            return false
-        }
+        event(2, now: now, duration: restDuration)
     }
-
     @discardableResult
     mutating func pause(reason: EyeCarePauseReason, now: Date) -> Bool {
-        switch state {
-        case let .working(deadline):
-            state = .paused(
-                phase: .working,
-                remaining: max(0, deadline.timeIntervalSince(now)),
-                reason: reason
-            )
-        case let .resting(deadline):
-            state = .paused(
-                phase: .resting,
-                remaining: max(0, deadline.timeIntervalSince(now)),
-                reason: reason
-            )
-        case .awaitingCompletion:
-            state = .paused(phase: .awaitingCompletion, remaining: 0, reason: reason)
-        case let .paused(phase, remaining, currentReason):
-            guard currentReason == .away, reason == .timerConflict else { return false }
-            awayStartedAt = nil
-            state = .paused(phase: phase, remaining: remaining, reason: .timerConflict)
-        case .stopped:
-            return false
-        }
-        return true
+        event(3, now: now, reason: reason == .user ? 0 : reason == .timerConflict ? 1 : 2)
     }
-
     @discardableResult
-    mutating func resume(now: Date) -> Bool {
-        guard case let .paused(phase, remaining, _) = state else { return false }
-        awayStartedAt = nil
-
-        switch phase {
-        case .working:
-            state = .working(deadline: now.addingTimeInterval(max(0, remaining)))
-        case .resting:
-            state = .resting(deadline: now.addingTimeInterval(max(0, remaining)))
-        case .awaitingCompletion:
-            state = .awaitingCompletion
-        }
-        return true
-    }
-
+    mutating func resume(now: Date) -> Bool { event(4, now: now) }
     @discardableResult
     mutating func completeRest(workDuration: TimeInterval, now: Date) -> Bool {
-        guard canCompleteRest else { return false }
-        start(workDuration: workDuration, now: now)
-        return true
+        event(5, now: now, duration: workDuration)
     }
-
     @discardableResult
-    mutating func beginAway(now: Date) -> Bool {
-        guard !isPaused, state != .stopped else { return false }
-        awayStartedAt = now
-        return pause(reason: .away, now: now)
-    }
-
+    mutating func beginAway(now: Date) -> Bool { event(6, now: now) }
     @discardableResult
-    mutating func returnFromAway(
-        now: Date,
-        workDuration: TimeInterval,
-        restThreshold: TimeInterval
-    ) -> Bool {
-        guard case let .paused(_, _, reason) = state,
-              reason == .away,
-              let awayStartedAt else {
-            return false
-        }
-
-        if now.timeIntervalSince(awayStartedAt) >= max(0, restThreshold) {
-            start(workDuration: workDuration, now: now)
-        } else {
-            _ = resume(now: now)
-        }
-        return true
+    mutating func returnFromAway(now: Date, workDuration: TimeInterval, restThreshold: TimeInterval) -> Bool {
+        event(7, now: now, duration: workDuration, threshold: restThreshold)
     }
-
     func remainingTime(at now: Date) -> TimeInterval {
-        switch state {
-        case let .working(deadline), let .resting(deadline):
-            return max(0, deadline.timeIntervalSince(now))
-        case let .paused(_, remaining, _):
-            return max(0, remaining)
-        case .stopped, .awaitingCompletion:
-            return 0
-        }
+        aether_eyecare_remaining(core, now.timeIntervalSinceReferenceDate)
+    }
+    private mutating func event(_ event: UInt32, now: Date, duration: Double = 0, threshold: Double = 0, reason: UInt32 = 0) -> Bool {
+        core = aether_eyecare_event(core, event, now.timeIntervalSinceReferenceDate, duration, threshold, reason)
+        return core.changed != 0
     }
 }

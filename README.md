@@ -34,13 +34,20 @@ Base URL 支持服务根地址（自动使用 `/v1/chat/completions`）、API �
 
 ## 本地构建与安装
 
-需要 macOS 14.6 或更高版本，以及提供 Swift 6.2 或更高版本的 Xcode。首次获取依赖需要网络。
+需要 macOS 14.6 或更高版本，以及提供 Swift 6.2 或更高版本的 Xcode。首次获取依赖需要网络。业务核心逐步迁入 Rust，页面继续使用原生 SwiftUI/AppKit；当前迁移范围与剩余工作见 [Rust 重构记录](Docs/RustMigration.md)。
+
+构建另需 rustup 管理的 Rust 1.90.0（仓库锁定版本）；Release 支持 arm64 与 x86_64，首次准备：
+
+```sh
+rustup toolchain install 1.90.0 --profile minimal
+rustup target add --toolchain 1.90.0 aarch64-apple-darwin x86_64-apple-darwin
+```
 
 ```sh
 sh LaunchAether.command
 ```
 
-脚本依次运行测试、构建 Release、签名并安装到 `/Applications/Aether.app`，随后检查签名、可执行文件一致性和唯一正式进程。Bundle ID 为 `com.liyuan.aether`。构建和签名失败时不会替换正式安装，安装失败时会尝试恢复此前副本。
+脚本依次构建 Rust 静态核心、运行 Rust 和 Swift 测试、构建 Release、签名并安装到 `/Applications/Aether.app`，随后检查签名、可执行文件一致性和唯一正式进程。Bundle ID 为 `com.liyuan.aether`。构建和签名失败时不会替换正式安装，安装失败时会尝试恢复此前副本。
 
 本地签名默认使用钥匙串中的 `Ice Local Code Signing` 身份。其他开发环境可指定已有的代码签名身份：
 
@@ -55,6 +62,8 @@ AETHER_SIGNING_IDENTITY="你的代码签名身份" sh LaunchAether.command
 在 Xcode 中打开 `Aether.xcodeproj`，选择 `Aether` scheme。应用装配位于 `App/`，模块与测试位于 `Packages/AetherKit/`。
 
 ```sh
+sh Scripts/build-rust-core.sh
+sh Scripts/build-rust-core.sh test
 swift test --package-path Packages/AetherKit
 git diff --check
 ```

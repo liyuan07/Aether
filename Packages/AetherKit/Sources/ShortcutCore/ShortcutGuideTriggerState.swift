@@ -1,4 +1,5 @@
 import Foundation
+import CAetherCore
 
 public struct ShortcutGuideTriggerState: Sendable {
     public enum Transition: Equatable, Sendable {
@@ -9,46 +10,29 @@ public struct ShortcutGuideTriggerState: Sendable {
         case release
     }
 
-    private let requiredModifiers: PhysicalModifierKeys
-    private var isChordHeld = false
-    private var isCancelled = false
-    private var isVisible = false
+    private var core: AetherGuide
 
     public init(requiredModifiers: PhysicalModifierKeys) {
-        self.requiredModifiers = requiredModifiers
+        core = AetherGuide(required: requiredModifiers.rawValue, held: 0, cancelled: 0, visible: 0, transition: 0)
     }
 
     public mutating func update(activeModifiers: PhysicalModifierKeys) -> Transition {
-        let chordIsHeld = activeModifiers.intersection(requiredModifiers) == requiredModifiers
+        advance(active: activeModifiers.rawValue, event: 0)
+    }
+    public mutating func keyPressed() -> Transition { advance(active: 0, event: 1) }
+    public mutating func holdThresholdReached() -> Transition { advance(active: 0, event: 2) }
 
-        if chordIsHeld, !isChordHeld {
-            isChordHeld = true
-            isCancelled = false
-            isVisible = false
-            return .schedule
+    private mutating func advance(active: UInt16, event: UInt8) -> Transition {
+        core = aether_guide_update(core, active, event)
+        switch core.transition {
+        case 1: return .schedule
+        case 2: return .show
+        case 3: return .cancel
+        case 4: return .release
+        default: return .none
         }
-        if !chordIsHeld, isChordHeld {
-            let wasVisible = isVisible
-            isChordHeld = false
-            isCancelled = false
-            isVisible = false
-            return wasVisible ? .release : .cancel
-        }
-        return .none
     }
 
-    public mutating func keyPressed() -> Transition {
-        guard isChordHeld else { return .none }
-        isCancelled = true
-        isVisible = false
-        return .cancel
-    }
-
-    public mutating func holdThresholdReached() -> Transition {
-        guard isChordHeld, !isCancelled, !isVisible else { return .none }
-        isVisible = true
-        return .show
-    }
 }
 
 public enum ShortcutGuideConfiguration {

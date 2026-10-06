@@ -1,0 +1,5 @@
+module CAetherCore {
+    header "AetherCore.h"
+    link "aether_core"
+    export *
+}

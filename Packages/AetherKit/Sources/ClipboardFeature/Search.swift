@@ -9,6 +9,7 @@ import SharedSupport
  * (at your option) any later version.
  */
 
+import RustCore
 import Combine
 import Foundation
 
@@ -500,130 +501,30 @@ func matchedClipboardGroups(
 
 private struct ClipboardNormalizedQuery {
     let text: String
-    let characters: [Character]
-    let isNumeric: Bool
-    let asciiMask: ClipboardASCIIMask
-
+    let core: RustSearchSegment
     init(_ text: String) {
         let normalized = normalizedClipboardSearchText(text)
         self.text = normalized
-        characters = Array(normalized)
-        isNumeric = normalized.allSatisfy(\.isNumber)
-        asciiMask = ClipboardASCIIMask(normalized)
+        core = RustSearchSegment(normalizedText: normalized, numeric: normalized.allSatisfy(\.isNumber))
     }
 }
 
 private struct ClipboardIndexedDocument {
     let segments: [ClipboardIndexedSegment]
-
     init(item: ClipboardItem) {
         segments = item.searchableSegments.map(ClipboardIndexedSegment.init)
     }
 }
 
 private struct ClipboardIndexedSegment {
-    let text: String
-    let characterCount: Int
-    let asciiMask: ClipboardASCIIMask
-
+    let core: RustSearchSegment
     init(_ text: String) {
-        let normalized = normalizedClipboardSearchText(text)
-        self.text = normalized
-        characterCount = normalized.count
-        asciiMask = ClipboardASCIIMask(normalized)
+        core = RustSearchSegment(normalizedText: normalizedClipboardSearchText(text))
     }
 }
 
-private struct ClipboardASCIIMask {
-    private let lower: UInt64
-    private let upper: UInt64
-
-    init(_ text: String) {
-        var lower: UInt64 = 0
-        var upper: UInt64 = 0
-        for byte in text.utf8 where byte < 128 {
-            if byte < 64 {
-                lower |= UInt64(1) << UInt64(byte)
-            } else {
-                upper |= UInt64(1) << UInt64(byte - 64)
-            }
-        }
-        self.lower = lower
-        self.upper = upper
-    }
-
-    func contains(_ other: ClipboardASCIIMask) -> Bool {
-        lower & other.lower == other.lower
-            && upper & other.upper == other.upper
-    }
-}
-
-private func clipboardSearchScore(
-    query: ClipboardNormalizedQuery,
-    segment: ClipboardIndexedSegment
-) -> Int? {
-    guard !query.text.isEmpty, !segment.text.isEmpty else { return nil }
-
-    if segment.text.hasPrefix(query.text) {
-        return 20_000 - min(segment.characterCount, 5_000)
-    }
-    if let range = segment.text.range(of: query.text) {
-        return 15_000 - min(
-            segment.text.distance(
-                from: segment.text.startIndex,
-                to: range.lowerBound
-            ),
-            5_000
-        )
-    }
-
-    guard !query.isNumeric,
-          query.characters.count <= 16,
-          segment.characterCount <= 1_024,
-          segment.asciiMask.contains(query.asciiMask) else {
-        return nil
-    }
-
-    var queryIndex = 0
-    var firstMatch: Int?
-    var lastMatch = 0
-    var previousMatch: Int?
-    var contiguousPairs = 0
-    let maximumSpan = max(
-        query.characters.count + 8,
-        query.characters.count * 3
-    )
-
-    for (segmentIndex, character) in segment.text.enumerated() {
-        if let firstMatch,
-           segmentIndex - firstMatch + 1 > maximumSpan {
-            return nil
-        }
-        guard character == query.characters[queryIndex] else { continue }
-        if firstMatch == nil {
-            firstMatch = segmentIndex
-        }
-        if let previousMatch, segmentIndex == previousMatch + 1 {
-            contiguousPairs += 1
-        }
-        previousMatch = segmentIndex
-        lastMatch = segmentIndex
-        queryIndex += 1
-        if queryIndex == query.characters.count {
-            break
-        }
-    }
-
-    guard queryIndex == query.characters.count,
-          let firstMatch else {
-        return nil
-    }
-    let span = lastMatch - firstMatch + 1
-    return 1_000
-        + query.characters.count * 40
-        + contiguousPairs * 25
-        - span
-        - firstMatch
+private func clipboardSearchScore(query: ClipboardNormalizedQuery, segment: ClipboardIndexedSegment) -> Int? {
+    query.core.score(segment: segment.core)
 }
 
 private func bestClipboardScore(

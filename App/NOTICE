@@ -13,3 +13,8 @@ ThirdPartyNotices in the installed app.
 Port monitoring is derived from WhatPort, Copyright (c) 2025 Darryl Morley,
 MIT licensed. Source revision: e6727567d0a08ccd9eac7a41cce64e9e5a6cca20.
 See ThirdPartyNotices/WhatPort-LICENSE in the installed app.
+
+The Rust business core is Copyright (C) 2026 Li Yuan, GPL-3.0-or-later.
+It statically links the Rust 1.90.0 standard library; the library's detailed
+license and copyright notices are included as
+ThirdPartyNotices/Rust-1.90.0-COPYRIGHT-library.html in the installed app.

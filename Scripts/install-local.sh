@@ -6,6 +6,8 @@ identity=${AETHER_SIGNING_IDENTITY:-Ice Local Code Signing}
 installed=/Applications/Aether.app
 built="$project_dir/.build/Xcode/Build/Products/Release/Aether.app"
 mkdir -p .build/logs
+sh Scripts/build-rust-core.sh > .build/logs/rust-build.log 2>&1 || { tail -60 .build/logs/rust-build.log; exit 1; }
+sh Scripts/build-rust-core.sh test > .build/logs/rust-tests.log 2>&1 || { tail -60 .build/logs/rust-tests.log; exit 1; }
 swift test --package-path Packages/AetherKit > .build/logs/tests.log 2>&1 || { tail -60 .build/logs/tests.log; exit 1; }
 xcodebuild -project Aether.xcodeproj -scheme Aether -configuration Release -derivedDataPath .build/Xcode -clonedSourcePackagesDirPath Packages/AetherKit/.build -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO build > .build/logs/build.log 2>&1 || { tail -70 .build/logs/build.log; exit 1; }
 [[ -d "$built" ]]
