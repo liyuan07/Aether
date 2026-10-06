@@ -254,6 +254,31 @@ pub unsafe extern "C" fn aether_search_score(query: *const c_void, segment: *con
     }
     unsafe { (&*query.cast::<Segment>()).score(&*segment.cast::<Segment>()) }
 }
+/// Scores a document in one bridge call, borrowing each immutable segment.
+/// # Safety
+/// Query and non-null segment handles are live for this call. The pointer span is readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_best_score(
+    query: *const c_void,
+    segments: *const *const c_void,
+    count: usize,
+) -> i32 {
+    if query.is_null() || (count != 0 && segments.is_null()) {
+        return -1;
+    }
+    let segments = if count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(segments, count) }
+    };
+    let query = unsafe { &*query.cast::<Segment>() };
+    segments
+        .iter()
+        .filter(|segment| !segment.is_null())
+        .map(|segment| unsafe { query.score(&*segment.cast::<Segment>()) })
+        .max()
+        .unwrap_or(-1)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

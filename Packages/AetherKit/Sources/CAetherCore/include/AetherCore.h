@@ -14,6 +14,7 @@ AetherGuide aether_guide_update(AetherGuide state, uint16_t active, uint8_t even
 void *aether_search_create(const uint8_t *bytes, size_t length, const size_t *boundaries, size_t count, uint8_t numeric);
 void aether_search_destroy(void *segment);
 int32_t aether_search_score(const void *query, const void *segment);
+int32_t aether_search_best_score(const void *query, const void *const *segments, size_t count);
 typedef struct {
     double value, away_date;
     uint32_t phase, paused_phase, reason;

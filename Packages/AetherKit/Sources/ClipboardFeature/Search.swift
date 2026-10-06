@@ -170,10 +170,7 @@ actor ClipboardSearchIndex {
                 try Task.checkCancellation()
             }
             let document = indexedDocument(for: item)
-            if let score = bestClipboardScore(
-                query: query,
-                segments: document.segments
-            ) {
+            if let score = query.core.score(document: document.core) {
                 rankedItems.append((item, score))
             }
         }
@@ -455,10 +452,7 @@ func matchedClipboardItems(
 
     return items.compactMap { item -> (ClipboardItem, Int)? in
         let document = ClipboardIndexedDocument(item: item)
-        guard let score = bestClipboardScore(
-            query: query,
-            segments: document.segments
-        ) else {
+        guard let score = query.core.score(document: document.core) else {
             return nil
         }
         return (item, score)
@@ -511,8 +505,10 @@ private struct ClipboardNormalizedQuery {
 
 private struct ClipboardIndexedDocument {
     let segments: [ClipboardIndexedSegment]
+    let core: RustSearchDocument
     init(item: ClipboardItem) {
         segments = item.searchableSegments.map(ClipboardIndexedSegment.init)
+        core = RustSearchDocument(segments: segments.map(\.core))
     }
 }
 
@@ -531,17 +527,7 @@ private func bestClipboardScore(
     query: ClipboardNormalizedQuery,
     segments: [ClipboardIndexedSegment]
 ) -> Int? {
-    var bestScore: Int?
-    for segment in segments {
-        guard let score = clipboardSearchScore(
-            query: query,
-            segment: segment
-        ) else {
-            continue
-        }
-        bestScore = max(bestScore ?? score, score)
-    }
-    return bestScore
+    query.core.score(document: RustSearchDocument(segments: segments.map(\.core)))
 }
 
 private func clipboardItemRankPrecedes(

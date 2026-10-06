@@ -4,6 +4,41 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchParityTests: XCTestCase {
+    func testDocumentAggregationMatchesIndividualScoring() {
+        let corpus = ["", "123456789", "cafe\u{301}", "中文剪贴板", "👨‍👩‍👦 family", "clip board manager", "a\u{0000}b", String(repeating: "x", count: 1_025)]
+        for raw in corpus + ["123", "café", "family", "剪板", "clipman", "missing"] {
+            let text = normalizedClipboardSearchText(raw)
+            let query = RustSearchSegment(normalizedText: text, numeric: text.allSatisfy(\.isNumber))
+            for count in 0..<80 {
+                let segments = (0..<count).map { RustSearchSegment(normalizedText: normalizedClipboardSearchText(corpus[($0 + count) % corpus.count])) }
+                XCTAssertEqual(query.score(document: RustSearchDocument(segments: segments)), segments.compactMap { query.score(segment: $0) }.max())
+            }
+        }
+    }
+
+    func testDocumentAggregationBenchmark() throws {
+        guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { throw XCTSkip("Run explicitly for bridge comparison") }
+        let query = RustSearchSegment(normalizedText: "clipman")
+        for count in [1, 8, 64] {
+            let segments = (0..<count).map { RustSearchSegment(normalizedText: "clipboard manager synthetic item \($0)") }
+            let document = RustSearchDocument(segments: segments)
+            var original = 0, batch = 0
+            let start = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<20_000 {
+                var best: Int?
+                for segment in segments {
+                    if let score = query.score(segment: segment) { best = max(best ?? score, score) }
+                }
+                original &+= best ?? -1
+            }
+            let originalNS = DispatchTime.now().uptimeNanoseconds - start
+            let batchStart = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<20_000 { batch &+= query.score(document: document) ?? -1 }
+            let batchNS = DispatchTime.now().uptimeNanoseconds - batchStart
+            XCTAssertEqual(original, batch)
+            print("AETHER_DOCUMENT_BRIDGE_BENCHMARK segments=\(count) iterations=20000 individual_ns=\(originalNS) batch_ns=\(batchNS)")
+        }
+    }
     func testCachedScorerBenchmark() throws {
         guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else {
             throw XCTSkip("Run explicitly for Release Rust/Swift comparison")
@@ -189,4 +224,3 @@ private func referenceClipboardSearchScore(
         - span
         - firstMatch
 }
-
