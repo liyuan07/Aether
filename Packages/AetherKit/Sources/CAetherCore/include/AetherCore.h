@@ -163,4 +163,17 @@ typedef struct { uint8_t confirmed; uint8_t pending; } AetherPortTier;
 AetherPortTier aether_port_tier_step(AetherPortTier state, uint8_t resolved);
 size_t aether_port_tb_plan(const AetherPortTB *rows, size_t count, size_t *output, size_t capacity);
 size_t aether_port_phy_plan(const AetherPortPhy *rows, size_t count, size_t *output, size_t capacity);
+typedef struct { double watts; int64_t current; int64_t voltage; int64_t configured_voltage; int64_t configured_current;
+    int64_t vconn_current; int64_t vconn_power; int64_t vconn_max_current; uint8_t incoming; uint8_t estimated; } AetherPortPower;
+typedef struct { int64_t id; uint64_t key; uint8_t connected; uint8_t has_power; AetherPortPower power; } AetherPowerPort;
+typedef struct { int64_t id; int64_t max_watts; int64_t voltage; int64_t current; uint8_t usb; uint8_t winning; } AetherPowerCharger;
+typedef struct { uint8_t present; int64_t power; int64_t current; int64_t voltage; } AetherPowerTelemetry;
+typedef struct { uint64_t key; double volts; double amps; } AetherPowerOutput;
+typedef struct { size_t index; AetherPortPower power; double raw_current; double raw_voltage; uint8_t convert_raw; } AetherPowerPatch;
+size_t aether_port_charger_power(const AetherPowerPort *ports, size_t count, const AetherPowerCharger *chargers, size_t charger_count,
+    AetherPowerTelemetry telemetry, AetherPowerPatch *output, size_t capacity);
+size_t aether_port_contract_power(const AetherPowerPort *ports, size_t count, int64_t id, int64_t voltage, int64_t current,
+    AetherPowerTelemetry telemetry, AetherPowerPatch *output, size_t capacity);
+size_t aether_port_output_power(const AetherPowerPort *ports, size_t count, const AetherPowerOutput *channels, size_t channel_count,
+    AetherPowerPatch *output, size_t capacity);
 #endif

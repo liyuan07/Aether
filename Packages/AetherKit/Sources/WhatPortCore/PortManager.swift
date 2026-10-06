@@ -1545,39 +1545,7 @@ extension PortManager {
         chargerData: [ChargerInput],
         chargingPower: ChargingPowerInput?
     ) {
-        // maxWatts > 0 is what makes this a contract rather than a bare node.
-        // ChargerReader reports nodes carrying no PDO too, so that the SMC
-        // fallback below can tell "macOS published nothing here" apart from
-        // "macOS published a node that has not settled yet"; those bare entries
-        // must never reach the attribution here.
-        let usbcChargers = Dictionary(
-            chargerData
-                .filter { $0.portType == "USB-C" && $0.portNumber > 0 && $0.maxWatts > 0 }
-                .map { ($0.portNumber, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        guard !usbcChargers.isEmpty else { return }
-
-        for i in results.indices {
-            guard results[i].power == nil, results[i].ccConnected else { continue }
-            guard let charger = usbcChargers[results[i].id] else { continue }
-
-            results[i].power = PortPower(
-                watts: Double(chargingPower?.systemPowerIn ?? 0) / 1000.0,
-                current: chargingPower?.systemCurrentIn ?? 0,
-                voltage: chargingPower?.systemVoltageIn ?? charger.voltage,
-                configuredVoltage: charger.voltage,
-                configuredCurrent: charger.maxCurrent,
-                vconnCurrent: 0,
-                vconnPower: 0,
-                vconnMaxCurrent: 0,
-                direction: .incoming,
-                // A node without a winning contract is the highest-PDO
-                // fallback (see buildNonUSBCPorts' comment): a capability the
-                // charger offers, not the agreement the two of them reached.
-                contractIsEstimated: !charger.hasWinningContract
-            )
-        }
+        RustPortPower.charger(chargerData, telemetry: chargingPower, to: &results)
     }
 
     // Attach a charging contract read from the SMC to the one port it resolves
@@ -1609,23 +1577,7 @@ extension PortManager {
             powerOut: smcPortPower
         ) else { return }
 
-        guard let index = results.firstIndex(where: { $0.id == resolved.portID }) else { return }
-
-        results[index].power = PortPower(
-            watts: Double(chargingPower?.systemPowerIn ?? 0) / 1000.0,
-            current: chargingPower?.systemCurrentIn ?? 0,
-            voltage: chargingPower?.systemVoltageIn ?? resolved.contract.voltageMV,
-            configuredVoltage: resolved.contract.voltageMV,
-            configuredCurrent: resolved.contract.currentMA,
-            vconnCurrent: 0,
-            vconnPower: 0,
-            vconnMaxCurrent: 0,
-            direction: .incoming,
-            // This whole path only ever fires where macOS published no
-            // USB-C power-source node of its own; the contract is always
-            // synthesized from the SMC, never macOS-confirmed.
-            contractIsEstimated: true
-        )
+        RustPortPower.contract(resolved.contract, portID: resolved.portID, telemetry: chargingPower, to: &results)
     }
 
     // Join SMC per-port power-OUT channels to ports by UUID. The SMC is the
@@ -1644,38 +1596,7 @@ extension PortManager {
     private func applySMCPower(to results: inout [PortState], smcPortPower: [SMCPortPowerInput]) {
         guard !smcPortPower.isEmpty else { return }
 
-        // SMC UUIDs arrive already normalised (lowercase, no dashes).
-        let byUUID = Dictionary(
-            smcPortPower.map { ($0.uuid, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        for i in results.indices {
-            guard let uuid = results[i].uuid else { continue }
-            // Keep incoming (charger) readings: the SMC only measures power OUT.
-            if let existing = results[i].power, existing.direction == .incoming { continue }
-            guard let channel = byUUID[normalisedUUID(uuid)] else { continue }
-            // Only surface a reading when the Mac is actually sourcing power.
-            // A channel at 0 W means nothing is drawing; leave the existing
-            // reading (or nil) so the UI shows the real state, not a stale 0 W.
-            guard channel.watts > 0 else { continue }
-
-            // Carry the PD contract over from the PowerOutDetails reading when we
-            // have one; the SMC doesn't report it and it isn't frozen-sensitive.
-            let existing = results[i].power
-            results[i].power = PortPower(
-                watts: channel.watts,
-                current: Int((channel.amps * 1000).rounded()),
-                voltage: Int((channel.volts * 1000).rounded()),
-                configuredVoltage: existing?.configuredVoltage ?? 0,
-                configuredCurrent: existing?.configuredCurrent ?? 0,
-                vconnCurrent: existing?.vconnCurrent ?? 0,
-                vconnPower: existing?.vconnPower ?? 0,
-                vconnMaxCurrent: existing?.vconnMaxCurrent ?? 0,
-                direction: .outgoing,
-                contractIsEstimated: existing?.contractIsEstimated ?? false
-            )
-        }
+        RustPortPower.output(smcPortPower, to: &results)
     }
 
     // Attach the active charger's identity to the port(s) receiving power.

@@ -444,3 +444,5 @@ mod device_tree;
 mod smc_contract;
 
 mod port_policy;
+
+mod port_power;
