@@ -80,7 +80,7 @@ struct ClipboardPanelView: View {
 
             content
         }
-        .background(ClipboardVisualEffectView())
+        .background(ClipboardBackgroundView())
         .onAppear {
             if let lockedTab {
                 panelModel.selectTab(lockedTab)
@@ -1486,10 +1486,10 @@ private actor ThumbnailCache {
     }
 }
 
-private actor ClipboardImageDecodeQueue {
+actor ClipboardImageDecodeQueue {
     static let shared = ClipboardImageDecodeQueue()
 
-    func detail(from url: URL) -> ClipboardDetailImagePayload {
+    fileprivate func detail(from url: URL) -> ClipboardDetailImagePayload {
         ClipboardDetailImagePayload.load(from: url)
     }
 

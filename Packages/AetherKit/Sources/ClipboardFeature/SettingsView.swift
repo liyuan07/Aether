@@ -48,6 +48,8 @@ struct ClipboardSettingsView: View {
                     }
                 }
 
+                BackgroundSettingsView()
+
                 Section("快捷键") {
                     Toggle(isOn: $shortcutEnabled) {
                         LabeledContent("打开剪贴板", value: "⇧⌘J")

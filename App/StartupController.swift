@@ -61,6 +61,12 @@ import Foundation
                     }
                     destination.synchronize()
                 })
+                try ClipboardModule.migrateBackground(
+                    preferences: clipboard,
+                    source: support.appendingPathComponent("Clipboard/Backgrounds"),
+                    destination: root.appendingPathComponent("Clipboard/Backgrounds"),
+                    defaults: AppEnvironment.clipboardDefaults
+                )
                 DispatchQueue.main.async {
                     if UserDefaults.standard.object(forKey: "launchAtLogin") == nil { UserDefaults.standard.set(login, forKey: "launchAtLogin") }
                     self.importing = false

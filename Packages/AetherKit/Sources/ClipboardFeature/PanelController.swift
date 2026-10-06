@@ -24,6 +24,7 @@ private enum PanelNotificationKey {
 
 final class ClipboardPanel: NSPanel {
     private var localKeyMonitor: Any?
+    private var backgroundObserver: NSObjectProtocol?
 
     init(onClose: @escaping () -> Void) {
         super.init(
@@ -44,6 +45,12 @@ final class ClipboardPanel: NSPanel {
         hostingView.setFrameSize(size)
         setContentSize(size)
         installKeyMonitor()
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: .clipboardBackgroundDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateBackgroundSize() }
+        }
+        BackgroundManager.shared.loadIfNeeded()
     }
 
     override var canBecomeKey: Bool { true }
@@ -57,6 +64,10 @@ final class ClipboardPanel: NSPanel {
     }
 
     override func close() {
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
+            self.backgroundObserver = nil
+        }
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
             self.localKeyMonitor = nil
@@ -66,6 +77,7 @@ final class ClipboardPanel: NSPanel {
 
     func positionOnActiveScreen() {
         guard let screen = screenAtPointer() else { return }
+        updateBackgroundSize(on: screen)
         let visible = screen.visibleFrame
         let origin = NSPoint(
             x: visible.midX - frame.width / 2,
@@ -90,8 +102,8 @@ final class ClipboardPanel: NSPanel {
         ]
     }
 
-    private func preferredSize() -> NSSize {
-        guard let screen = screenAtPointer() else {
+    private func preferredSize(on target: NSScreen? = nil) -> NSSize {
+        guard let screen = target ?? screenAtPointer() else {
             return NSSize(width: 1_180, height: 700)
         }
         let size = screen.visibleFrame.size
@@ -102,6 +114,19 @@ final class ClipboardPanel: NSPanel {
             ),
             height: min(max(size.height * 0.78, 580), size.height * 0.94)
         )
+    }
+
+    private func updateBackgroundSize(on target: NSScreen? = nil) {
+        guard let screen = target ?? self.screen ?? screenAtPointer() else { return }
+        let manager = BackgroundManager.shared
+        let image = manager.settings.mode == .windowToImage ? manager.payload?.size : nil
+        let size = BackgroundGeometry.windowSize(base: preferredSize(on: screen), image: image, visible: screen.visibleFrame.size)
+        guard size != frame.size else { return }
+        let visible = screen.visibleFrame
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        setFrame(NSRect(x: min(max(center.x - size.width / 2, visible.minX), visible.maxX - size.width),
+                        y: min(max(center.y - size.height / 2, visible.minY), visible.maxY - size.height),
+                        width: size.width, height: size.height), display: true)
     }
 
     private func screenAtPointer() -> NSScreen? {
