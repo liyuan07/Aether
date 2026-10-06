@@ -140,4 +140,8 @@ void aether_port_history_break(void *core);
 void aether_port_history_append(void *core, const AetherPortReading *ports, size_t count, double now);
 void aether_port_history_prune(void *core, double now);
 size_t aether_port_history_events(const void *core, AetherPortHistoryEvent *output, size_t capacity);
+typedef struct { size_t index; size_t depth; size_t parent_index; } AetherDeviceTreeRow;
+int64_t aether_device_parent(int64_t location_id);
+AetherDeviceTreeRow aether_device_query(const int64_t *ids, size_t count, int64_t location_id);
+size_t aether_device_plan(const int64_t *ids, size_t count, AetherDeviceTreeRow *output, size_t capacity);
 #endif

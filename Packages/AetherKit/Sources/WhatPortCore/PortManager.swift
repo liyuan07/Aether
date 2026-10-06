@@ -2061,19 +2061,7 @@ extension PortManager {
     private func buildDeviceTree(_ devices: [DeviceInput]) -> [USBDeviceInfo] {
         guard !devices.isEmpty else { return [] }
 
-        let indexed = Array(devices.enumerated())
-        let locationIDs = Set(devices.map(\.locationID))
-
-        func isRoot(_ device: DeviceInput) -> Bool {
-            guard let parentID = DeviceTree.parentLocationID(device.locationID) else { return true }
-            return !locationIDs.contains(parentID)
-        }
-
-        func children(ofLocationID parentLocationID: Int) -> [(offset: Int, element: DeviceInput)] {
-            indexed.filter { DeviceTree.parentLocationID($0.element.locationID) == parentLocationID }
-        }
-
-        func makeInfo(_ device: DeviceInput) -> USBDeviceInfo {
+        func makeInfo(_ device: DeviceInput, depth: Int, viaName: String?) -> USBDeviceInfo {
             let speed = device.speedCode > 0 ? USBSpeed(code: device.speedCode) : nil
             return USBDeviceInfo(
                 productName: device.productName,
@@ -2083,30 +2071,15 @@ extension PortManager {
                 usbVersion: formatBcdUSB(device.usbVersion),
                 currentDraw: device.currentDraw,
                 deviceClass: USBDeviceClass(code: device.deviceClass),
-                hubDepth: DeviceTree.hubDepth(of: device, in: devices),
-                viaName: DeviceTree.viaName(of: device, in: devices)
+                hubDepth: depth,
+                viaName: viaName
             )
         }
 
-        // Tracks emitted array offsets, not locationIDs: duplicate
-        // locationIDs within a slice must still each emit exactly once.
-        var emitted = Set<Int>()
-        var result: [USBDeviceInfo] = []
-
-        func visit(_ offset: Int, _ device: DeviceInput) {
-            guard !emitted.contains(offset) else { return }
-            emitted.insert(offset)
-            result.append(makeInfo(device))
-            for (childOffset, childDevice) in children(ofLocationID: device.locationID) {
-                visit(childOffset, childDevice)
-            }
+        return DeviceTree.plan(devices).map { row in
+            makeInfo(devices[row.index], depth: row.depth,
+                viaName: row.parent_index >= 0 && row.parent_index < devices.count ? devices[row.parent_index].productName : nil)
         }
-
-        for (offset, device) in indexed where isRoot(device) {
-            visit(offset, device)
-        }
-
-        return result
     }
 
     // bcdUSB is BCD-encoded: 0x0200 = 512 = USB 2.0, 0x0300 = 768 = USB 3.0,

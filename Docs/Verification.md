@@ -137,3 +137,5 @@ sh LaunchAether.command
 - 端口生命周期迁移运行 `RustPortLifecycleParityTests` 与既有 `PortLifecycleStateMachineTests`/`PortManagerLifecycleTests`/`PortsTests`。独立旧 Swift 参照比较 20,000 次重复、乱序、断开/解析完成、边界超时和时钟回拨；验证 Swift 值副本修改互不影响。硬件与真实页面验收需另行执行，不由生成通知替代。
 
 - 端口历史迁移运行 `RustPortHistoryParityTests` 与 `PortsTests`，独立旧实现对照 10,000 次方向变化/重复端口/无效功率/突发/边界/回拨/会话事件；验证图表 UUID 和值副本独立性。Rust 内部检查缺失读数不产生累积状态、过期空数组释放容量。页面和 IOKit 硬件验收仍须另行验证。
+
+- USB 拓扑迁移运行 `RustDeviceTreeParityTests` 和既有 `DeviceTreeTests`/`PortManagerTests`，对照独立旧实现的顺序、层级、首个重复父节点和缺失/畸形位置 ID。性能命令：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter rustTopologyBatchBenchmark`，核对结果后比较合成 3,000 记录的批量规划；不视为真实 USB 页面或整机资源验收。

@@ -438,3 +438,5 @@ mod json;
 mod port_lifecycle;
 
 mod port_history;
+
+mod device_tree;
