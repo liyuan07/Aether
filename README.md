@@ -107,3 +107,5 @@ Aether 以 GPL-3.0-or-later 发布。完整许可见 [LICENSE](LICENSE)，版权
 仅在概览或端口详情可见时采集；收起、切换页面、最小化、隐藏应用或系统休眠后停止。最近 60 秒功率图仅保留内存中的实际采样时段，暂停与缺失数据留空。此功能无网络请求，不保存设备序列号或端口历史，不要求管理员权限或驱动。Intel 和缺少端口控制器数据的机型显示能力限制，无法读取不等同于零。
 
 端口核心与 IOKit 读取源码来自 MIT 许可的 [WhatPort](https://github.com/darrylmorley/whatport)，固定版本 `e6727567d0a08ccd9eac7a41cce64e9e5a6cca20`；公开仓库不含付费 Flight Recorder。Aether 的采集生命周期及界面为本项目适配，后续升级需复核多端口归属、SMC ABI 和能力降级测试。
+
+正式安装的整应用资源采样方法见 [资源测量](Docs/ResourceMeasurement.md)，当前不以局部微基准推导整体内存或能耗收益。
