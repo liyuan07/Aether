@@ -157,19 +157,7 @@ final class WindowMoveSession {
         guard lease.isActive() else { return report }
         report.hasWindows = !windows.isEmpty
         report.knownIDs = Set(windows.map(\.id))
-        if !frozen {
-            let candidates: [MovableWindow]
-            switch scope {
-            case .existing: candidates = windows
-            case let .appearing(excluded):
-                candidates = windows.filter { !excluded.contains($0.id) }
-                let decision = aether_window_collection_update(collection, candidates.contains(where: { $0.isStandard }) ? 1 : 0, now)
-                collection = decision.state
-                guard decision.ready != 0 else { return report }
-            case let .undo(batch): candidates = windows.filter { batch.layouts[$0.id] != nil }
-            }
-            freeze(candidates, screens: screens)
-        }
+        if !frozen, !freeze(windows, screens: screens, now: now) { return report }
         for index in progress.indices {
             guard lease.isActive() else { return report }
             if progress[index].isFinished { continue }
@@ -226,49 +214,21 @@ final class WindowMoveSession {
 
     private var isUndo: Bool { if case .undo = scope { return true }; return false }
 
-    private func freeze(_ windows: [MovableWindow], screens: [PlacementScreen]) {
+    private func freeze(_ windows: [MovableWindow], screens: [PlacementScreen], now: TimeInterval) -> Bool {
+        let result = rustWindowFreeze(windows, screens: screens, scope: scope, targetID: targetID,
+            restoreMinimized: restoreMinimized, history: history, collection: collection, now: now) { window, source, target, desired, minimized in
+                Progress(original: windows[window], source: screens[source], target: screens[target], desired: desired, minimized: minimized)
+            }
+        collection = result.info.collection
+        guard result.info.ready != 0 else { return false }
         frozen = true
         report.awaitingWindow = false
-        preferredFocus = WindowFocusSelection.choose(windows, targetID: targetID, screens: screens,
-                                                     restoreMinimized: restoreMinimized)
-        var occupied = windows.filter {
-            $0.isStandard && !$0.isFullScreen && WindowPlacement.source(for: $0.frame, screens: screens)?.id == targetID
-        }.map(\.frame)
-        for window in windows {
-            guard window.isStandard else { continue }
-            if window.isFullScreen { report.skippedFullScreen += 1; continue }
-            if !isUndo, window.isMinimized, !restoreMinimized { report.skippedMinimized += 1; continue }
-            guard window.frame.width > 0, window.frame.height > 0 else { unreadableWindows += 1; continue }
-            guard let source = WindowPlacement.source(for: window.frame, screens: screens) else { continue }
-            let target: PlacementScreen
-            var desired: CGRect
-            let minimized: Bool
-            if case let .undo(batch) = scope {
-                guard let saved = batch.layouts[window.id],
-                      let screen = screens.first(where: { $0.id == saved.screen.id }) else {
-                    report.displayDisconnected = true
-                    continue
-                }
-                target = screen
-                desired = WindowPlacement.destination(for: saved.window.frame, source: saved.screen.visibleFrame,
-                                                      target: target.visibleFrame, resizable: window.isResizable)
-                minimized = saved.window.isMinimized
-            } else {
-                guard let screen = screens.first(where: { $0.id == targetID }) else { continue }
-                target = screen
-                minimized = false
-                if source.id == target.id { desired = window.frame }
-                else {
-                    let saved = history.saved(id: window.id, screenID: target.id)
-                    desired = WindowPlacement.destination(for: saved?.window.frame ?? window.frame,
-                                                          source: saved?.screen.visibleFrame ?? source.visibleFrame,
-                                                          target: target.visibleFrame, resizable: window.isResizable)
-                    desired = WindowPlacement.avoidingOverlap(desired, occupied: occupied, within: target.visibleFrame)
-                    occupied.append(desired)
-                }
-            }
-            progress.append(Progress(original: window, source: source, target: target,
-                                     desired: desired, minimized: minimized))
-        }
+        preferredFocus = result.preferredID
+        report.skippedFullScreen += result.info.fullscreen
+        report.skippedMinimized += result.info.minimized
+        unreadableWindows += result.info.unreadable
+        if result.info.disconnected != 0 { report.displayDisconnected = true }
+        progress = result.records
+        return true
     }
 }

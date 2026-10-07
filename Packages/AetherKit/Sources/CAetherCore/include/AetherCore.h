@@ -368,4 +368,20 @@ typedef struct { double first; uint8_t has_first; } AetherWindowCollection;
 typedef struct { AetherWindowCollection state; uint8_t ready; } AetherWindowCollectionDecision;
 AetherWindowCollectionDecision aether_window_collection_update(AetherWindowCollection state, uint8_t standard, double now);
 double aether_window_scope_time_limit(uint8_t scope);
+// Cohort/geometry planning: canonical bounds for decisions, raw rectangle for same-screen preservation.
+typedef struct { AetherMoveWindow window; AetherRect raw; } AetherWindowFreezeInput;
+typedef struct { AetherRect frame, visible; uint32_t screen; uint8_t minimized, valid; } AetherWindowFreezeSaved;
+typedef struct { size_t window, source, target; AetherRect desired; uint8_t minimized, valid; } AetherWindowFreezeEntry;
+typedef struct {
+    AetherWindowCollection collection; size_t count; intptr_t preferred;
+    size_t fullscreen, minimized, unreadable; uint8_t ready, disconnected;
+} AetherWindowFreezeInfo;
+// scope: 0 existing, 1 appearing excluding IDs, 2 undo including IDs. All inputs/callbacks borrow synchronously.
+void *aether_window_freeze_plan(const AetherWindowFreezeInput *inputs, size_t count,
+    const AetherPlacementScreen *screens, size_t screen_count, const int64_t *ids, size_t id_count,
+    uint8_t scope, uint32_t target_id, uint8_t restore, AetherWindowCollection collection, double now,
+    AetherWindowFreezeSaved (*lookup)(void *, size_t, uint32_t, uint8_t), void *context);
+AetherWindowFreezeInfo aether_window_freeze_info(const void *plan);
+AetherWindowFreezeEntry aether_window_freeze_entry(const void *plan, size_t index);
+void aether_window_freeze_destroy(void *plan);
 #endif

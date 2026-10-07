@@ -189,3 +189,59 @@ func rustWindowSessionTimeBoundaryParity() {
     #expect(WindowCaptureScope.appearing(excluding: []).timeLimit == 1.5)
     #expect(WindowCaptureScope.undo(.init(operationID: UUID(), pid: 42, layouts: [:])).timeLimit == 0.8)
 }
+
+@Test("Rust 初始窗口计划保持重复身份、特殊几何、空屏幕及撤销屏幕行为")
+func rustWindowFreezeGeometryParity() {
+    let frames: [CGRect] = [
+        .init(x: 10, y: 20, width: 400, height: 300),
+        .init(x: 1920, y: 20, width: -400, height: -300),
+        .init(x: -0.0, y: -0.0, width: 0, height: 300),
+        .init(x: Double.nan, y: 20, width: 400, height: 300),
+        .init(x: Double.infinity, y: -Double.infinity, width: 400, height: 300),
+        .init(x: 10, y: 20, width: Double.nan, height: 300),
+        .init(x: 10, y: 20, width: Double.infinity, height: Double.infinity),
+        .init(x: Double.greatestFiniteMagnitude, y: 20, width: 400, height: 300)]
+    let normal = PlacementScreen(id: 1, frame: .init(x: 0, y: 0, width: 1920, height: 1080),
+        visibleFrame: .init(x: 0, y: 25, width: 1920, height: 1055))
+    let targets = [
+        PlacementScreen(id: 2, frame: .init(x: 1920, y: 0, width: 1280, height: 800), visibleFrame: .init(x: 1920, y: 25, width: 1280, height: 775)),
+        PlacementScreen(id: 2, frame: .init(x: -100, y: 100, width: -1280, height: -800), visibleFrame: .init(x: -100, y: 100, width: -1280, height: -800)),
+        PlacementScreen(id: 2, frame: .zero, visibleFrame: .zero),
+        PlacementScreen(id: 2, frame: .infinite, visibleFrame: .infinite)]
+    for iteration in 0..<384 {
+        let screens: [PlacementScreen] = iteration.isMultiple(of: 19) ? [] : [normal, targets[iteration % targets.count], normal]
+        let windows = (0..<5).map { index in
+            MovableWindow(id: index % 3, pid: 42, frame: frames[(iteration + index) % frames.count],
+                isStandard: (iteration + index) % 7 != 0, isFullScreen: (iteration + index) % 11 == 0,
+                isMinimized: (iteration + index) % 3 == 0, isResizable: iteration % 2 == 0,
+                isFocused: index == iteration % 5, isMain: index == (iteration + 1) % 5)
+        }
+        let access = ProgressTestAccess(windows), oldAccess = ProgressTestAccess(windows)
+        let history = WindowLayoutHistory(), oldHistory = WindowLayoutHistory()
+        let previous = UUID(), operation = UUID()
+        for window in windows {
+            let savedScreen = iteration.isMultiple(of: 5) ? PlacementScreen(id: 999, frame: normal.frame, visibleFrame: normal.visibleFrame) : targets[iteration % targets.count]
+            history.record(window, screen: savedScreen, operationID: previous)
+            oldHistory.record(window, screen: savedScreen, operationID: previous)
+        }
+        let scope: WindowCaptureScope
+        switch iteration % 3 {
+        case 1: scope = .appearing(excluding: [iteration % 3])
+        case 2: scope = .undo(history.undo!)
+        default: scope = .existing
+        }
+        let restore = iteration % 2 == 0
+        let session = WindowMoveSession(access: access, history: history, pid: 42, targetID: 2,
+            scope: scope, restoreMinimized: restore, operationID: operation)
+        let original = ReferenceWindowMoveSession(access: oldAccess, history: oldHistory, pid: 42, targetID: 2,
+            scope: scope, restoreMinimized: restore, operationID: operation)
+        let lease = WindowMoveLease(), oldLease = WindowMoveLease()
+        for now in [0.0, 0.12, 0.16, 0.2, 0.24, 0.28] {
+            #expect(ReportSignature(session.step(screens: screens, lease: lease, now: now))
+                == ReportSignature(original.step(screens: screens, lease: oldLease, now: now)), "case \(iteration)")
+            #expect(access.events == oldAccess.events, "case \(iteration)")
+            #expect(access.values.map(WindowSignature.init) == oldAccess.values.map(WindowSignature.init), "case \(iteration)")
+            #expect(sameUndo(history.undo, oldHistory.undo), "case \(iteration)")
+        }
+    }
+}

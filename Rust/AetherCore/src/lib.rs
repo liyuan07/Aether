@@ -716,6 +716,7 @@ mod shortcut_defaults;
 mod shortcuts;
 mod storage;
 mod versioned;
+mod window_freeze;
 mod window_layout;
 mod window_progress;
 

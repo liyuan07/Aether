@@ -225,6 +225,21 @@ pub unsafe extern "C" fn aether_window_focus_choose(
     } else {
         unsafe { std::slice::from_raw_parts(screens, screen_count) }
     };
+    choose_focus(
+        windows.iter().enumerate(),
+        screens,
+        target,
+        restore_minimized,
+    )
+    .map_or(-1, |i| i as isize)
+}
+
+pub(crate) fn choose_focus<'a>(
+    windows: impl Iterator<Item = (usize, &'a Window)> + Clone,
+    screens: &[Screen],
+    target: u32,
+    restore_minimized: u8,
+) -> Option<usize> {
     let eligible = |w: &Window| {
         w.flags & 1 != 0
             && w.flags & 2 == 0
@@ -234,29 +249,29 @@ pub unsafe extern "C" fn aether_window_focus_choose(
     };
     let mut first = None;
     let mut main = None;
-    for (index, window) in windows.iter().enumerate().filter(|(_, w)| eligible(w)) {
+    for (index, window) in windows.clone().filter(|(_, w)| eligible(w)) {
         first.get_or_insert(index);
         if window.flags & 16 != 0 {
-            return index as isize;
+            return Some(index);
         }
         if window.flags & 32 != 0 {
             main.get_or_insert(index);
         }
     }
     if let Some(index) = main {
-        return index as isize;
+        return Some(index);
     }
     if first.is_none() {
-        return -1;
+        return None;
     }
     let frames: Vec<_> = screens.iter().map(|s| s.frame).collect();
-    for (index, window) in windows.iter().enumerate().filter(|(_, w)| eligible(w)) {
+    for (index, window) in windows.filter(|(_, w)| eligible(w)) {
         let source = unsafe { aether_rect_source(window.frame, frames.as_ptr(), frames.len()) };
         if source >= 0 && screens[source as usize].id == target {
-            return index as isize;
+            return Some(index);
         }
     }
-    first.map_or(-1, |i| i as isize)
+    first
 }
 
 #[cfg(test)]

@@ -95,3 +95,62 @@ enum WindowFocusSelection {
         return index < 0 ? nil : windows[index].id
     }
 }
+
+private final class WindowFreezeLookup {
+    let windows: [MovableWindow]
+    let history: WindowLayoutHistory
+    let undo: WindowLayoutUndo?
+    init(windows: [MovableWindow], history: WindowLayoutHistory, undo: WindowLayoutUndo?) {
+        self.windows = windows; self.history = history; self.undo = undo
+    }
+}
+
+struct WindowFreezeResult<T> {
+    let info: AetherWindowFreezeInfo
+    let records: [T]
+    let preferredID: Int?
+}
+
+/// Primitive normalization and DTO assembly only; the core owns cohort and geometry decisions.
+func rustWindowFreeze<T>(_ windows: [MovableWindow], screens: [PlacementScreen], scope: WindowCaptureScope,
+    targetID: UInt32, restoreMinimized: Bool, history: WindowLayoutHistory,
+    collection: AetherWindowCollection, now: TimeInterval,
+    assemble: (Int, Int, Int, CGRect, Bool) -> T) -> WindowFreezeResult<T> {
+    let values = windows.map { AetherWindowFreezeInput(window: $0.focusWindow, raw: $0.frame.storedRect) }
+    let displays = screens.map { AetherPlacementScreen(frame: $0.frame.canonicalRect, visible: $0.visibleFrame.canonicalRect, id: $0.id) }
+    let kind: UInt8; let ids: [Int64]; let undo: WindowLayoutUndo?
+    switch scope {
+    case .existing: kind = 0; ids = []; undo = nil
+    case let .appearing(excluded): kind = 1; ids = excluded.map(Int64.init); undo = nil
+    case let .undo(batch): kind = 2; ids = batch.layouts.keys.map(Int64.init); undo = batch
+    }
+    let context = WindowFreezeLookup(windows: windows, history: history, undo: undo)
+    let lookup: @convention(c) (UnsafeMutableRawPointer?, Int, UInt32, UInt8) -> AetherWindowFreezeSaved = { pointer, index, target, isUndo in
+        let context = Unmanaged<WindowFreezeLookup>.fromOpaque(pointer!).takeUnretainedValue()
+        let id = context.windows[index].id
+        let saved = isUndo != 0 ? context.undo?.layouts[id] : context.history.saved(id: id, screenID: target)
+        guard let saved else { return .init() }
+        return .init(frame: saved.window.frame.canonicalRect, visible: saved.screen.visibleFrame.canonicalRect,
+            screen: saved.screen.id, minimized: saved.window.isMinimized ? 1 : 0, valid: 1)
+    }
+    return withExtendedLifetime(context) {
+        let plan = values.withUnsafeBufferPointer { values in
+            displays.withUnsafeBufferPointer { displays in
+                ids.withUnsafeBufferPointer {
+                    aether_window_freeze_plan(values.baseAddress, values.count, displays.baseAddress, displays.count,
+                        $0.baseAddress, $0.count, kind, targetID, restoreMinimized ? 1 : 0, collection, now,
+                        lookup, Unmanaged.passUnretained(context).toOpaque())
+                }
+            }
+        }
+        guard let plan else { preconditionFailure("Invalid window freeze input") }
+        defer { aether_window_freeze_destroy(plan) }
+        let info = aether_window_freeze_info(plan)
+        let records = (0..<info.count).map { index -> T in
+            let entry = aether_window_freeze_entry(plan, index)
+            precondition(entry.valid != 0)
+            return assemble(entry.window, entry.source, entry.target, .init(stored: entry.desired), entry.minimized != 0)
+        }
+        return .init(info: info, records: records, preferredID: info.preferred < 0 ? nil : windows[info.preferred].id)
+    }
+}
