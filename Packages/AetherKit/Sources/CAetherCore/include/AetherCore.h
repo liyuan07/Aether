@@ -20,6 +20,9 @@ void *aether_search_document_create(const void *const *segments, size_t count);
 void *aether_search_document_merge(const void *const *documents, size_t count);
 void aether_search_document_destroy(void *document);
 int32_t aether_search_document_score(const void *query, const void *document);
+typedef struct { intptr_t score; double timestamp; } AetherSearchRankEntry;
+// Stable score/date descending order; invalid/nonfinite input leaves output untouched.
+uint8_t aether_search_rank(const AetherSearchRankEntry *entries, size_t count, size_t *order, size_t capacity);
 typedef struct {
     double value, away_date;
     uint32_t phase, paused_phase, reason;

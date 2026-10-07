@@ -4,6 +4,88 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchParityTests: XCTestCase {
+    func testRankingBenchmark() throws {
+        guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { throw XCTSkip("Run explicitly for ranking comparison") }
+        let items = (0..<10_000).map { ClipboardItem(stringData: "Synthetic ranking item \($0)", type: .text, timestamp: Date(timeIntervalSinceReferenceDate: Double(($0 * 7919) % 10000))) }
+        func original() -> [ClipboardItem] {
+            var candidates: [(item: ClipboardItem, score: Int)] = items.enumerated().map { pair in
+                (item: pair.element, score: pair.offset % 7)
+            }
+            candidates.sort { a,b in
+                a.score == b.score ? a.item.timestamp > b.item.timestamp : a.score > b.score
+            }
+            return candidates.map(\.item)
+        }
+        func migrated() -> [ClipboardItem] {
+            var ranked = ClipboardRankedSources(capacity: items.count)
+            for (index,item) in items.enumerated() { ranked.append(index,score: index % 7,timestamp: item.timestamp) }
+            return ranked.orderedSources.map { items[$0] }
+        }
+        XCTAssertEqual(original().map(\.id), migrated().map(\.id))
+        var oldChecksum = 0, newChecksum = 0
+        let start = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<20 { let ranked = original(); oldChecksum &+= ranked.count + Int(ranked[0].timestamp.timeIntervalSinceReferenceDate) }
+        let oldNS = DispatchTime.now().uptimeNanoseconds - start
+        let migratedStart = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<20 { let ranked = migrated(); newChecksum &+= ranked.count + Int(ranked[0].timestamp.timeIntervalSinceReferenceDate) }
+        let newNS = DispatchTime.now().uptimeNanoseconds - migratedStart
+        XCTAssertEqual(oldChecksum,newChecksum)
+        print("AETHER_RANKING_BENCHMARK items=10000 iterations=20 native_ns=\(oldNS) rust_ns=\(newNS) native_candidate_stride=\(MemoryLayout<(ClipboardItem,Int)>.stride) rust_entry_stride=\(MemoryLayout<RustSearchRank>.stride)")
+    }
+
+    func testItemAndGroupRankingMatchesIndependentOriginalScorer() async throws {
+        let phrases = ["shared", "shared more", "x shared", "clip board manager", "中文 shared", "shared cafe\u{301}"]
+        let items = (0..<240).map { index in
+            ClipboardItem(stringData: phrases[index % phrases.count], type: .text,
+                timestamp: Date(timeIntervalSinceReferenceDate: Double(index % 5)))
+        }
+        let groups = (0..<30).map { index in
+            ClipboardGroup(timestamp: Date(timeIntervalSinceReferenceDate: Double(index % 3)), items: [items[index], items[index + 60]])
+        }
+        func originalOrder(_ segments: [[String]], dates: [Date], raw: String) -> [Int] {
+            let query = ReferenceClipboardNormalizedQuery(raw)
+            return segments.enumerated().compactMap { index, segments -> (Int, Int)? in
+                guard let score = segments.compactMap({ referenceClipboardSearchScore(query: query, segment: ReferenceClipboardIndexedSegment($0)) }).max() else { return nil }
+                return (index, score)
+            }.sorted { a, b in a.1 == b.1 ? dates[a.0] > dates[b.0] : a.1 > b.1 }.map(\.0)
+        }
+        let pinned = Array(items.suffix(20))
+        let pinnedIDs = Set(pinned.map(\.id))
+        for raw in ["shared", "clipman", "中文", "missing", "文本"] {
+            let expectedItems = originalOrder(items.map(\.searchableSegments), dates: items.map(\.timestamp), raw: raw).map { items[$0] }
+            let expectedGroups = originalOrder(groups.map { [$0.title] + $0.items.flatMap(\.searchableSegments) }, dates: groups.map(\.timestamp), raw: raw).map { groups[$0].id }
+            XCTAssertEqual(matchedClipboardItems(query: raw, items: items).map(\.id), expectedItems.map(\.id))
+            XCTAssertEqual(matchedClipboardGroups(query: raw, groups: groups).map(\.id), expectedGroups)
+            let snapshot = try await ClipboardSearchIndex().search(query: raw, history: Array(items.dropLast(20)), pinnedItems: pinned, groups: groups)
+            XCTAssertEqual(snapshot.items(for: .all).map(\.id), expectedItems.filter { !pinnedIDs.contains($0.id) }.map(\.id))
+            XCTAssertEqual(snapshot.items(for: .favorites).map(\.id), expectedItems.filter { pinnedIDs.contains($0.id) }.map(\.id))
+            XCTAssertEqual(snapshot.groups.map(\.id), expectedGroups)
+        }
+    }
+
+    func testStableRankingMatchesOriginalNativeComparator() {
+        func check(_ entries: [RustSearchRank]) {
+            let expected = entries.indices.sorted { a, b in
+                entries[a].score == entries[b].score
+                    ? Date(timeIntervalSinceReferenceDate: entries[a].timestamp) > Date(timeIntervalSinceReferenceDate: entries[b].timestamp)
+                    : entries[a].score > entries[b].score
+            }
+            XCTAssertEqual(RustSearchRanking.order(entries), expected)
+        }
+        check([])
+        for timestamp in [Double.nan, .infinity, -.infinity, -0.0, 0.0, .leastNonzeroMagnitude, .greatestFiniteMagnitude] {
+            check([.init(score: .min, timestamp: timestamp), .init(score: .max, timestamp: timestamp), .init(score: .max, timestamp: timestamp), .init(score: .max, timestamp: 1)])
+        }
+        var seed: UInt64 = 987654321
+        for iteration in 0..<1_000 {
+            let entries = (0..<(iteration % 257)).map { _ -> RustSearchRank in
+                seed = seed &* 6364136223846793005 &+ 1
+                return .init(score: Int(seed % 7) - 3, timestamp: Double((seed >> 32) % 11) / 4 - 1)
+            }
+            check(entries)
+        }
+    }
+
     func testOwnedDocumentReleasesSwiftWrappersAndRetainsMergedScoring() async {
         let raw = "clip board manager 中文"
         let query = RustSearchSegment(normalizedText: "clipman")

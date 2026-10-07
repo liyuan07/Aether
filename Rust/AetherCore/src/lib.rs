@@ -318,6 +318,46 @@ pub unsafe extern "C" fn aether_search_best_score(
 }
 struct SearchDocument(Vec<std::sync::Arc<Segment>>);
 
+#[repr(C)]
+pub struct SearchRankEntry {
+    pub score: isize,
+    pub timestamp: f64,
+}
+/// # Safety
+/// Entries are readable and order is writable for the given lengths, disjoint,
+/// and valid for this call. Failure leaves output unchanged.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_rank(
+    entries: *const SearchRankEntry,
+    count: usize,
+    order: *mut usize,
+    capacity: usize,
+) -> u8 {
+    if count == 0 {
+        return 1;
+    }
+    if entries.is_null() || order.is_null() || capacity < count {
+        return 0;
+    }
+    let entries = unsafe { std::slice::from_raw_parts(entries, count) };
+    if entries.iter().any(|entry| !entry.timestamp.is_finite()) {
+        return 0;
+    }
+    let order = unsafe { std::slice::from_raw_parts_mut(order, count) };
+    for (index, value) in order.iter_mut().enumerate() {
+        *value = index;
+    }
+    order.sort_by(|&a, &b| {
+        entries[b].score.cmp(&entries[a].score).then_with(|| {
+            entries[b]
+                .timestamp
+                .partial_cmp(&entries[a].timestamp)
+                .unwrap()
+        })
+    });
+    1
+}
+
 /// # Safety
 /// Span is readable; each non-null handle came from search_create and is live.
 /// Returned document retains segments independently of the source handles.
@@ -445,6 +485,64 @@ mod tests {
         assert_eq!(ascii("123", true).score(&ascii("1x2x3", false)), -1);
         assert_eq!(ascii("abc", false).score(&ascii("abcde", false)), 19_995);
         assert_eq!(ascii("abc", false).score(&ascii("xxabc", false)), 14_998);
+    }
+    #[test]
+    fn ranking_is_stable_and_refuses_invalid_spans_without_writes() {
+        let entries = [
+            SearchRankEntry {
+                score: isize::MIN,
+                timestamp: 9.0,
+            },
+            SearchRankEntry {
+                score: isize::MAX,
+                timestamp: -0.0,
+            },
+            SearchRankEntry {
+                score: isize::MAX,
+                timestamp: 0.0,
+            },
+            SearchRankEntry {
+                score: isize::MAX,
+                timestamp: 1.0,
+            },
+        ];
+        let mut order = [99; 4];
+        unsafe {
+            assert_eq!(
+                aether_search_rank(entries.as_ptr(), 4, order.as_mut_ptr(), 4),
+                1
+            );
+            assert_eq!(order, [3, 1, 2, 0]);
+            for timestamp in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                assert_eq!(
+                    aether_search_rank(
+                        [SearchRankEntry {
+                            score: 0,
+                            timestamp
+                        }]
+                        .as_ptr(),
+                        1,
+                        order.as_mut_ptr(),
+                        4
+                    ),
+                    0
+                );
+                assert_eq!(order, [3, 1, 2, 0]);
+            }
+            assert_eq!(
+                aether_search_rank(entries.as_ptr(), 4, order.as_mut_ptr(), 3),
+                0
+            );
+            assert_eq!(order, [3, 1, 2, 0]);
+            assert_eq!(
+                aether_search_rank(std::ptr::null(), 1, order.as_mut_ptr(), 4),
+                0
+            );
+            assert_eq!(
+                aether_search_rank(std::ptr::null(), 0, std::ptr::null_mut(), 0),
+                1
+            );
+        }
     }
     #[test]
     fn document_retains_shared_segments_after_source_handles_are_destroyed() {

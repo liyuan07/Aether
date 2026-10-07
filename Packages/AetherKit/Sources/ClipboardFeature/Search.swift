@@ -163,21 +163,17 @@ actor ClipboardSearchIndex {
         let activeIDs = Set((allItems + groupItems).map(\.id))
         itemDocuments = itemDocuments.filter { activeIDs.contains($0.key) }
 
-        var rankedItems: [(item: ClipboardItem, score: Int)] = []
-        rankedItems.reserveCapacity(allItems.count)
+        var rankedItems = ClipboardRankedSources(capacity: allItems.count)
         for (offset, item) in allItems.enumerated() {
             if offset.isMultiple(of: 32) {
                 try Task.checkCancellation()
             }
             let document = indexedDocument(for: item)
             if let score = query.core.score(document: document.core) {
-                rankedItems.append((item, score))
+                rankedItems.append(offset, score: score, timestamp: item.timestamp)
             }
         }
-        rankedItems.sort(by: clipboardItemRankPrecedes)
-
-        var rankedGroups: [(group: ClipboardGroup, score: Int)] = []
-        rankedGroups.reserveCapacity(groups.count)
+        var rankedGroups = ClipboardRankedSources(capacity: groups.count)
         for (offset, group) in groups.enumerated() {
             if offset.isMultiple(of: 16) {
                 try Task.checkCancellation()
@@ -188,16 +184,15 @@ actor ClipboardSearchIndex {
                 query: query,
                 documents: documents
             ) {
-                rankedGroups.append((group, score))
+                rankedGroups.append(offset, score: score, timestamp: group.timestamp)
             }
         }
-        rankedGroups.sort(by: clipboardGroupRankPrecedes)
         try Task.checkCancellation()
 
         return ClipboardSearchSnapshot(
-            rankedItems: rankedItems.map(\.item),
+            rankedItems: rankedItems.orderedSources.map { allItems[$0] },
             pinnedIDs: Set(pinnedItems.map(\.id)),
-            rankedGroups: rankedGroups.map(\.group)
+            rankedGroups: rankedGroups.orderedSources.map { groups[$0] }
         )
     }
 
@@ -450,20 +445,14 @@ func matchedClipboardItems(
     let query = ClipboardNormalizedQuery(query)
     guard !query.text.isEmpty else { return items }
 
-    return items.compactMap { item -> (ClipboardItem, Int)? in
+    var ranked = ClipboardRankedSources(capacity: items.count)
+    for (index, item) in items.enumerated() {
         let document = ClipboardIndexedDocument(item: item)
-        guard let score = query.core.score(document: document.core) else {
-            return nil
+        if let score = query.core.score(document: document.core) {
+            ranked.append(index, score: score, timestamp: item.timestamp)
         }
-        return (item, score)
     }
-    .sorted { left, right in
-        clipboardItemRankPrecedes(
-            (item: left.0, score: left.1),
-            (item: right.0, score: right.1)
-        )
-    }
-    .map(\.0)
+    return ranked.orderedSources.map { items[$0] }
 }
 
 func matchedClipboardGroups(
@@ -473,24 +462,18 @@ func matchedClipboardGroups(
     let query = ClipboardNormalizedQuery(query)
     guard !query.text.isEmpty else { return groups }
 
-    return groups.compactMap { group -> (ClipboardGroup, Int)? in
+    var ranked = ClipboardRankedSources(capacity: groups.count)
+    for (index, group) in groups.enumerated() {
         let documents = [RustSearchDocument(segments: [ClipboardIndexedSegment(group.title).core])]
             + group.items.map { ClipboardIndexedDocument(item: $0).core }
-        guard let score = bestClipboardScore(
+        if let score = bestClipboardScore(
             query: query,
             documents: documents
-        ) else {
-            return nil
+        ) {
+            ranked.append(index, score: score, timestamp: group.timestamp)
         }
-        return (group, score)
     }
-    .sorted { left, right in
-        clipboardGroupRankPrecedes(
-            (group: left.0, score: left.1),
-            (group: right.0, score: right.1)
-        )
-    }
-    .map(\.0)
+    return ranked.orderedSources.map { groups[$0] }
 }
 
 private struct ClipboardNormalizedQuery {
@@ -528,20 +511,18 @@ private func bestClipboardScore(
     query.core.score(document: RustSearchDocument(documents: documents))
 }
 
-private func clipboardItemRankPrecedes(
-    _ left: (item: ClipboardItem, score: Int),
-    _ right: (item: ClipboardItem, score: Int)
-) -> Bool {
-    left.score == right.score
-        ? left.item.timestamp > right.item.timestamp
-        : left.score > right.score
-}
-
-private func clipboardGroupRankPrecedes(
-    _ left: (group: ClipboardGroup, score: Int),
-    _ right: (group: ClipboardGroup, score: Int)
-) -> Bool {
-    left.score == right.score
-        ? left.group.timestamp > right.group.timestamp
-        : left.score > right.score
+struct ClipboardRankedSources {
+    private var sources: [Int] = []
+    private var entries: [RustSearchRank] = []
+    init(capacity: Int) {
+        sources.reserveCapacity(capacity)
+        entries.reserveCapacity(capacity)
+    }
+    mutating func append(_ source: Int, score: Int, timestamp: Date) {
+        sources.append(source)
+        entries.append(RustSearchRank(score: score, timestamp: timestamp.timeIntervalSinceReferenceDate))
+    }
+    var orderedSources: [Int] {
+        RustSearchRanking.order(entries).map { sources[$0] }
+    }
 }
