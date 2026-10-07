@@ -201,3 +201,5 @@ sh LaunchAether.command
 - `RustDefaultShortcutRulesTests` 使用冻结的 b75acda Swift 目录和升级实现，对照现行 20 条规则及全部历史目录升级；覆盖 Int 极值/未来版本、特殊桌面路径、逐字段编辑、禁用来源、重复输入和规范等价 Unicode，逐项核对完整内容、顺序与原 ID。验证新规则 UUID 唯一且不同调用不复用，已占满来源/无需升级复用原数组。正式隔离实例须检查快捷操作设置中规则数量、名称与动作；系统事件执行和权限效果仍需相应独立验收。
 
 - `RustShortcutAnalysisTests` 对照独立旧校验器及原执行集合流程，覆盖 800 组生成规则、全部权限/录制组合、重复 UUID、禁用副本、物理位、不可变快照与并发读取。`ShortcutAnalysisIntegrationTests` 使用显式隔离目录和偏好域验证真实模型在编辑/重排/添加/删除/导入后的失效、权限/录制变化立即通知正确结果，以及未来归档拒绝不改变现有分析。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter shortcutAnalysisReadBenchmark`；只测合成有效规则列表的模型重复读取，不包含页面渲染/初始加载/持久化或正式进程占用。
+
+- `RustApplicationIntentTests` 与冻结 e8b39b9 原生实现对照 800×100 个令牌操作及 100×80 个连续管理器事件；覆盖 nil/零/Int32 极值 PID、目标激活、返回源应用、已取消后的迟到 setTarget、精确截止与 IEEE 特殊值。500 个并发发放/中断后检查每个令牌失效，1000 个并发读写后检查父动作取消阻止窗口租约。既有 ApplicationIntentTests、WindowMoveDeadlineTests 与 WindowMoveSessionTests 保持执行。此类测试不向真实应用发送快捷键或请求权限，不能替代冷启动、多屏和真实 AX 验收。

@@ -1,25 +1,27 @@
 import Foundation
+import CAetherCore
 
 /// Shared with the event-tap thread: interruption is visible before another AX write.
 final class ApplicationIntent: @unchecked Sendable {
     static let shared = ApplicationIntent()
     private let lock = NSLock()
-    private var generation: UInt64 = 0
+    private var state = AetherApplicationIntent()
     private var current: ApplicationActionToken?
 
-    var revision: UInt64 { lock.withLock { generation } }
+    var revision: UInt64 { lock.withLock { state.revision } }
 
     func interrupt() {
         lock.withLock {
-            generation &+= 1
-            current?.cancel()
-            current = nil
+            state = aether_application_intent_update(state, 1, 0)
+            if state.cancel != 0 { current?.cancel() }
+            if state.clear != 0 { current = nil }
         }
     }
 
     func begin(sourcePID: Int32?, targetPID: Int32? = nil) -> ApplicationActionToken {
         lock.withLock {
-            current?.cancel()
+            state = aether_application_intent_update(state, 0, 0)
+            if state.cancel != 0 { current?.cancel() }
             let token = ApplicationActionToken(sourcePID: sourcePID, targetPID: targetPID)
             current = token
             return token
@@ -28,10 +30,10 @@ final class ApplicationIntent: @unchecked Sendable {
 
     func applicationActivated(pid: Int32) {
         lock.withLock {
-            guard let current, !current.acceptsActivation(of: pid) else { return }
-            generation &+= 1
-            current.cancel()
-            self.current = nil
+            let accepted = current?.acceptsActivation(of: pid) ?? true
+            state = aether_application_intent_update(state, 2, accepted ? 1 : 0)
+            if state.cancel != 0 { current?.cancel() }
+            if state.clear != 0 { current = nil }
         }
     }
 }
@@ -39,31 +41,28 @@ final class ApplicationIntent: @unchecked Sendable {
 final class ApplicationActionToken: @unchecked Sendable {
     let id = UUID()
     private let lock = NSLock()
-    private var cancelled = false
-    private let sourcePID: Int32?
-    private var targetPID: Int32?
-    private var targetWasActivated: Bool
-    private let deadline: TimeInterval
+    private var state: AetherApplicationAction
 
     init(sourcePID: Int32?, targetPID: Int32? = nil, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-        self.sourcePID = sourcePID
-        self.targetPID = targetPID
-        targetWasActivated = targetPID != nil && targetPID == sourcePID
-        deadline = now + 15
+        state = aether_application_action_create(sourcePID ?? 0, sourcePID == nil ? 0 : 1,
+            targetPID ?? 0, targetPID == nil ? 0 : 1, now)
     }
 
-    func setTarget(_ pid: Int32) { lock.withLock { targetPID = pid } }
-    func cancel() { lock.withLock { cancelled = true } }
+    func setTarget(_ pid: Int32) { lock.withLock { state = aether_application_action_target(state, pid) } }
+    func cancel() { lock.withLock { state = aether_application_action_cancel(state) } }
     func isActive(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
-        lock.withLock { !cancelled && now < deadline }
+        lock.withLock { aether_application_action_active(state, now) != 0 }
     }
     func acceptsActivation(of pid: Int32) -> Bool {
         lock.withLock {
-            if pid == targetPID { targetWasActivated = true; return true }
-            return !targetWasActivated && pid == sourcePID
+            let result = aether_application_action_activate(state, pid)
+            state = result.state
+            return result.accepted != 0
         }
     }
     func canSend(to pid: Int32, frontmostPID: Int32?) -> Bool {
-        isActive() && lock.withLock { targetPID == pid && frontmostPID == pid }
+        isActive() && lock.withLock {
+            aether_application_action_matches(state, pid, frontmostPID ?? 0, frontmostPID == nil ? 0 : 1) != 0
+        }
     }
 }

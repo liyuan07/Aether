@@ -707,6 +707,7 @@ pub extern "C" fn aether_eyecare_remaining(s: EyeCare, now: f64) -> f64 {
     }
 }
 
+mod application_intent;
 mod geometry;
 mod memo;
 mod prompt;

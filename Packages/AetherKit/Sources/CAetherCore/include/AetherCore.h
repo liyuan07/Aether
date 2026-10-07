@@ -310,4 +310,24 @@ size_t aether_shortcut_defaults_count(const void *plan);
 uint8_t aether_shortcut_defaults_identity(const void *plan);
 AetherShortcutDefaultRef aether_shortcut_defaults_ref(const void *plan, size_t index);
 void aether_shortcut_defaults_destroy(void *plan);
+// Value states: caller owns synchronization, clocks and platform object lifetimes.
+typedef struct { uint64_t revision; uint8_t current, cancel, clear; } AetherApplicationIntent;
+AetherApplicationIntent aether_application_intent_update(AetherApplicationIntent state, uint8_t event, uint8_t accepted);
+typedef struct { double deadline; uint8_t cancelled; } AetherActionDeadline;
+AetherActionDeadline aether_action_deadline_create(double now, double duration);
+AetherActionDeadline aether_action_deadline_cancel(AetherActionDeadline state);
+uint8_t aether_action_deadline_active(AetherActionDeadline state, double now);
+typedef struct {
+    AetherActionDeadline timeout;
+    int32_t source, target;
+    uint8_t source_present, target_present, target_activated;
+} AetherApplicationAction;
+AetherApplicationAction aether_application_action_create(int32_t source, uint8_t source_present,
+    int32_t target, uint8_t target_present, double now);
+AetherApplicationAction aether_application_action_target(AetherApplicationAction state, int32_t target);
+AetherApplicationAction aether_application_action_cancel(AetherApplicationAction state);
+uint8_t aether_application_action_active(AetherApplicationAction state, double now);
+typedef struct { AetherApplicationAction state; uint8_t accepted; } AetherApplicationActivation;
+AetherApplicationActivation aether_application_action_activate(AetherApplicationAction state, int32_t pid);
+uint8_t aether_application_action_matches(AetherApplicationAction state, int32_t pid, int32_t front, uint8_t front_present);
 #endif

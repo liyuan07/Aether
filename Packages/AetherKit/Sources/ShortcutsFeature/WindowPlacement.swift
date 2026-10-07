@@ -62,16 +62,16 @@ enum WindowPlacement {
 /// Cancellation is visible on the AX queue, including between individual window writes.
 final class WindowMoveLease: @unchecked Sendable {
     private let lock = NSLock()
-    private var cancelled = false
+    private var state: AetherActionDeadline
     private let action: ApplicationActionToken?
-    let deadline: TimeInterval
+    var deadline: TimeInterval { lock.withLock { state.deadline } }
     init(now: TimeInterval = ProcessInfo.processInfo.systemUptime, duration: TimeInterval = 10,
          action: ApplicationActionToken? = nil) {
-        deadline = now + duration
+        state = aether_action_deadline_create(now, duration)
         self.action = action
     }
-    func cancel() { lock.withLock { cancelled = true } }
+    func cancel() { lock.withLock { state = aether_action_deadline_cancel(state) } }
     func isActive(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
-        lock.withLock { !cancelled && now < deadline } && (action?.isActive(now: now) ?? true)
+        lock.withLock { aether_action_deadline_active(state, now) != 0 } && (action?.isActive(now: now) ?? true)
     }
 }
