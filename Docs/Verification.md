@@ -185,3 +185,5 @@ sh LaunchAether.command
 - 搜索边界压缩由 Rust 测试核对所有整数宽度切换点和超范围查找；`RustSearchParityTests.testBoundaryCompressionPreservesNativeSearchAcrossOffsetWidths` 对照原生评分器验证短/长 Unicode、CRLF、完整及部分 emoji 和组合字符。字符边界有效载荷减少仅证明索引内部存储变化，必须另做正式进程同负载复测才能报告整应用收益。
 
 - `RustSearchParityTests.testOwnedDocumentReleasesSwiftWrappersAndRetainsMergedScoring` 用弱引用确认源 Swift 片段/文档释放后 Rust 合并文档仍正确评分，并对照独立旧评分器执行 256 个并发只读调用。Rust 单测核对 Arc 共享、源句柄提前销毁、重复片段、空文档和非法跨度；既有聚合、分组与 Unicode 回归必须通过。生命周期验证和局部桥接基准均不替代正式进程资源测量。
+
+- 隔离场景重新激活时应保持指定页面；剪贴板重复呈现不应关闭窗口或清空搜索。实际检索合成归档末条后重新激活，再确认相同结果仍可见；随后清空查询并按场景采样。普通模式仍使用原切换行为。空白浮层或其他设置页不能作为剪贴板搜索验收证据。

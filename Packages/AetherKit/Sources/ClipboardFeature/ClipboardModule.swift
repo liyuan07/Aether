@@ -32,6 +32,7 @@ import SwiftUI
     }
     public func captureTarget() { PasteCoordinator.shared.captureCurrentApplication() }
     public func showWindow() { ClipboardPanelController.shared.togglePanel() }
+    public func presentWindow() { ClipboardPanelController.shared.presentPanel() }
     public func hideWindow() { ClipboardPanelController.shared.hidePanel() }
     public func settings() -> AnyView { AnyView(ClipboardSettingsView()) }
     public func compactPanel() -> AnyView { AnyView(CompactClipboardView()) }

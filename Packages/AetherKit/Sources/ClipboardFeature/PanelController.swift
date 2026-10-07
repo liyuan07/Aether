@@ -218,6 +218,14 @@ final class ClipboardPanelController {
     func togglePanel() {
         isVisible ? hidePanel() : showPanel()
     }
+
+    /// Repeated presentation keeps the current panel and its search state.
+    func presentPanel() {
+        guard let panel, panel.isVisible else { showPanel(); return }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
 }
 
 struct ClipboardVisualEffectView: NSViewRepresentable {

@@ -24,6 +24,7 @@ import PortsFeature
     private var status: MenuBarController?
     private var settings: AetherSettingsController?
     private var started = false
+    private var resourceScene: String?
     private let startup = StartupController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -60,17 +61,23 @@ import PortsFeature
             catch { NSApp.terminate(nil); return }
             if let index = CommandLine.arguments.firstIndex(of: "--resource-scene") {
                 guard index + 1 < CommandLine.arguments.count else { NSApp.terminate(nil); return }
-                switch CommandLine.arguments[index + 1] {
-                case "settings-closed": break
-                case "general-visible": settings?.show(.general)
-                case "ports-visible": settings?.show(.ports)
-                case "clipboard-visible": route(.clipboard)
-                default: NSApp.terminate(nil); return
-                }
+                resourceScene = CommandLine.arguments[index + 1]
+                presentResourceScene()
                 return
             }
         }
         if CommandLine.arguments.contains("--show-settings") { settings?.show(.general) }
+    }
+    private func presentResourceScene() {
+        switch resourceScene {
+        case "settings-closed", nil: break
+        case "general-visible": settings?.show(.general)
+        case "ports-visible": settings?.show(.ports)
+        case "clipboard-visible":
+            status?.hide()
+            ClipboardModule.shared.presentWindow()
+        default: NSApp.terminate(nil)
+        }
     }
     private func route(_ route: AppRoute) {
         switch route {
@@ -97,6 +104,10 @@ import PortsFeature
         if started { ShortcutsModule.shared.refreshPermissions() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if AppEnvironment.isResourceProfiling {
+            if started { presentResourceScene() }
+            return true
+        }
         if settings?.isVisible != true { route(.overview) }
         return true
     }

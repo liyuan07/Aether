@@ -123,3 +123,5 @@ Rust 搜索索引的 Unicode 字符边界按片段长度采用无损整数压缩
 通用与计时偏好通过 `AppEnvironment.appDefaults` 统一管理，普通运行继续使用原应用偏好域；测试使用独立域，为固定负载资源测量提供隔离基础。
 
 固定负载性能配置可用 `Scripts/create-resource-profile.py` 生成合成数据，通过显式 `AETHER_RESOURCE_PROFILE` 选择独立目录、偏好域和私有粘贴板；普通启动不改变现有行为。采样工具支持剪贴板页面，传入 `--profile` 时核对合成负载哈希和实时 PID。测量范围与限制见 [资源测量](Docs/ResourceMeasurement.md)。
+
+隔离模式重新激活应用时恢复指定测量场景；剪贴板场景重复呈现会保留窗口与搜索状态，避免窗口切换误隐藏。普通模式的菜单和快捷键交互保持原有行为。
