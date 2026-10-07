@@ -330,4 +330,24 @@ uint8_t aether_application_action_active(AetherApplicationAction state, double n
 typedef struct { AetherApplicationAction state; uint8_t accepted; } AetherApplicationActivation;
 AetherApplicationActivation aether_application_action_activate(AetherApplicationAction state, int32_t pid);
 uint8_t aether_application_action_matches(AetherApplicationAction state, int32_t pid, int32_t front, uint8_t front_present);
+// Session-only layout memory. Serial owner; no platform pointers or persistent files.
+typedef struct { AetherRect frame; int64_t id; int32_t pid; uint8_t flags; } AetherMoveWindow;
+typedef struct { AetherRect frame, visible; uint32_t id; } AetherPlacementScreen;
+typedef struct { AetherMoveWindow window; AetherPlacementScreen screen; } AetherSavedWindowLayout;
+typedef struct { AetherSavedWindowLayout saved; uint8_t valid; } AetherSavedWindowLayoutView;
+typedef struct { AetherUUID operation; int32_t pid; size_t count; } AetherWindowSnapshotInfo;
+void *aether_window_history_create(void);
+void aether_window_history_destroy(void *history);
+uint8_t aether_window_history_record(void *history, AetherSavedWindowLayout saved, AetherUUID operation);
+AetherSavedWindowLayoutView aether_window_history_saved(const void *history, int64_t id, uint32_t screen);
+uint8_t aether_window_history_has_undo(const void *history);
+// mode 0: closed/evicted handles; mode 1: successfully restored undo entries only.
+uint8_t aether_window_history_remove(void *history, const int64_t *ids, size_t count, uint8_t mode);
+// Owned immutable snapshot, independent of later mutations and history destruction.
+void *aether_window_history_snapshot(const void *history);
+AetherWindowSnapshotInfo aether_window_snapshot_info(const void *snapshot);
+AetherSavedWindowLayoutView aether_window_snapshot_saved(const void *snapshot, size_t index);
+void aether_window_snapshot_destroy(void *snapshot);
+intptr_t aether_window_focus_choose(const AetherMoveWindow *windows, size_t count,
+    const AetherPlacementScreen *screens, size_t screen_count, uint32_t target, uint8_t restore_minimized);
 #endif

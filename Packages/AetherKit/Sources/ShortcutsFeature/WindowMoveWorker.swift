@@ -25,7 +25,7 @@ final class WindowMoveWorker: WindowMoveWorking, @unchecked Sendable {
                     scope: scope, restoreMinimized: restoreMinimized, operationID: actionID)
                 self.sessions[id] = session
                 let report = session.step(screens: screens, lease: lease)
-                continuation.resume(returning: (report, self.history.undo != nil))
+                continuation.resume(returning: (report, self.history.hasUndo))
             }
         }
     }
