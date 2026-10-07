@@ -23,6 +23,8 @@ Aether.app（生命周期、菜单栏、设置窗口、启动准备及登录项�
 
 `Rust/AetherCore` 是 GPL-3.0-or-later 业务静态库，通过 `CAetherCore` 的版本化 C ABI 与 Swift 交互。`RustCore` 管理不可变 Rust 搜索句柄的 ARC 生命周期；计时、快捷面板状态、快捷键策略和窗口几何使用 C 值结构，复制 Swift 模型不会共享可变指针。Rust 不回调界面、不创建额外进程、不持有系统剪贴板、钥匙串、窗口或 IOKit 句柄。具体迁移进度见 [Rust 重构记录](RustMigration.md)。
 
+搜索文档在 Rust 内拥有不可变片段的 Arc 引用；Swift 的文档类只持有独立释放的 opaque 句柄，不长期保留片段包装对象或指针跨度。合并文档克隆片段引用，原文档释放不影响派生文档。并发评分只读，销毁由 Swift ARC 保证发生在最后一个调用方释放之后；原生 Foundation 继续提供 locale 标准化与字符边界。
+
 Swift 继续负责 SwiftUI/AppKit 页面、系统权限、事件监听、系统时钟与线程调度。搜索归一化继续使用 Foundation 和当前 locale，非 ASCII 字符边界由 Swift Character 提供，Rust 执行前缀、子串和有界模糊评分；快捷键解析、规则冲突/映射环与菜单过滤在 Rust 中计算，窗口几何通过批量借用屏幕/已占用矩形输入完成；ASCII 索引不保存逐字边界。不可变搜索句柄可并发只读，调用期间借用输入，析构只释放一次。ABI 不输出日志正文；存储/协议使用借用字节跨度和拥有缓冲区的 JSON 桥接，已有数据格式与路径保持不变。
 
 Rust 版本固定为 1.90.0，依赖由 Cargo.lock 锁定；JSON 编解码使用固定版本 serde/serde_json，传递版本在 Cargo.lock 中锁定。`Scripts/build-rust-core.sh` 为指定 ARCHS 生成静态库，同目录临时文件完成后原子替换。Xcode 构建阶段和安装脚本都运行该步骤，Swift Package 单独测试前先执行此脚本。应用发布包不需要 rustup 或动态 Rust 库。Rust 标准库及所有锁定 crate 的许可证随应用安装；安装前自动检查声明文件与锁定源码一致。

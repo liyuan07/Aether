@@ -15,6 +15,11 @@ void *aether_search_create(const uint8_t *bytes, size_t length, const size_t *bo
 void aether_search_destroy(void *segment);
 int32_t aether_search_score(const void *query, const void *segment);
 int32_t aether_search_best_score(const void *query, const void *const *segments, size_t count);
+// Owned immutable documents retain segments independently of Swift handles.
+void *aether_search_document_create(const void *const *segments, size_t count);
+void *aether_search_document_merge(const void *const *documents, size_t count);
+void aether_search_document_destroy(void *document);
+int32_t aether_search_document_score(const void *query, const void *document);
 typedef struct {
     double value, away_date;
     uint32_t phase, paused_phase, reason;

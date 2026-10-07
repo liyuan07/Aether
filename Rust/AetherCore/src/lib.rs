@@ -264,13 +264,14 @@ pub unsafe extern "C" fn aether_search_create(
         .iter()
         .filter(|b| **b < 128)
         .fold(0, |mask, b| mask | (1_u128 << b));
-    Box::into_raw(Box::new(Segment {
+    std::sync::Arc::into_raw(std::sync::Arc::new(Segment {
         bytes: bytes.to_vec(),
         boundaries: Boundaries::new(&owned_boundaries),
         character_count,
         mask,
         numeric: numeric != 0,
     }))
+    .cast_mut()
     .cast()
 }
 /// # Safety
@@ -278,7 +279,7 @@ pub unsafe extern "C" fn aether_search_create(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aether_search_destroy(segment: *mut c_void) {
     if !segment.is_null() {
-        drop(unsafe { Box::from_raw(segment.cast::<Segment>()) });
+        drop(unsafe { std::sync::Arc::from_raw(segment.cast::<Segment>()) });
     }
 }
 /// # Safety
@@ -315,6 +316,88 @@ pub unsafe extern "C" fn aether_search_best_score(
         .max()
         .unwrap_or(-1)
 }
+struct SearchDocument(Vec<std::sync::Arc<Segment>>);
+
+/// # Safety
+/// Span is readable; each non-null handle came from search_create and is live.
+/// Returned document retains segments independently of the source handles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_document_create(
+    segments: *const *const c_void,
+    count: usize,
+) -> *mut c_void {
+    if count != 0 && segments.is_null() {
+        return std::ptr::null_mut();
+    }
+    let span = if count == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(segments, count) }
+    };
+    let owned = span
+        .iter()
+        .filter(|p| !p.is_null())
+        .map(|p| unsafe {
+            let segment = p.cast::<Segment>();
+            std::sync::Arc::increment_strong_count(segment);
+            std::sync::Arc::from_raw(segment)
+        })
+        .collect();
+    Box::into_raw(Box::new(SearchDocument(owned))).cast()
+}
+
+/// # Safety
+/// Span and documents are live for this call. Result owns its own segment refs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_document_merge(
+    documents: *const *const c_void,
+    count: usize,
+) -> *mut c_void {
+    if count != 0 && documents.is_null() {
+        return std::ptr::null_mut();
+    }
+    let span = if count == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(documents, count) }
+    };
+    let owned = span
+        .iter()
+        .filter(|p| !p.is_null())
+        .flat_map(|p| unsafe { (&*p.cast::<SearchDocument>()).0.iter().cloned() })
+        .collect();
+    Box::into_raw(Box::new(SearchDocument(owned))).cast()
+}
+
+/// # Safety
+/// Document is null or a live owned handle destroyed once, after scoring ends.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_document_destroy(document: *mut c_void) {
+    if !document.is_null() {
+        drop(unsafe { Box::from_raw(document.cast::<SearchDocument>()) });
+    }
+}
+
+/// # Safety
+/// Both handles are live and immutable for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_document_score(
+    query: *const c_void,
+    document: *const c_void,
+) -> i32 {
+    if query.is_null() || document.is_null() {
+        return -1;
+    }
+    let query = unsafe { &*query.cast::<Segment>() };
+    let document = unsafe { &*document.cast::<SearchDocument>() };
+    document
+        .0
+        .iter()
+        .map(|segment| query.score(segment))
+        .max()
+        .unwrap_or(-1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,6 +445,33 @@ mod tests {
         assert_eq!(ascii("123", true).score(&ascii("1x2x3", false)), -1);
         assert_eq!(ascii("abc", false).score(&ascii("abcde", false)), 19_995);
         assert_eq!(ascii("abc", false).score(&ascii("xxabc", false)), 14_998);
+    }
+    #[test]
+    fn document_retains_shared_segments_after_source_handles_are_destroyed() {
+        unsafe {
+            let query = aether_search_create(b"abc".as_ptr(), 3, std::ptr::null(), 0, 0);
+            let segment = aether_search_create(b"abcde".as_ptr(), 5, std::ptr::null(), 0, 0);
+            let document = aether_search_document_create(
+                [segment.cast_const(), segment.cast_const(), std::ptr::null()].as_ptr(),
+                3,
+            );
+            let owner = &*document.cast::<SearchDocument>();
+            assert_eq!(owner.0.len(), 2);
+            assert!(std::sync::Arc::ptr_eq(&owner.0[0], &owner.0[1]));
+            assert_eq!(std::sync::Arc::strong_count(&owner.0[0]), 3);
+            aether_search_destroy(segment);
+            assert_eq!(std::sync::Arc::strong_count(&owner.0[0]), 2);
+            let merged = aether_search_document_merge([document.cast_const()].as_ptr(), 1);
+            aether_search_document_destroy(document);
+            assert_eq!(aether_search_document_score(query, merged), 19_995);
+            aether_search_document_destroy(merged);
+            let empty = aether_search_document_create(std::ptr::null(), 0);
+            assert_eq!(aether_search_document_score(query, empty), -1);
+            aether_search_document_destroy(empty);
+            assert!(aether_search_document_create(std::ptr::null(), 1).is_null());
+            assert!(aether_search_document_merge(std::ptr::null(), 1).is_null());
+            aether_search_destroy(query);
+        }
     }
     #[test]
     fn compact_boundaries_preserve_offsets_at_every_width_transition() {

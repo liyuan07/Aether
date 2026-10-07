@@ -4,6 +4,27 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchParityTests: XCTestCase {
+    func testOwnedDocumentReleasesSwiftWrappersAndRetainsMergedScoring() async {
+        let raw = "clip board manager 中文"
+        let query = RustSearchSegment(normalizedText: "clipman")
+        let expected = referenceClipboardSearchScore(query: ReferenceClipboardNormalizedQuery("clipman"), segment: ReferenceClipboardIndexedSegment(raw))
+        var segment: RustSearchSegment? = RustSearchSegment(normalizedText: raw)
+        weak var segmentWitness = segment
+        var document: RustSearchDocument? = RustSearchDocument(segments: [segment!, segment!])
+        segment = nil
+        XCTAssertNil(segmentWitness, "Rust ownership must not keep a Swift segment wrapper alive")
+        let merged = RustSearchDocument(documents: [document!, RustSearchDocument(segments: [])])
+        weak var documentWitness = document
+        document = nil
+        XCTAssertNil(documentWitness, "Merged documents own their segments independently")
+        XCTAssertEqual(query.score(document: merged), expected)
+        await withTaskGroup(of: Int?.self) { group in
+            for _ in 0..<256 { group.addTask { query.score(document: merged) } }
+            for await score in group { XCTAssertEqual(score, expected) }
+        }
+        XCTAssertNil(query.score(document: RustSearchDocument(documents: [])))
+    }
+
     func testBoundaryCompressionPreservesNativeSearchAcrossOffsetWidths() {
         for length in [240, 255, 256, 65_520, 65_535, 65_536] {
             let segment = String(repeating: "a", count: length) + "中文\r\n👨‍👩‍👦 cafe\u{301}"

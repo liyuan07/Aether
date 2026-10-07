@@ -182,11 +182,11 @@ actor ClipboardSearchIndex {
             if offset.isMultiple(of: 16) {
                 try Task.checkCancellation()
             }
-            let segments = [ClipboardIndexedSegment(group.title)]
-                + group.items.flatMap { indexedDocument(for: $0).segments }
+            let documents = [RustSearchDocument(segments: [ClipboardIndexedSegment(group.title).core])]
+                + group.items.map { indexedDocument(for: $0).core }
             if let score = bestClipboardScore(
                 query: query,
-                segments: segments
+                documents: documents
             ) {
                 rankedGroups.append((group, score))
             }
@@ -474,11 +474,11 @@ func matchedClipboardGroups(
     guard !query.text.isEmpty else { return groups }
 
     return groups.compactMap { group -> (ClipboardGroup, Int)? in
-        let segments = [ClipboardIndexedSegment(group.title)]
-            + group.items.flatMap { ClipboardIndexedDocument(item: $0).segments }
+        let documents = [RustSearchDocument(segments: [ClipboardIndexedSegment(group.title).core])]
+            + group.items.map { ClipboardIndexedDocument(item: $0).core }
         guard let score = bestClipboardScore(
             query: query,
-            segments: segments
+            documents: documents
         ) else {
             return nil
         }
@@ -504,11 +504,9 @@ private struct ClipboardNormalizedQuery {
 }
 
 private struct ClipboardIndexedDocument {
-    let segments: [ClipboardIndexedSegment]
     let core: RustSearchDocument
     init(item: ClipboardItem) {
-        segments = item.searchableSegments.map(ClipboardIndexedSegment.init)
-        core = RustSearchDocument(segments: segments.map(\.core))
+        core = RustSearchDocument(segments: item.searchableSegments.map { ClipboardIndexedSegment($0).core })
     }
 }
 
@@ -525,9 +523,9 @@ private func clipboardSearchScore(query: ClipboardNormalizedQuery, segment: Clip
 
 private func bestClipboardScore(
     query: ClipboardNormalizedQuery,
-    segments: [ClipboardIndexedSegment]
+    documents: [RustSearchDocument]
 ) -> Int? {
-    query.core.score(document: RustSearchDocument(segments: segments.map(\.core)))
+    query.core.score(document: RustSearchDocument(documents: documents))
 }
 
 private func clipboardItemRankPrecedes(

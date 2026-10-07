@@ -183,3 +183,5 @@ sh LaunchAether.command
 - `ResourceProfileTests` 检查无请求、合法清单、域/目录、运行标识、非法位置/版本/ID/计数及符号链接拒绝；不得让非法显式请求退回真实用户数据。`python3 -m unittest discover -s Scripts/tests` 检查新建合成负载不覆盖、内容数量/身份/哈希及非法计数无目录副作用。正式隔离实例必须核对 runtime.json 的 PID、唯一正式可执行文件、合成窗口和退出后普通运行恢复；不在配置中执行系统动作。
 
 - 搜索边界压缩由 Rust 测试核对所有整数宽度切换点和超范围查找；`RustSearchParityTests.testBoundaryCompressionPreservesNativeSearchAcrossOffsetWidths` 对照原生评分器验证短/长 Unicode、CRLF、完整及部分 emoji 和组合字符。字符边界有效载荷减少仅证明索引内部存储变化，必须另做正式进程同负载复测才能报告整应用收益。
+
+- `RustSearchParityTests.testOwnedDocumentReleasesSwiftWrappersAndRetainsMergedScoring` 用弱引用确认源 Swift 片段/文档释放后 Rust 合并文档仍正确评分，并对照独立旧评分器执行 256 个并发只读调用。Rust 单测核对 Arc 共享、源句柄提前销毁、重复片段、空文档和非法跨度；既有聚合、分组与 Unicode 回归必须通过。生命周期验证和局部桥接基准均不替代正式进程资源测量。

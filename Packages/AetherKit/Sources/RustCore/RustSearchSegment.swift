@@ -39,21 +39,30 @@ public final class RustSearchSegment: @unchecked Sendable {
     }
 
     public func score(document: RustSearchDocument) -> Int? {
-        guard !document.segments.isEmpty else { return nil }
-        if document.segments.count == 1 { return score(segment: document.segments[0]) }
         let score = withExtendedLifetime(document) {
-            document.handles.withUnsafeBufferPointer { aether_search_best_score(handle, $0.baseAddress, $0.count) }
+            aether_search_document_score(handle, document.handle)
         }
         return score < 0 ? nil : Int(score)
     }
 }
 
-/// Immutable bridge span, cached alongside normalized document segments.
+/// Rust owns the immutable segment collection. No Swift segment array or
+/// borrowed pointer span remains after initialization.
 public final class RustSearchDocument: @unchecked Sendable {
-    fileprivate let segments: [RustSearchSegment]
-    fileprivate let handles: [UnsafeRawPointer?]
+    fileprivate let handle: UnsafeMutableRawPointer?
     public init(segments: [RustSearchSegment]) {
-        self.segments = segments
-        handles = segments.map { $0.handle.map(UnsafeRawPointer.init) }
+        handle = withExtendedLifetime(segments) {
+            segments.map { $0.handle.map(UnsafeRawPointer.init) }.withUnsafeBufferPointer {
+                aether_search_document_create($0.baseAddress, $0.count)
+            }
+        }
     }
+    public init(documents: [RustSearchDocument]) {
+        handle = withExtendedLifetime(documents) {
+            documents.map { $0.handle.map(UnsafeRawPointer.init) }.withUnsafeBufferPointer {
+                aether_search_document_merge($0.baseAddress, $0.count)
+            }
+        }
+    }
+    deinit { aether_search_document_destroy(handle) }
 }
