@@ -195,3 +195,5 @@ sh LaunchAether.command
 - 固定类型片段共享运行 `RustSearchParityTests.testSharedTypeVocabularyPreservesEverySegmentScoreAndReleasesWrappers`，独立原评分器核对所有类型/正文/文件路径及空值/Unicode/NUL，检查同类型共享实例和释放原生缓存包装后文档存活、并发只读。正式隔离实例需检索正文及类型名称，再恢复空查询进行资源采样；不得把共享实例数直接推导为整应用占用下降。
 
 - 分组交互状态运行 `RustClipboardGroupTests`，以独立旧逻辑对照连续操作、重复 UUID/规范等价文本、首匹配组身份和日期保留、无变化数组共享。Rust 测试覆盖创建门槛、非法动作/跨度/容量不改输出与空清空。正式隔离实例用新建合成配置创建并重开分组，再用相同条目确认复用及持久身份；外部粘贴停用，不能作为真实目标应用粘贴验收。维护过滤与其他分组事务不因此标为已迁移。
+
+- `RustGroupMaintenanceTests` 独立对照 1500 个生成分组，核对规范等价正文/文件路径、nil 与空数组、忽略的元数据、首组身份和日期。实际维护处理器测试检查无效图片过滤后去重、空组剔除、倒序条目保留、历史/收藏筛选、源快照不变和取消不返回部分结果。Rust 单测强制相同指纹但内容不同的碰撞，检查完整比较、稳定位置、重复拒绝和错误调用不推进状态。局部 Release 基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustGroupMaintenanceTests/testGroupMaintenanceBenchmark`，包含指纹、桥接及结果装配，不包含文件检查/持久化/页面；不得推导全应用收益。正式隔离实例应准备空组、无效条目、过滤后重复组和不同顺序组，检查维护后页面与落盘身份/日期/顺序一致。

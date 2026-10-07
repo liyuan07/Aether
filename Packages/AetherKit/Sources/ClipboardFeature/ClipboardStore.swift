@@ -204,7 +204,7 @@ private actor ClipboardSnapshotProcessor {
     }
 }
 
-private actor ClipboardMaintenanceProcessor {
+actor ClipboardMaintenanceProcessor {
     func archive(
         from source: ClipboardArchive,
         expirationDays: Int,
@@ -214,27 +214,21 @@ private actor ClipboardMaintenanceProcessor {
         let cutoff = expirationDays > 0 ? Calendar.current.date(byAdding: .day, value: -expirationDays, to: now) : nil
         let history = try validItems(source.history, cutoff: cutoff, limit: historyLimit)
         let pinnedItems = try validItems(source.pinnedItems)
-        var uniqueGroups: [ClipboardGroup] = []
+        let groupAccumulator = ClipboardGroupAccumulator()
         for (offset, originalGroup) in (source.groups ?? []).enumerated() {
             if offset.isMultiple(of: 16) {
                 try Task.checkCancellation()
             }
             var group = originalGroup
             group.items = try validItems(group.items)
-            guard !group.items.isEmpty,
-                  !uniqueGroups.contains(where: {
-                    hasSameGroupItems($0.items, group.items)
-                  }) else {
-                continue
-            }
-            uniqueGroups.append(group)
+            groupAccumulator.append(group)
         }
 
         try Task.checkCancellation()
         return ClipboardArchive(
             history: history,
             pinnedItems: pinnedItems,
-            groups: uniqueGroups
+            groups: groupAccumulator.groups
         )
     }
 
@@ -266,12 +260,7 @@ private actor ClipboardMaintenanceProcessor {
         return true
     }
 
-    private func hasSameGroupItems(
-        _ lhs: [ClipboardItem],
-        _ rhs: [ClipboardItem]
-    ) -> Bool {
-        rustClipboardGroupItemsMatch(lhs, rhs)
-    }
+
 }
 
 struct ClipboardHistoryUpdate {

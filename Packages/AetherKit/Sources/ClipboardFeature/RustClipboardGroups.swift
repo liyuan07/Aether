@@ -42,3 +42,49 @@ func rustClipboardGroupTransition(_ groups: [ClipboardGroup], action: ClipboardG
     let updated = plan.identity == 0 ? output.prefix(plan.count).map { $0 == groups.count ? created! : groups[$0] } : groups
     return .init(groups: updated, selected: selected, accepted: true, changed: plan.changed != 0)
 }
+
+/// Swift's Hasher preserves native canonical String/optional-array equality. This is per-pass only.
+func clipboardGroupFingerprint(_ items: [ClipboardItem]) -> UInt64 {
+    var hasher = Hasher()
+    hasher.combine(items.count)
+    for item in items {
+        hasher.combine(item.type)
+        hasher.combine(item.stringData)
+        hasher.combine(item.imageFileName)
+        hasher.combine(item.fileURLs)
+        hasher.combine(item.rtfFileName)
+    }
+    return UInt64(bitPattern: Int64(hasher.finalize()))
+}
+
+private struct ClipboardGroupAccumulatorComparison {
+    let owner: ClipboardGroupAccumulator
+    let items: [ClipboardItem]
+}
+/// One maintenance pass, used serially. Rust owns only hash buckets and accepted source positions.
+final class ClipboardGroupAccumulator {
+    private let handle: UnsafeMutableRawPointer?
+    private(set) var groups: [ClipboardGroup] = []
+    init() {
+        handle = aether_clipboard_group_accumulator_create()
+        precondition(handle != nil, "Unable to create group maintenance state")
+    }
+    deinit { aether_clipboard_group_accumulator_destroy(handle) }
+
+    @discardableResult
+    func append(_ group: ClipboardGroup) -> Bool {
+        var context = ClipboardGroupAccumulatorComparison(owner: self, items: group.items)
+        let matching: @convention(c) (UnsafeMutableRawPointer?, Int) -> UInt8 = { pointer, index in
+            let comparison = pointer!.assumingMemoryBound(to: ClipboardGroupAccumulatorComparison.self).pointee
+            return rustClipboardGroupItemsMatch(comparison.owner.groups[index].items, comparison.items) ? 1 : 0
+        }
+        let result = withUnsafeMutablePointer(to: &context) {
+            aether_clipboard_group_accumulator_accept(handle, clipboardGroupFingerprint(group.items), group.items.count,
+                matching, UnsafeMutableRawPointer($0))
+        }
+        precondition(result < 2, "Invalid group maintenance state")
+        guard result == 1 else { return false }
+        groups.append(group)
+        return true
+    }
+}

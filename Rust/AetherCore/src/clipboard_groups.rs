@@ -252,3 +252,140 @@ mod tests {
         }
     }
 }
+
+#[derive(Default)]
+struct GroupAccumulator {
+    first: std::collections::HashMap<u64, usize>,
+    collisions: std::collections::HashMap<u64, Vec<usize>>,
+    accepted: usize,
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_clipboard_group_accumulator_create() -> *mut c_void {
+    Box::into_raw(Box::new(GroupAccumulator::default())).cast()
+}
+/// Returns 0 for empty/duplicate, 1 for accepted, 2 for invalid input.
+/// Fingerprints only select candidates; collisions always require full primitive equality.
+/// # Safety
+/// Owner is a live exclusive accumulator; matching/context remain valid during the call and cannot unwind
+/// or access this accumulator. Equal groups must have equal fingerprints. Callback indices refer to
+/// prior accepted groups, which the caller keeps in acceptance order for this pass.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_group_accumulator_accept(
+    owner: *mut c_void,
+    fingerprint: u64,
+    item_count: usize,
+    matching: Option<unsafe extern "C" fn(*mut c_void, usize) -> u8>,
+    context: *mut c_void,
+) -> u8 {
+    if owner.is_null() {
+        return 2;
+    }
+    if item_count == 0 {
+        return 0;
+    }
+    let owner = unsafe { &mut *owner.cast::<GroupAccumulator>() };
+    let first = owner.first.get(&fingerprint).copied();
+    if let Some(first) = first {
+        let Some(matching) = matching else {
+            return 2;
+        };
+        if unsafe { matching(context, first) != 0 } {
+            return 0;
+        }
+        if let Some(candidates) = owner.collisions.get(&fingerprint) {
+            if candidates
+                .iter()
+                .any(|&index| unsafe { matching(context, index) != 0 })
+            {
+                return 0;
+            }
+        }
+    }
+    let Some(next_count) = owner.accepted.checked_add(1) else {
+        return 2;
+    };
+    if first.is_some() {
+        owner
+            .collisions
+            .entry(fingerprint)
+            .or_default()
+            .push(owner.accepted);
+    } else {
+        owner.first.insert(fingerprint, owner.accepted);
+    }
+    owner.accepted = next_count;
+    1
+}
+/// # Safety
+/// Owner is null or a live owned accumulator, released exactly once after all calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_group_accumulator_destroy(owner: *mut c_void) {
+    if !owner.is_null() {
+        drop(unsafe { Box::from_raw(owner.cast::<GroupAccumulator>()) });
+    }
+}
+
+#[cfg(test)]
+mod accumulator_tests {
+    use super::*;
+    unsafe extern "C" fn matching(context: *mut c_void, index: usize) -> u8 {
+        unsafe { (&*context.cast::<Vec<u8>>())[index] }
+    }
+    #[test]
+    fn hash_collisions_empty_groups_and_rejected_calls_keep_stable_indices() {
+        unsafe {
+            let owner = aether_clipboard_group_accumulator_create();
+            let mut flags = vec![0_u8, 0, 0, 0];
+            let context = (&mut flags as *mut Vec<u8>).cast();
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 0, None, std::ptr::null_mut()),
+                0
+            );
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 2, None, std::ptr::null_mut()),
+                1
+            );
+            flags[0] = 1;
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 2, Some(matching), context),
+                0
+            );
+            flags[0] = 0;
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 2, Some(matching), context),
+                1
+            );
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 8, 2, None, std::ptr::null_mut()),
+                1
+            );
+            flags[1] = 1;
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 2, Some(matching), context),
+                0
+            );
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 7, 2, None, std::ptr::null_mut()),
+                2
+            );
+            assert_eq!((&*owner.cast::<GroupAccumulator>()).accepted, 3);
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(owner, 9, 2, None, std::ptr::null_mut()),
+                1
+            );
+            assert_eq!((&*owner.cast::<GroupAccumulator>()).accepted, 4);
+            aether_clipboard_group_accumulator_destroy(owner);
+            aether_clipboard_group_accumulator_destroy(std::ptr::null_mut());
+            assert_eq!(
+                aether_clipboard_group_accumulator_accept(
+                    std::ptr::null_mut(),
+                    7,
+                    0,
+                    None,
+                    std::ptr::null_mut()
+                ),
+                2
+            );
+        }
+    }
+}

@@ -117,6 +117,13 @@ uint8_t aether_clipboard_content_match(uint8_t kind, uint8_t other_kind, uint8_t
 uint8_t aether_clipboard_group_equal(const uint8_t *flags, size_t left_count, size_t right_count);
 typedef struct { size_t count; size_t selected; uint8_t create; uint8_t changed; uint8_t accepted; uint8_t identity; } AetherClipboardGroupPlan;
 typedef uint8_t (*AetherClipboardGroupMatching)(void *context, size_t index);
+void *aether_clipboard_group_accumulator_create(void);
+/* Per-pass only: equal groups require equal fingerprints. Matching synchronously borrows prior
+   accepted positions in acceptance order; it must not access the accumulator or retain context. */
+uint8_t aether_clipboard_group_accumulator_accept(void *owner, uint64_t fingerprint, size_t item_count,
+    AetherClipboardGroupMatching matching, void *context);
+void aether_clipboard_group_accumulator_destroy(void *owner);
+
 AetherClipboardGroupPlan aether_clipboard_groups_plan(const AetherUUID *ids, size_t count, AetherUUID candidate_id,
     size_t unique_items, uint8_t action, AetherClipboardGroupMatching matching, void *context, size_t *output, size_t capacity);
 
