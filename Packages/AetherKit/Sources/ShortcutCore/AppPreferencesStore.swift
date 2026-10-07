@@ -41,9 +41,7 @@ public struct AppPreferencesStore: Sendable {
     }
 
     public func save(_ configuration: AppPreferencesConfiguration, fileManager: FileManager = .default) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try RustDisk.write(encoder.encode(configuration), to: fileURL, privateFile: false)
+        try RustDisk.write(PreferenceJSON.encode(configuration), to: fileURL, privateFile: false)
     }
 
     private struct SchemaVersion: Decodable { let schemaVersion: Int }

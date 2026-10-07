@@ -6,12 +6,13 @@ import RustCore
 /// Rust owns archive framing and rule format. Foundation retains preference dictionary semantics.
 public enum ShortcutConfigurationJSON {
     public static func encode(_ archive: KeyPilotConfigurationArchive) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
         let preferences: Data
-        do { preferences = try encoder.encode(archive.preferences) }
-        catch { return try encoder.encode(archive) } // Preserve complete EncodingError coding paths.
+        do { preferences = try PreferenceJSON.encode(archive.preferences) }
+        catch {
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(archive) // Preserve complete EncodingError coding paths.
+        }
 
         return try ShortcutRuleJSON.withRecords(archive.shortcuts) { rows, bytes in
             try preferences.withUnsafeBytes { preferences in

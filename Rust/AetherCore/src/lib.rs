@@ -768,3 +768,5 @@ mod rule_codec;
 mod rule_decode;
 
 mod shortcut_archive;
+
+mod preference_codec;

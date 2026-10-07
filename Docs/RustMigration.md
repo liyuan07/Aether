@@ -431,3 +431,16 @@ AppModel 改用归档桥接与版本门控，其余原子导出、两个存储�
 ShortcutConfigurationJSONTests 与独立旧编解码器对照全部 JSON 及原始字符串字节，覆盖全部规则动作、偏好字典、空值/旧字段、重复键、版本 Int 极值/小数/指数/未来值、结构化错误与历史编码；检查非有限偏好值保留 EncodingError 完整路径。128 个并发调用验证独立快照及输入/核心析构后的值寿命。shortcutArchiveModelIntegration 使用隔离目录/偏好域，真实导出以旧解析器重开，导入检查落盘、首项选择、分析失效和三类通知顺序；未来归档拒绝不修改模型或两份文件。Rust 检查 owned 输入释放、旧字段选择、版本边界、错误无部分输出和空/非法句柄。
 
 本机 arm64 Release，3000 条规则及合成偏好、同一 1147651 字节旧原生归档，7 轮交替，每轮各 5 次操作。编码中位 79.294333 → 6.200417 ms（降低约 92.18%），解码 79.734416 → 17.716083 ms（约 77.78%）。包含偏好原生编解码及独立字节副本、Rust 结构/规则处理和原生 DTO 装配；每轮完整字段核对，并在计时外确认正常文件直接经核心成功。不含磁盘 I/O、模型发布、页面和正式进程资源，不能推断整应用占用。记录 `.build/benchmarks/shortcut-archive.json`，日志 `.build/logs/shortcut-archive-benchmark.log`。全量 Swift 回归和 43 项 Rust 单测通过。
+
+
+## 偏好配置保存编码
+
+AppPreferencesStore.save 与归档导出的偏好部分改用 Rust 编码全部现有字段：通用开关、默认 bundle 字典、有序 bundle 数组字典、长按时长、最小化恢复开关及四种窗口行为字典。沿用当前版本 9，忽略 DTO 手动修改版本；存储有限 holdDuration 原值，不引入范围裁剪。Swift 仍负责字典成员/Unicode 规范等价键语义，仅装配紧凑条目、列表跨度和共用 UTF-8 缓冲区；列表逐项追加，避免每个字典值额外建立临时跨度数组。Rust 对借用键稳定排序并直接编码，不复制字符串为另一个拥有的字典或 JSON 值树。空值、列表顺序与重复项、原始字符串字节保留。
+
+核心检查空指针、字符串跨度/UTF-8、数组区间溢出、行为标签和重复编码键，错误输出不含部分 JSON。非有限时长调用旧原生编码器，以保留 EncodingError 路径/文案；归档继续在失败时使用完整旧归档编码器，保留 preferences 前缀。文件路径、原子写入、迁移保存时机和模型通知不变。偏好读取仍保留原生 Codable，完整读取与双文件导入事务尚待迁移。
+
+PreferenceJSONTests 使用独立旧 JSONEncoder 对照 16 种开关组合、空/小/大型字典、规范等价键、Unicode/NUL、全部行为与重复列表；通过旧 JSONDecoder 比较完整值及浮点 bitPattern，覆盖正负零、最小次正规数、最大有限数、边界相邻值与负值。字符串/字段另作规范 JSON 字节比较；JSONSerialization 会将原生 -0 标记转成整数零，因此不以它的二次编码判断浮点符号，而以旧类型解码及重新编码证明一致。隔离存储重开、非有限保存失败保留原文件、错误路径和 128 次并发独立输出检查通过后再交付。既有归档与实际模型导入/导出回归继续执行。
+
+首次全量回归的快捷操作测试进程在异步等待中未完成，采样显示主线程事件循环空闲、无核心编码调用栈；保留 `.build/logs/preference-codec-swift-test-stalled.log` 与 `.build/logs/preference-codec-tests.sample.txt`，该次不计通过。随后相关 5 项实际模型/归档测试与 8 项配置编码测试独立通过，相同实现的完整回归重跑通过；未据此修改生产逻辑或宣称已确定等待原因。
+
+本机 arm64 Release 局部基准：2001 条默认 bundle、2000 组有序列表和 2000 条窗口行为，7 轮交替，每轮编码 5 次。旧 Swift JSONEncoder 中位 33.903708 ms，Rust 编码与原生输入装配 4.816583 ms，约降低 85.79%。每轮旧解码器核对完整值；包括原生字典/UTF-8/跨度转换及 Rust 排序/序列化，排除磁盘 I/O、发布/渲染和正式进程资源，不推断整应用占用。结果 `.build/benchmarks/preference-codec.json`，日志 `.build/logs/preference-codec-benchmark.log`。最终全量 Swift 回归和 45 项 Rust 单测通过。

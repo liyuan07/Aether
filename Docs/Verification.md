@@ -228,3 +228,6 @@ sh LaunchAether.command
 
 
 - `ShortcutConfigurationJSONTests` 对照独立原归档编码/解码器，检查完整 JSON/UTF-8、旧 inputAutomation、空/重复字段、版本极值与未来标签、失败编码/解码路径、UTF-16/32/BOM 和并发 owned 输出。`shortcutArchiveModelIntegration` 实际隔离模型验证导出旧解析器重开、导入落盘/选择/分析失效/通知顺序、未来版本拒绝的模型与文件保护。Rust 检查归档所有权、版本门控与无部分输出。可选局部基准：`AETHER_SHORTCUT_ARCHIVE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutArchiveReleaseBenchmark`；包括规则桥接、偏好原生编解码及归档格式，排除 I/O、模型发布、页面与正式进程资源。偏好全量编解码和双文件导入事务尚未迁移，实际配置面板与系统行为另行验收。
+
+
+- `PreferenceJSONTests` 对照独立旧 JSONEncoder 与旧类型解码器，验证全部开关/行为、字典及 Unicode 字节、列表顺序/重复、版本、浮点 bitPattern（含负零与次正规数）、保存重开/失败文件保护和并发输出。JSONSerialization 可丢失 -0 符号，不用其二次输出替代浮点验证。Rust 检查非法跨度/区间/UTF-8/标签/重复键及无部分输出。可选局部基准：`AETHER_PREFERENCE_CODEC_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter preferenceJSONReleaseBenchmark`；包含 Swift 条目装配、Rust 排序/编码，不含磁盘 I/O、页面或进程资源。偏好读取与导入事务仍需后续迁移，真实设置页行为另行验收。

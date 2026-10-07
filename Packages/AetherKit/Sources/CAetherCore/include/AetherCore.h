@@ -426,4 +426,15 @@ void *aether_shortcut_archive_decode(AetherBytes bytes);
 AetherShortcutArchive aether_shortcut_archive_view(const void *handle);
 void aether_shortcut_archive_destroy(void *handle);
 uint8_t aether_shortcut_archive_supported(int64_t archive, int64_t normalized_preferences);
+// Preference encoding preserves native dictionary membership; Rust sorts and encodes borrowed entries.
+typedef struct { AetherRuleText key, value; size_t start, count; uint8_t behavior; } AetherPreferenceEntry;
+typedef struct {
+    double hold;
+    uint8_t launch, block, show, restore;
+    const AetherPreferenceEntry *defaults; size_t default_count;
+    const AetherPreferenceEntry *orders; size_t order_count;
+    const AetherRuleText *values; size_t value_count;
+    const AetherPreferenceEntry *behaviors; size_t behavior_count;
+} AetherPreferenceInput;
+void *aether_preferences_encode(const AetherPreferenceInput *input, AetherBytes bytes);
 #endif
