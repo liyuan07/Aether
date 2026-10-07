@@ -115,6 +115,11 @@ uint8_t aether_clipboard_content_fields(uint8_t kind, uint8_t other_kind, uint8_
 uint8_t aether_clipboard_history_bounded(size_t count, size_t limit);
 uint8_t aether_clipboard_content_match(uint8_t kind, uint8_t other_kind, uint8_t flags);
 uint8_t aether_clipboard_group_equal(const uint8_t *flags, size_t left_count, size_t right_count);
+typedef struct { size_t count; size_t selected; uint8_t create; uint8_t changed; uint8_t accepted; uint8_t identity; } AetherClipboardGroupPlan;
+typedef uint8_t (*AetherClipboardGroupMatching)(void *context, size_t index);
+AetherClipboardGroupPlan aether_clipboard_groups_plan(const AetherUUID *ids, size_t count, AetherUUID candidate_id,
+    size_t unique_items, uint8_t action, AetherClipboardGroupMatching matching, void *context, size_t *output, size_t capacity);
+
 typedef struct { AetherUUID id; double timestamp; uint8_t kind; uint8_t matching; uint8_t protected; uint8_t valid; } AetherClipboardRow;
 typedef struct { size_t count; uint8_t inserted; uint8_t cleanup; } AetherClipboardPlan;
 AetherClipboardPlan aether_clipboard_history_plan(const AetherClipboardRow *rows, size_t count, AetherClipboardRow candidate,

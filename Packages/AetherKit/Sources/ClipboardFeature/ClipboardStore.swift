@@ -451,36 +451,19 @@ final class ClipboardStore: ObservableObject {
     @discardableResult
     func activateGroup(_ group: ClipboardGroup) -> Bool {
         guard copyGroupToClipboard(group) else { return false }
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            var updated = groups
-            let promoted = updated.remove(at: index)
-            updated.insert(promoted, at: 0)
-            groups = updated
-        }
+        let transition = rustClipboardGroupTransition(groups, action: .promote, candidateID: group.id)
+        if transition.changed { groups = transition.groups }
         saveArchive()
         return true
     }
 
     @discardableResult
     func createGroup(from items: [ClipboardItem]) -> ClipboardGroup? {
-        let unique = rustClipboardUnique(items)
-        guard unique.count > 1 else { return nil }
-
-        if let index = groups.firstIndex(where: {
-            hasSameGroupItems($0.items, unique)
-        }) {
-            var updated = groups
-            let existing = updated.remove(at: index)
-            updated.insert(existing, at: 0)
-            groups = updated
-            saveArchive()
-            return existing
-        }
-
-        let group = ClipboardGroup(items: unique)
-        groups.insert(group, at: 0)
+        let transition = rustClipboardGroupTransition(groups, action: .create, items: items)
+        guard transition.accepted else { return nil }
+        groups = transition.groups
         saveArchive()
-        return group
+        return transition.selected
     }
 
     func togglePin(for item: ClipboardItem) {
@@ -494,7 +477,7 @@ final class ClipboardStore: ObservableObject {
     }
 
     func delete(_ group: ClipboardGroup) {
-        groups.removeAll { $0.id == group.id }
+        groups = rustClipboardGroupTransition(groups, action: .remove, candidateID: group.id).groups
         saveArchive(cleanup: true)
     }
 
@@ -503,7 +486,7 @@ final class ClipboardStore: ObservableObject {
         case .favorites:
             pinnedItems.removeAll()
         case .groups:
-            groups.removeAll()
+            groups = rustClipboardGroupTransition(groups, action: .clear).groups
         default:
             history = rustClipboardRemoving(history) { tab.includes($0) }
         }
@@ -768,13 +751,6 @@ final class ClipboardStore: ObservableObject {
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
         return item
-    }
-
-    private func hasSameGroupItems(
-        _ lhs: [ClipboardItem],
-        _ rhs: [ClipboardItem]
-    ) -> Bool {
-        rustClipboardGroupItemsMatch(lhs, rhs)
     }
 
     private func saveArchive(cleanup: Bool = false) {

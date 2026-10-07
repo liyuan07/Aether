@@ -717,6 +717,7 @@ mod versioned;
 
 mod quick_clipboard;
 
+mod clipboard_groups;
 mod clipboard_history;
 
 mod abi;
