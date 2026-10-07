@@ -199,3 +199,5 @@ sh LaunchAether.command
 - `RustGroupMaintenanceTests` 独立对照 1500 个生成分组，核对规范等价正文/文件路径、nil 与空数组、忽略的元数据、首组身份和日期。实际维护处理器测试检查无效图片过滤后去重、空组剔除、倒序条目保留、历史/收藏筛选、源快照不变和取消不返回部分结果。Rust 单测强制相同指纹但内容不同的碰撞，检查完整比较、稳定位置、重复拒绝和错误调用不推进状态。局部 Release 基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustGroupMaintenanceTests/testGroupMaintenanceBenchmark`，包含指纹、桥接及结果装配，不包含文件检查/持久化/页面；不得推导全应用收益。正式隔离实例应准备空组、无效条目、过滤后重复组和不同顺序组，检查维护后页面与落盘身份/日期/顺序一致。
 
 - `RustDefaultShortcutRulesTests` 使用冻结的 b75acda Swift 目录和升级实现，对照现行 20 条规则及全部历史目录升级；覆盖 Int 极值/未来版本、特殊桌面路径、逐字段编辑、禁用来源、重复输入和规范等价 Unicode，逐项核对完整内容、顺序与原 ID。验证新规则 UUID 唯一且不同调用不复用，已占满来源/无需升级复用原数组。正式隔离实例须检查快捷操作设置中规则数量、名称与动作；系统事件执行和权限效果仍需相应独立验收。
+
+- `RustShortcutAnalysisTests` 对照独立旧校验器及原执行集合流程，覆盖 800 组生成规则、全部权限/录制组合、重复 UUID、禁用副本、物理位、不可变快照与并发读取。`ShortcutAnalysisIntegrationTests` 使用显式隔离目录和偏好域验证真实模型在编辑/重排/添加/删除/导入后的失效、权限/录制变化立即通知正确结果，以及未来归档拒绝不改变现有分析。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter shortcutAnalysisReadBenchmark`；只测合成有效规则列表的模型重复读取，不包含页面渲染/初始加载/持久化或正式进程占用。

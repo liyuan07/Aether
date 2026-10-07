@@ -50,6 +50,7 @@ typedef struct { int64_t primary; size_t additional; } AetherUSBSelection;
 AetherUSBSelection aether_usb_device_selection(const uint8_t *hubs, size_t count);
 uint8_t aether_usb_device_class(int64_t code);
 typedef struct { uint16_t code, physical; uint8_t modifiers; } AetherKey;
+typedef struct { uint8_t bytes[16]; } AetherUUID;
 typedef struct { AetherKey source, target; uint8_t enabled, remap; } AetherRule;
 uint8_t aether_shortcut_resolve(uint8_t required, uint8_t event, uint16_t physical, uint16_t active, uint8_t remap);
 uint8_t aether_shortcut_claims(AetherKey key, const AetherRule *rules, size_t count);
@@ -58,6 +59,11 @@ typedef struct { uint32_t kind; size_t source; const size_t *members; size_t cou
 size_t aether_validation_count(const void *handle);
 AetherIssueView aether_validation_issue(const void *handle, size_t index);
 void aether_validation_destroy(void *handle);
+// Borrow the same immutable rules and IDs used for validation. Flags use bit 0/1
+// for UUID membership without/with monitoring. Invalid input leaves output untouched.
+uint8_t aether_shortcut_execution_flags(const void *handle, const AetherRule *rules,
+    const AetherUUID *ids, size_t count, uint8_t *flags, size_t capacity);
+uint8_t aether_shortcut_execution_mask(uint8_t monitoring, uint8_t permission, uint8_t recording);
 uint8_t aether_menu_include(AetherKey key, intptr_t top, const AetherKey *branch, size_t count);
 typedef struct { double x, y, width, height; } AetherRect;
 AetherRect aether_rect_quartz(AetherRect rect, double top);
@@ -89,7 +95,6 @@ AetherPromptGate aether_prompt_finish(AetherPromptGate state, uint64_t token, ui
 AetherPromptGate aether_prompt_history_writable(AetherPromptGate state, uint8_t writable);
 intptr_t aether_prompt_limit(intptr_t limit);
 uint8_t aether_prompt_credential_consistent(uint8_t fingerprint_present, uint8_t key_empty, uint8_t matches);
-typedef struct { uint8_t bytes[16]; } AetherUUID;
 typedef struct { AetherUUID id; double timestamp; uint8_t matched; } AetherHistoryRow;
 size_t aether_prompt_history_plan(const AetherHistoryRow *rows, size_t count, uint32_t action, AetherUUID id, size_t limit, size_t *output, size_t capacity);
 void *aether_prompt_store_create(const char *directory, AetherBytes fallback);

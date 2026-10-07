@@ -33,7 +33,9 @@ final class AppModel: ObservableObject {
     private static let shortcutGuideHoldDurationKey = "shortcutGuideHoldDuration"
     private static let shortcutGuideFavoriteIDsKey = "shortcutGuideFavoriteIDs"
 
-    @Published private(set) var rules: [ShortcutRule]
+    @Published private(set) var rules: [ShortcutRule] {
+        didSet { cachedRuleAnalysis = nil; cachedExecutableIDs = nil }
+    }
     @Published private(set) var appPreferences: AppPreferencesConfiguration
     @Published private(set) var registeredApplications: [RegisteredApplication] = []
     @Published var selectedRuleID: UUID?
@@ -57,6 +59,15 @@ final class AppModel: ObservableObject {
     private var preferencesSaveWorkItem: DispatchWorkItem?
     private var isRecordingShortcut = false
     private var legacyApplicationTargets: [ApplicationTarget] = []
+    private var cachedRuleAnalysis: ShortcutRuleAnalysis?
+    private var cachedExecutableIDs: (monitoring: Bool, ids: Set<UUID>)?
+
+    var ruleAnalysis: ShortcutRuleAnalysis {
+        if let cachedRuleAnalysis { return cachedRuleAnalysis }
+        let analysis = ShortcutRuleAnalysis(rules: rules)
+        cachedRuleAnalysis = analysis
+        return analysis
+    }
 
     init(
         store: ShortcutRuleStore = ShortcutRuleStore(fileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("shortcuts.json")),
@@ -209,18 +220,14 @@ final class AppModel: ObservableObject {
     }
 
     var executableRuleIDs: Set<UUID> {
-        let invalidIDs = Set(ShortcutRuleValidator.issues(in: rules).flatMap(\.affectedRuleIDs))
-        return Set(rules.compactMap { rule in
-            guard rule.isEnabled,
-                  !invalidIDs.contains(rule.id),
-                  rule.source.physicalModifiers.isEmpty || inputMonitoringGranted
-            else { return nil }
-            return rule.id
-        })
+        if let cachedExecutableIDs, cachedExecutableIDs.monitoring == inputMonitoringGranted { return cachedExecutableIDs.ids }
+        let ids = ruleAnalysis.executableRuleIDs(inputMonitoringGranted: inputMonitoringGranted)
+        cachedExecutableIDs = (inputMonitoringGranted, ids)
+        return ids
     }
 
     func localFindings(for ruleID: UUID) -> [ConflictFinding] {
-        var findings: [ConflictFinding] = ShortcutRuleValidator.issues(in: rules).compactMap { issue in
+        var findings: [ConflictFinding] = ruleAnalysis.issues.compactMap { issue in
             guard issue.affectedRuleIDs.contains(ruleID) else { return nil }
             switch issue {
             case .missingModifier:
@@ -269,12 +276,8 @@ final class AppModel: ObservableObject {
     }
 
     func notifyEngine() {
-        guard !isRecordingShortcut, permissionGranted else {
-            onExecutableRulesChanged?([])
-            return
-        }
-        let executableIDs = executableRuleIDs
-        let executable = rules.filter { executableIDs.contains($0.id) }
+        let executable = ruleAnalysis.executableRules(permissionGranted: permissionGranted,
+            inputMonitoringGranted: inputMonitoringGranted, isRecording: isRecordingShortcut)
         onExecutableRulesChanged?(executable)
     }
 

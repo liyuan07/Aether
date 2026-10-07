@@ -1,5 +1,6 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
-use std::collections::{BTreeSet, HashMap};
+use crate::abi::Uuid;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -67,6 +68,7 @@ struct Issue {
 }
 pub struct Validation {
     issues: Vec<Issue>,
+    count: usize,
 }
 #[repr(C)]
 pub struct IssueView {
@@ -137,7 +139,73 @@ pub unsafe extern "C" fn aether_shortcut_validate(
             members,
         });
     }
-    Box::into_raw(Box::new(Validation { issues }))
+    Box::into_raw(Box::new(Validation { issues, count }))
+}
+/// Compute both monitoring states once for the validated immutable rule snapshot.
+/// UUID membership intentionally expands to every matching UUID, including disabled
+/// duplicates, matching the original Set<UUID> followed by native rule filtering.
+/// # Safety
+/// Handle must be live and correspond to these rules/IDs. Buffers are borrowed only
+/// until return. Invalid input leaves output untouched; count zero accepts null spans.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_shortcut_execution_flags(
+    handle: *const Validation,
+    rules: *const Rule,
+    ids: *const Uuid,
+    count: usize,
+    flags: *mut u8,
+    capacity: usize,
+) -> u8 {
+    let Some(validation) = (unsafe { handle.as_ref() }) else {
+        return 0;
+    };
+    if validation.count != count
+        || capacity < count
+        || (count > 0 && (rules.is_null() || ids.is_null() || flags.is_null()))
+    {
+        return 0;
+    }
+    if count == 0 {
+        return 1;
+    }
+    let rules = unsafe { std::slice::from_raw_parts(rules, count) };
+    let ids = unsafe { std::slice::from_raw_parts(ids, count) };
+    let invalid: HashSet<Uuid> = validation
+        .issues
+        .iter()
+        .flat_map(|issue| issue.members.iter().map(|&index| ids[index]))
+        .collect();
+    let mut without_monitoring = HashSet::new();
+    let mut with_monitoring = HashSet::new();
+    for (rule, &id) in rules.iter().zip(ids) {
+        if rule.enabled != 0 && !invalid.contains(&id) {
+            with_monitoring.insert(id);
+            if rule.source.physical == 0 {
+                without_monitoring.insert(id);
+            }
+        }
+    }
+    for (index, id) in ids.iter().enumerate() {
+        unsafe {
+            *flags.add(index) = u8::from(without_monitoring.contains(id))
+                | (u8::from(with_monitoring.contains(id)) << 1);
+        }
+    }
+    1
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_shortcut_execution_mask(
+    monitoring: u8,
+    permission: u8,
+    recording: u8,
+) -> u8 {
+    if permission == 0 || recording != 0 {
+        0
+    } else if monitoring == 0 {
+        1
+    } else {
+        2
+    }
 }
 /// # Safety
 /// A live validation handle returned by validate; null yields zero.
@@ -239,4 +307,117 @@ pub unsafe extern "C" fn aether_menu_include(
         return u8::from(!window.contains(&key) && !tiling(key));
     }
     1
+}
+
+#[cfg(test)]
+mod execution_tests {
+    use super::*;
+    #[test]
+    fn duplicate_uuid_membership_and_invalid_buffers() {
+        unsafe {
+            let mut rules = [
+                Rule {
+                    source: standard(1, 8),
+                    enabled: 1,
+                    ..Rule::default()
+                },
+                Rule {
+                    source: standard(2, 8),
+                    enabled: 0,
+                    ..Rule::default()
+                },
+            ];
+            let ids = [Uuid { bytes: [1; 16] }; 2];
+            let validation = aether_shortcut_validate(rules.as_ptr(), rules.len());
+            let mut flags = [99; 2];
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    validation,
+                    rules.as_ptr(),
+                    ids.as_ptr(),
+                    2,
+                    flags.as_mut_ptr(),
+                    1
+                ),
+                0
+            );
+            assert_eq!(flags, [99, 99]);
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    validation,
+                    rules.as_ptr(),
+                    ids.as_ptr(),
+                    1,
+                    flags.as_mut_ptr(),
+                    2
+                ),
+                0
+            );
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    validation,
+                    std::ptr::null(),
+                    ids.as_ptr(),
+                    2,
+                    flags.as_mut_ptr(),
+                    2
+                ),
+                0
+            );
+            assert_eq!(flags, [99, 99]);
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    validation,
+                    rules.as_ptr(),
+                    ids.as_ptr(),
+                    2,
+                    flags.as_mut_ptr(),
+                    2
+                ),
+                1
+            );
+            assert_eq!(flags, [3, 3]);
+            aether_validation_destroy(validation);
+            rules[0].source.physical = 256;
+            let validation = aether_shortcut_validate(rules.as_ptr(), 2);
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    validation,
+                    rules.as_ptr(),
+                    ids.as_ptr(),
+                    2,
+                    flags.as_mut_ptr(),
+                    2
+                ),
+                1
+            );
+            assert_eq!(flags, [2, 2]);
+            aether_validation_destroy(validation);
+            let empty = aether_shortcut_validate(std::ptr::null(), 0);
+            assert_eq!(
+                aether_shortcut_execution_flags(
+                    empty,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    0
+                ),
+                1
+            );
+            aether_validation_destroy(empty);
+        }
+    }
+    #[test]
+    fn permission_and_recording_gate_both_monitoring_states() {
+        for monitoring in [0, 1, 255] {
+            assert_eq!(aether_shortcut_execution_mask(monitoring, 0, 0), 0);
+            assert_eq!(aether_shortcut_execution_mask(monitoring, 1, 1), 0);
+            assert_eq!(aether_shortcut_execution_mask(monitoring, 255, 255), 0);
+            assert_eq!(
+                aether_shortcut_execution_mask(monitoring, 1, 0),
+                if monitoring == 0 { 1 } else { 2 }
+            );
+        }
+    }
 }

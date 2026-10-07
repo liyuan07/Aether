@@ -20,6 +20,10 @@ public enum ShortcutRuleValidator {
         let core = rules.map(\.rustRule)
         let result = core.withUnsafeBufferPointer { aether_shortcut_validate($0.baseAddress, $0.count) }
         defer { aether_validation_destroy(result) }
+        return decode(result, rules: rules)
+    }
+
+    static func decode(_ result: UnsafeMutableRawPointer?, rules: [ShortcutRule]) -> [ShortcutRuleIssue] {
         var issues: [ShortcutRuleIssue] = []
         var cycles = Set<Set<UUID>>()
         for index in 0..<aether_validation_count(result) {
