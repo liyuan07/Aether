@@ -210,3 +210,6 @@ sh LaunchAether.command
 
 
 - `rustWindowFreezeGeometryParity` 使用冻结 ad24e1a 原会话对照 384×6 次扫描，覆盖重复窗口/屏幕身份、负尺寸/符号零/NaN/无穷/极大几何、空屏幕/空与无限可用区域及缺失撤销屏幕。每步核对完整报告/文案、调用顺序、原始几何和撤销快照；既有 1000×20 会话回归仍执行。Rust 检查输入释放后计划的独立性、同屏原始几何及非法跨度/范围、越界/空句柄。此项不向真实应用发送 AX 操作，真实多屏和权限效果仍单独验收。
+
+
+- `ApplicationCatalogTests` 与冻结 6eeac41 分组/默认/种子及独立原排序器对照 2000 组合成目录，逐字段/原始 UTF-8 核对重复身份、Unicode、空值/NUL、重复偏好和旧/当前规则优先级；256 个并发读取验证快照寿命。`applicationCatalogModelInvalidation` 使用隔离文件/偏好域核对注册、重排、默认值、规则编辑/添加/删除、导入和无关通用偏好的失效行为。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter applicationCatalogReadBenchmark`；衡量合成应用分组/默认值重复读取，排除初始扫描/目录构建、渲染、持久化及正式进程资源。实际应用唤醒页面的分组、默认选择和拖动效果需独立验收。

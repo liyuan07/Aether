@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 use std::collections::{HashMap, HashSet};
-fn ordered(apps: &[u64], prefs: &[u64]) -> Vec<usize> {
+pub(crate) fn ordered(apps: &[u64], prefs: &[u64]) -> Vec<usize> {
     let mut first = HashMap::new();
     for (i, &key) in apps.iter().enumerate() {
         first.entry(key).or_insert(i);

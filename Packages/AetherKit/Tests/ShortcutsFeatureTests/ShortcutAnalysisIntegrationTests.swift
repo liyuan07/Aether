@@ -160,3 +160,122 @@ private func withIsolatedModel(_ rules: [ShortcutRule], _ body: (AppModel, URL) 
         print("SHORTCUT_ANALYSIS_BENCHMARK " + String(decoding: try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys]), as: UTF8.self))
     }
 }
+
+@Test("实际模型缓存应用目录，注册/规则/排序/默认值更新立即失效")
+@MainActor func applicationCatalogModelInvalidation() throws {
+    let target = ApplicationTarget(displayName: "旧目标", bundleIdentifier: "two", applicationPath: "/two")
+    let legacy = ShortcutRule(name: "合成旧规则", source: .init(keyCode: 1, modifiers: .command),
+        action: .application(target: target, mode: .activateExisting), isEnabled: false)
+    try withIsolatedModel([legacy]) { model, directory in
+        let apps = [RegisteredApplication(bundleIdentifier: "one", displayName: "一", applicationPath: "/one", initial: "A"),
+            RegisteredApplication(bundleIdentifier: "two", displayName: "二", applicationPath: "/two", initial: "A")]
+        model.setRegisteredApplications(apps)
+        // Disabled persisted legacy targets retain their original seed priority.
+        #expect(model.appPreferences.applicationShortcuts.defaultBundleIdentifiers["A"] == "two")
+        #expect(model.defaultApplication(for: "A") == apps[1])
+        var snapshot = model.applicationCatalog
+        #expect(model.applicationCatalog === snapshot)
+        model.updateAppPreferences { $0.app.showModifierButtons.toggle() }
+        #expect(model.applicationCatalog === snapshot)
+        model.moveApplications(for: "A", fromOffsets: [1], toOffset: 0)
+        #expect(model.applicationCatalog !== snapshot)
+        #expect(model.applications(for: "A") == apps.reversed())
+        #expect(snapshot.applications(for: "A") == apps)
+        snapshot = model.applicationCatalog
+        model.setDefaultApplication(bundleIdentifier: "one", for: "A")
+        #expect(model.applicationCatalog !== snapshot)
+        #expect(model.defaultApplication(for: "A") == apps[0])
+        snapshot = model.applicationCatalog
+        var changed = legacy; changed.name = "改名"; model.update(changed)
+        #expect(model.applicationCatalog !== snapshot)
+        snapshot = model.applicationCatalog
+        model.setRegisteredApplications([apps[1]])
+        #expect(model.applicationCatalog !== snapshot)
+        #expect(model.defaultApplication(for: "A") == apps[1]) // Singleton overrides a stale explicit default.
+        #expect(model.registeredApplicationGroups.count == 1)
+        #expect(model.applications(for: "unknown").isEmpty)
+        snapshot = model.applicationCatalog
+        var importedPreferences = model.appPreferences
+        importedPreferences.applicationShortcuts.defaultBundleIdentifiers["A"] = "two"
+        let archive = KeyPilotConfigurationArchive(shortcuts: [legacy], preferences: importedPreferences)
+        let file = directory.appendingPathComponent("catalog-import.json")
+        try JSONEncoder().encode(archive).write(to: file)
+        model.importConfiguration(from: file)
+        #expect(model.applicationCatalog !== snapshot)
+        #expect(model.appPreferences.applicationShortcuts.defaultBundleIdentifiers["A"] == "two")
+        snapshot = model.applicationCatalog
+        let added = model.addRule()
+        #expect(model.applicationCatalog !== snapshot)
+        snapshot = model.applicationCatalog
+        model.removeRule(id: added)
+        #expect(model.applicationCatalog !== snapshot)
+    }
+}
+
+@Test("合成应用分组重复读取基准，仅显式启用 Release 时运行")
+@MainActor func applicationCatalogReadBenchmark() throws {
+    guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { return }
+    guard !_isDebugAssertConfiguration() else { Issue.record("Benchmark requires Release"); return }
+    let rules = [ShortcutRule(name: "合成规则", source: .init(keyCode: 1, modifiers: .command), action: .showDesktop)]
+    try withIsolatedModel(rules) { model, _ in
+        let apps = (0..<1000).map { i in RegisteredApplication(bundleIdentifier: "synthetic.\(i)", displayName: "合成 \(i)",
+            applicationPath: "/synthetic/\(i).app", initial: String(UnicodeScalar(65 + i % 26)!)) }
+        model.setRegisteredApplications(apps)
+        model.updateAppPreferences { configuration in
+            for initial in Set(apps.map(\.initial)) {
+                let identifiers = apps.filter { $0.initial == initial }.map(\.bundleIdentifier).reversed()
+                configuration.applicationShortcuts.orderedBundleIdentifiers[initial] = Array(identifiers)
+                configuration.applicationShortcuts.defaultBundleIdentifiers[initial] = identifiers.first
+            }
+        }
+        let prefs = model.appPreferences.applicationShortcuts
+        // Frozen AppModel read flow; ordering deliberately uses the same pre-existing Rust resolver.
+        func oldGroups() -> [RegisteredApplicationGroup] {
+            Set(apps.map(\.initial)).sorted().map { initial in
+                .init(initial: initial, applications: ApplicationOrderResolver.ordered(apps.filter { $0.initial == initial },
+                    preferredBundleIdentifiers: prefs.orderedBundleIdentifiers[initial] ?? []))
+            }
+        }
+        func oldDefault(_ initial: String) -> RegisteredApplication? {
+            let rows = ApplicationOrderResolver.ordered(apps.filter { $0.initial == initial },
+                preferredBundleIdentifiers: prefs.orderedBundleIdentifiers[initial] ?? [])
+            if rows.count == 1 { return rows[0] }
+            guard let bundle = prefs.defaultBundleIdentifiers[initial] else { return nil }
+            return rows.first { $0.bundleIdentifier == bundle }
+        }
+        #expect(oldGroups() == model.registeredApplicationGroups)
+        for group in oldGroups() { #expect(oldDefault(group.initial) == model.defaultApplication(for: group.initial)) }
+        func oldRead() -> Int {
+            var checksum = 0
+            for _ in 0..<20 { for group in oldGroups() {
+                checksum += group.applications.count
+                if oldDefault(group.initial) != nil { checksum += 1 }
+            } }
+            return checksum
+        }
+        @MainActor func newRead() -> Int {
+            var checksum = 0
+            for _ in 0..<20 { for group in model.registeredApplicationGroups {
+                checksum += group.applications.count
+                if model.defaultApplication(for: group.initial) != nil { checksum += 1 }
+            } }
+            return checksum
+        }
+        var old: [UInt64] = [], current: [UInt64] = []
+        @MainActor func measure(_ read: @MainActor () -> Int) -> UInt64 {
+            let start = DispatchTime.now().uptimeNanoseconds
+            let checksum = read()
+            let elapsed = DispatchTime.now().uptimeNanoseconds - start
+            #expect(checksum == 20520)
+            return elapsed
+        }
+        for round in 0..<7 {
+            if round.isMultiple(of: 2) { old.append(measure(oldRead)); current.append(measure(newRead)) }
+            else { current.append(measure(newRead)); old.append(measure(oldRead)) }
+        }
+        let output: [String: Any] = ["fixtureApplications": apps.count, "groups": 26, "passes": 20, "rounds": 7,
+            "oldNs": old, "currentNs": current, "oldMedianNs": old.sorted()[3], "currentMedianNs": current.sorted()[3],
+            "scope": "steady synthetic application-group and default model reads; excludes rendering, scanning, initial catalog, persistence and process resources"]
+        print("APPLICATION_CATALOG_BENCHMARK " + String(decoding: try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys]), as: UTF8.self))
+    }
+}

@@ -384,4 +384,14 @@ void *aether_window_freeze_plan(const AetherWindowFreezeInput *inputs, size_t co
 AetherWindowFreezeInfo aether_window_freeze_info(const void *plan);
 AetherWindowFreezeEntry aether_window_freeze_entry(const void *plan, size_t index);
 void aether_window_freeze_destroy(void *plan);
+// Application catalog tokens preserve native String equality; buffers borrow synchronously.
+typedef struct { uint64_t initial, bundle, path; } AetherCatalogApp;
+typedef struct { uint64_t initial, default_bundle; size_t start, count; uint8_t has_default; } AetherCatalogGroup;
+typedef struct { uint64_t bundle, path; uint8_t enabled; } AetherCatalogTarget;
+typedef struct { size_t count; intptr_t default_index, seed_index; } AetherCatalogInfo;
+void *aether_app_catalog_create(const AetherCatalogApp *, size_t, const AetherCatalogGroup *, size_t,
+    const uint64_t *, size_t, const AetherCatalogTarget *, size_t);
+AetherCatalogInfo aether_app_catalog_info(const void *, size_t);
+intptr_t aether_app_catalog_index(const void *, size_t, size_t);
+void aether_app_catalog_destroy(void *);
 #endif

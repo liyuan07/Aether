@@ -758,3 +758,5 @@ mod app_order;
 
 mod port_enrichment;
 mod preferences;
+
+mod app_catalog;

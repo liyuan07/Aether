@@ -43,7 +43,7 @@ import Testing
     }
 }
 
-private enum OriginalOrder {
+enum OriginalOrder {
     public static func ordered(
         _ applications: [RegisteredApplication],
         preferredBundleIdentifiers: [String]

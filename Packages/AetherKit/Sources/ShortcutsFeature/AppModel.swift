@@ -34,10 +34,19 @@ final class AppModel: ObservableObject {
     private static let shortcutGuideFavoriteIDsKey = "shortcutGuideFavoriteIDs"
 
     @Published private(set) var rules: [ShortcutRule] {
-        didSet { cachedRuleAnalysis = nil; cachedExecutableIDs = nil }
+        didSet { cachedRuleAnalysis = nil; cachedExecutableIDs = nil; cachedApplicationCatalog = nil }
     }
-    @Published private(set) var appPreferences: AppPreferencesConfiguration
-    @Published private(set) var registeredApplications: [RegisteredApplication] = []
+    @Published private(set) var appPreferences: AppPreferencesConfiguration {
+        didSet {
+            if oldValue.applicationShortcuts.defaultBundleIdentifiers != appPreferences.applicationShortcuts.defaultBundleIdentifiers
+                || oldValue.applicationShortcuts.orderedBundleIdentifiers != appPreferences.applicationShortcuts.orderedBundleIdentifiers {
+                cachedApplicationCatalog = nil
+            }
+        }
+    }
+    @Published private(set) var registeredApplications: [RegisteredApplication] = [] {
+        didSet { cachedApplicationCatalog = nil }
+    }
     @Published var selectedRuleID: UUID?
     @Published var permissionGranted = false
     @Published var inputMonitoringGranted = false
@@ -61,6 +70,15 @@ final class AppModel: ObservableObject {
     private var legacyApplicationTargets: [ApplicationTarget] = []
     private var cachedRuleAnalysis: ShortcutRuleAnalysis?
     private var cachedExecutableIDs: (monitoring: Bool, ids: Set<UUID>)?
+
+    private var cachedApplicationCatalog: ApplicationCatalog?
+    var applicationCatalog: ApplicationCatalog {
+        if let cachedApplicationCatalog { return cachedApplicationCatalog }
+        let catalog = ApplicationCatalog(applications: registeredApplications, preferences: appPreferences.applicationShortcuts,
+            legacyTargets: legacyApplicationTargets, rules: rules)
+        cachedApplicationCatalog = catalog
+        return catalog
+    }
 
     var ruleAnalysis: ShortcutRuleAnalysis {
         if let cachedRuleAnalysis { return cachedRuleAnalysis }
@@ -294,27 +312,11 @@ final class AppModel: ObservableObject {
         notifyAppPreferences()
     }
 
-    var registeredApplicationGroups: [RegisteredApplicationGroup] {
-        Set(registeredApplications.map(\.initial)).sorted().map {
-            RegisteredApplicationGroup(initial: $0, applications: applications(for: $0))
-        }
-    }
+    var registeredApplicationGroups: [RegisteredApplicationGroup] { applicationCatalog.groups }
 
-    func applications(for initial: String) -> [RegisteredApplication] {
-        ApplicationOrderResolver.ordered(
-            registeredApplications.filter { $0.initial == initial },
-            preferredBundleIdentifiers: appPreferences.applicationShortcuts.orderedBundleIdentifiers[initial] ?? []
-        )
-    }
+    func applications(for initial: String) -> [RegisteredApplication] { applicationCatalog.applications(for: initial) }
 
-    func defaultApplication(for initial: String) -> RegisteredApplication? {
-        let applications = applications(for: initial)
-        if applications.count == 1 { return applications[0] }
-        guard let bundleIdentifier = appPreferences.applicationShortcuts.defaultBundleIdentifiers[initial] else {
-            return nil
-        }
-        return applications.first { $0.bundleIdentifier == bundleIdentifier }
-    }
+    func defaultApplication(for initial: String) -> RegisteredApplication? { applicationCatalog.defaultApplication(for: initial) }
 
     func setDefaultApplication(bundleIdentifier: String?, for initial: String) {
         updateAppPreferences { configuration in
@@ -443,23 +445,7 @@ final class AppModel: ObservableObject {
     }
 
     private func seedApplicationDefaultsFromExistingRules() {
-        let groups = registeredApplicationGroups.filter { $0.applications.count > 1 }
-        var additions: [String: String] = [:]
-        for group in groups where appPreferences.applicationShortcuts.defaultBundleIdentifiers[group.initial] == nil {
-            let configuredTargets = legacyApplicationTargets + rules.compactMap { rule -> ApplicationTarget? in
-                guard rule.isEnabled, case let .application(target, _) = rule.action else { return nil }
-                return target
-            }
-            guard let target = configuredTargets.first(where: { target in
-                group.applications.contains {
-                    $0.bundleIdentifier == target.bundleIdentifier || $0.applicationPath == target.applicationPath
-                }
-            }),
-            let application = group.applications.first(where: {
-                $0.bundleIdentifier == target.bundleIdentifier || $0.applicationPath == target.applicationPath
-            }) else { continue }
-            additions[group.initial] = application.bundleIdentifier
-        }
+        let additions = applicationCatalog.seedAdditions
         guard !additions.isEmpty else { return }
         updateAppPreferences { configuration in
             configuration.applicationShortcuts.defaultBundleIdentifiers.merge(additions) { current, _ in current }
