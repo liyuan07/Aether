@@ -348,3 +348,60 @@ private func withIsolatedModel(_ rules: [ShortcutRule], _ body: (AppModel, URL) 
         #expect(model.rules == [duplicate, last])
     }
 }
+
+@Test("实际归档导出重开、导入通知与未来版本拒绝保持一致")
+@MainActor func shortcutArchiveModelIntegration() throws {
+    let first = ShortcutRule(name: "合成归档原规则", source: .init(keyCode: 10, modifiers: .command), action: .showDesktop)
+    let imported = ShortcutRule(name: "合成归档新规则", source: .init(keyCode: 11, modifiers: .option, physicalModifiers: .leftOption), action: .finderFolder(path: "/synthetic/合成\0目录"))
+    try withIsolatedModel([first]) { model, directory in
+        model.flushSave()
+        let file = directory.appendingPathComponent("export.json")
+        model.exportConfiguration(to: file)
+        #expect(model.lastError == nil)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let exported = try decoder.decode(KeyPilotConfigurationArchive.self, from: Data(contentsOf: file))
+        #expect(exported.shortcuts == [first])
+        #expect(exported.preferences == model.appPreferences)
+        var preferences = AppPreferencesConfiguration()
+        preferences.app.showModifierButtons = false
+        preferences.applicationShortcuts.holdDuration = 0.9
+        preferences.applicationShortcuts.defaultBundleIdentifiers = ["合成": "synthetic.bundle"]
+        let archive = KeyPilotConfigurationArchive(shortcuts: [imported], preferences: preferences)
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(archive).write(to: file)
+        var notifications: [String] = []
+        model.onExecutableRulesChanged = { _ in notifications.append("engine") }
+        model.onAppPreferencesChanged = { _ in notifications.append("preferences") }
+        model.onConflictScanRequested = { _ in notifications.append("scan") }
+        let priorAnalysis = model.ruleAnalysis
+        model.importConfiguration(from: file)
+        #expect(model.lastError == nil)
+        #expect(model.rules == [imported])
+        #expect(model.appPreferences == preferences)
+        #expect(model.selectedRuleID == imported.id)
+        #expect(model.ruleAnalysis !== priorAnalysis)
+        #expect(notifications == ["engine", "preferences", "scan"])
+        let storedRules = try ShortcutRuleStore(fileURL: directory.appendingPathComponent("shortcuts.json")).load()
+        let storedPreferences = try AppPreferencesStore(fileURL: directory.appendingPathComponent("preferences.json")).load()
+        #expect(storedRules == [imported])
+        #expect(storedPreferences == preferences)
+        let rulesBefore = try Data(contentsOf: directory.appendingPathComponent("shortcuts.json"))
+        let preferencesBefore = try Data(contentsOf: directory.appendingPathComponent("preferences.json"))
+        let analysis = model.ruleAnalysis
+        notifications = []
+        var future = try JSONSerialization.jsonObject(with: encoder.encode(archive)) as! [String: Any]
+        future["schemaVersion"] = Int.max
+        try JSONSerialization.data(withJSONObject: future).write(to: file)
+        model.importConfiguration(from: file)
+        #expect(model.lastError?.hasPrefix("导入配置失败：") == true)
+        #expect(model.ruleAnalysis === analysis)
+        #expect(model.rules == [imported] && model.appPreferences == preferences)
+        #expect(notifications.isEmpty)
+        let rulesAfter = try Data(contentsOf: directory.appendingPathComponent("shortcuts.json"))
+        let preferencesAfter = try Data(contentsOf: directory.appendingPathComponent("preferences.json"))
+        #expect(rulesBefore == rulesAfter)
+        #expect(preferencesBefore == preferencesAfter)
+        model.exportConfiguration(to: directory) // Keep native file error reporting.
+        #expect(model.lastError?.hasPrefix("导出配置失败：") == true)
+    }
+}

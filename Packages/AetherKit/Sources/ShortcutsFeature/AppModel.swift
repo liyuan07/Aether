@@ -341,10 +341,7 @@ final class AppModel: ObservableObject {
     func exportConfiguration(to url: URL) {
         do {
             let archive = KeyPilotConfigurationArchive(shortcuts: rules, preferences: appPreferences)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(archive).write(to: url, options: .atomic)
+            try ShortcutConfigurationJSON.encode(archive).write(to: url, options: .atomic)
         } catch {
             lastError = "导出配置失败：\(error.localizedDescription)"
         }
@@ -352,11 +349,8 @@ final class AppModel: ObservableObject {
 
     func importConfiguration(from url: URL) {
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let archive = try decoder.decode(KeyPilotConfigurationArchive.self, from: Data(contentsOf: url))
-            guard archive.schemaVersion <= KeyPilotConfigurationArchive.currentSchemaVersion,
-                  archive.preferences.schemaVersion <= AppPreferencesConfiguration.currentSchemaVersion
+            let archive = try ShortcutConfigurationJSON.decode(Data(contentsOf: url))
+            guard ShortcutConfigurationJSON.isSupported(archive)
             else { throw CocoaError(.coderReadCorrupt) }
             try store.save(archive.shortcuts)
             try appPreferencesStore.save(archive.preferences)

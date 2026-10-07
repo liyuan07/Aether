@@ -15,7 +15,7 @@ use serde_json::value::RawValue;
 use std::{fmt, marker::PhantomData};
 
 // Derive's struct visitor also accepts positional arrays. Foundation's keyed containers do not.
-struct Object<T>(T);
+pub(crate) struct Object<T>(pub(crate) T);
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Object<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         struct Map<T>(PhantomData<T>);
@@ -362,7 +362,7 @@ impl<'de> Deserialize<'de> for Decoded {
         d.deserialize_seq(Sequence)
     }
 }
-fn decode(bytes: &[u8]) -> Result<Decoded, serde_json::Error> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<Decoded, serde_json::Error> {
     serde_json::from_slice(bytes)
 }
 #[repr(C)]

@@ -18,6 +18,10 @@ enum ShortcutRuleJSON {
         defer { aether_rule_decoded_destroy(handle) }
         let view = aether_rule_decoded_view(handle)
         guard view.status == 0 else { return nil }
+        return assemble(view)
+    }
+
+    static func assemble(_ view: AetherDecodedRules) -> [ShortcutRule] {
         let arena = UnsafeBufferPointer(start: view.bytes.data, count: view.bytes.length)
         func text(_ span: AetherRuleText) -> String {
             String(decoding: arena[span.start..<(span.start + span.length)], as: UTF8.self)
@@ -46,6 +50,13 @@ enum ShortcutRuleJSON {
     }
 
     static func encode(_ rules: [ShortcutRule]) throws -> Data {
+        try withRecords(rules) { rows, bytes in
+            try RustBuffer.take(aether_rule_encode(rows.baseAddress, rows.count,
+                .init(data: bytes.baseAddress, length: bytes.count)))
+        }
+    }
+
+    static func withRecords<T>(_ rules: [ShortcutRule], body: (UnsafeBufferPointer<AetherRuleRecord>, UnsafeBufferPointer<UInt8>) throws -> T) rethrows -> T {
         var bytes = [UInt8]()
         func text(_ value: String) -> AetherRuleText {
             let start = bytes.count
@@ -67,7 +78,10 @@ enum ShortcutRuleJSON {
                     row.bundle_present = 1
                     row.bundle = text(bundle)
                 }
-                row.mode = mode == .activateExisting ? 0 : 1
+                switch mode {
+                case .activateExisting: row.mode = 0
+                case .newWindow: row.mode = 1
+                }
             case let .finderFolder(path):
                 row.kind = 1
                 row.path = text(path)
@@ -97,8 +111,7 @@ enum ShortcutRuleJSON {
         }
         return try rows.withUnsafeBufferPointer { rows in
             try bytes.withUnsafeBufferPointer { bytes in
-                try RustBuffer.take(aether_rule_encode(rows.baseAddress, rows.count,
-                    .init(data: bytes.baseAddress, length: bytes.count)))
+                try body(rows, bytes)
             }
         }
     }

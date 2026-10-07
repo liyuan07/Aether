@@ -1,5 +1,7 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
-const VERSION: i64 = 9;
+pub(crate) const VERSION: i64 = 9;
+pub(crate) const ARCHIVE_VERSION: i64 = 2;
+pub(crate) const ARCHIVE_DEFAULT: i64 = 1;
 #[repr(C)]
 pub struct Defaults {
     version: i64,
@@ -22,8 +24,8 @@ pub struct General {
 pub extern "C" fn aether_preferences_defaults() -> Defaults {
     Defaults {
         version: VERSION,
-        archive_version: 2,
-        archive_default: 1,
+        archive_version: ARCHIVE_VERSION,
+        archive_default: ARCHIVE_DEFAULT,
         stored_default: 1,
         hold: 0.5,
         launch: 0,

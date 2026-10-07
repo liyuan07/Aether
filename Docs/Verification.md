@@ -225,3 +225,6 @@ sh LaunchAether.command
 
 
 - `ShortcutRuleDecodeTests` 对照独立原 JSONDecoder 的完整字段及字符串字节，并检查失败类别/路径/文案。普通旧/新编码器文件、重复首键和整数小数/指数表示须直接经 Rust 成功；覆盖全部动作、结构化类型/缺失变异、UTF-16/32/BOM、嵌套深度、非法 UUID/Unicode、空文件和并发输出寿命。核心拒绝时沿用原生兼容解析，不可声称已删除全部原生解码。`ShortcutRuleJSONSaveReopensWithLegacyFormat` 继续检查实际隔离存储重开。可选局部基准：`AETHER_RULE_DECODE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleDecodeReleaseBenchmark`；包含 Rust 解码与原生 DTO 装配，排除 I/O、模型发布、页面和正式进程资源。真实规则页面/事件执行及完整归档导入事务另行验收。
+
+
+- `ShortcutConfigurationJSONTests` 对照独立原归档编码/解码器，检查完整 JSON/UTF-8、旧 inputAutomation、空/重复字段、版本极值与未来标签、失败编码/解码路径、UTF-16/32/BOM 和并发 owned 输出。`shortcutArchiveModelIntegration` 实际隔离模型验证导出旧解析器重开、导入落盘/选择/分析失效/通知顺序、未来版本拒绝的模型与文件保护。Rust 检查归档所有权、版本门控与无部分输出。可选局部基准：`AETHER_SHORTCUT_ARCHIVE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutArchiveReleaseBenchmark`；包括规则桥接、偏好原生编解码及归档格式，排除 I/O、模型发布、页面与正式进程资源。偏好全量编解码和双文件导入事务尚未迁移，实际配置面板与系统行为另行验收。

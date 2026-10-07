@@ -419,4 +419,11 @@ typedef struct { const AetherRuleRecord *rows; size_t count; AetherBytes bytes; 
 void *aether_rule_decode(AetherBytes bytes);
 AetherDecodedRules aether_rule_decoded_view(const void *handle);
 void aether_rule_decoded_destroy(void *handle);
+// Archive views borrow immutable owner data; preference JSON is adapted by Foundation.
+void *aether_shortcut_archive_encode(const AetherRuleRecord *rows, size_t count, AetherBytes bytes, AetherBytes preferences);
+typedef struct { AetherDecodedRules rules; AetherBytes preferences; int64_t version; uint32_t status; } AetherShortcutArchive;
+void *aether_shortcut_archive_decode(AetherBytes bytes);
+AetherShortcutArchive aether_shortcut_archive_view(const void *handle);
+void aether_shortcut_archive_destroy(void *handle);
+uint8_t aether_shortcut_archive_supported(int64_t archive, int64_t normalized_preferences);
 #endif

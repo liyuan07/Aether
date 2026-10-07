@@ -159,9 +159,9 @@ fn rule<'a>(row: &'a Row, bytes: &'a [u8]) -> Option<Rule<'a>> {
     };
     Some(Rule { row, name, action })
 }
-struct Rules<'a> {
-    rows: &'a [Row],
-    bytes: &'a [u8],
+pub(crate) struct Rules<'a> {
+    pub(crate) rows: &'a [Row],
+    pub(crate) bytes: &'a [u8],
 }
 impl Serialize for Rules<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

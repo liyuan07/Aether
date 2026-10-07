@@ -766,3 +766,5 @@ mod rule_edit;
 mod rule_codec;
 
 mod rule_decode;
+
+mod shortcut_archive;
