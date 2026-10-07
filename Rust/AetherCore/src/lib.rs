@@ -764,3 +764,5 @@ mod app_catalog;
 mod rule_edit;
 
 mod rule_codec;
+
+mod rule_decode;

@@ -17,7 +17,7 @@ pub struct Span {
     pub length: usize,
 }
 impl Span {
-    fn text(self, bytes: &[u8]) -> Option<&str> {
+    pub(crate) fn text(self, bytes: &[u8]) -> Option<&str> {
         std::str::from_utf8(bytes.get(self.start..self.start.checked_add(self.length)?)?).ok()
     }
 }

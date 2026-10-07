@@ -222,3 +222,6 @@ sh LaunchAether.command
 
 
 - `ShortcutRuleJSONTests` 以独立旧 JSONEncoder 对照完整规则保存语义，再分别经旧 JSONDecoder 重开；覆盖全部动作/布局/模式、nil/空字段、Unicode/NUL、原始修饰位、空列表、旧文件兼容与并发输出寿命。Rust 检查无效跨度/UTF-8/空指针并返回无部分内容的错误。可选局部基准：`AETHER_RULE_CODEC_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleJSONReleaseBenchmark`；包含原生 DTO 转换与 JSON 编码，不含磁盘写入/页面/模型发布/正式进程资源。完整配置归档与导入事务尚未迁移，真实编辑页面仍需独立验收。
+
+
+- `ShortcutRuleDecodeTests` 对照独立原 JSONDecoder 的完整字段及字符串字节，并检查失败类别/路径/文案。普通旧/新编码器文件、重复首键和整数小数/指数表示须直接经 Rust 成功；覆盖全部动作、结构化类型/缺失变异、UTF-16/32/BOM、嵌套深度、非法 UUID/Unicode、空文件和并发输出寿命。核心拒绝时沿用原生兼容解析，不可声称已删除全部原生解码。`ShortcutRuleJSONSaveReopensWithLegacyFormat` 继续检查实际隔离存储重开。可选局部基准：`AETHER_RULE_DECODE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleDecodeReleaseBenchmark`；包含 Rust 解码与原生 DTO 装配，排除 I/O、模型发布、页面和正式进程资源。真实规则页面/事件执行及完整归档导入事务另行验收。

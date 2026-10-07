@@ -414,4 +414,9 @@ typedef struct {
     uint8_t kind, enabled, bundle_present, mode, layout, use_finder;
 } AetherRuleRecord;
 void *aether_rule_encode(const AetherRuleRecord *rows, size_t count, AetherBytes bytes);
+// Decoded records and UTF-8 arena are owned by the handle until destroy; view is immutable.
+typedef struct { const AetherRuleRecord *rows; size_t count; AetherBytes bytes; uint32_t status; } AetherDecodedRules;
+void *aether_rule_decode(AetherBytes bytes);
+AetherDecodedRules aether_rule_decoded_view(const void *handle);
+void aether_rule_decoded_destroy(void *handle);
 #endif

@@ -9,7 +9,7 @@ private func referenceRuleJSON(_ rules: [ShortcutRule]) throws -> Data {
     return try encoder.encode(rules)
 }
 
-private func codecRules(_ count: Int) -> [ShortcutRule] {
+func codecRules(_ count: Int) -> [ShortcutRule] {
     let strings = ["", "合成规则", "café", "cafe\u{301}", "路径/带\\斜线", "\"\n\r\t\0", "👨‍👩‍👧‍👦", "\u{2028}\u{2029}"]
     return (0..<count).map { index in
         var source = KeyCombination(keyCode: index % 19 == 0 ? .max : UInt16(truncatingIfNeeded: index * 991),

@@ -5,6 +5,46 @@ import RustCore
 
 /// Native DTO adaptation only. Rust defines the persisted action and rule representation.
 enum ShortcutRuleJSON {
+    static func decode(_ data: Data) throws -> [ShortcutRule] {
+        if let rules = decodeCore(data) { return rules }
+        // Preserve Foundation's legacy encodings and exact DecodingError categories on exceptional inputs.
+        return try JSONDecoder().decode([ShortcutRule].self, from: data)
+    }
+
+    static func decodeCore(_ data: Data) -> [ShortcutRule]? {
+        let handle = data.withUnsafeBytes {
+            aether_rule_decode(.init(data: $0.bindMemory(to: UInt8.self).baseAddress, length: $0.count))
+        }
+        defer { aether_rule_decoded_destroy(handle) }
+        let view = aether_rule_decoded_view(handle)
+        guard view.status == 0 else { return nil }
+        let arena = UnsafeBufferPointer(start: view.bytes.data, count: view.bytes.length)
+        func text(_ span: AetherRuleText) -> String {
+            String(decoding: arena[span.start..<(span.start + span.length)], as: UTF8.self)
+        }
+        func key(_ value: AetherKey) -> KeyCombination {
+            .init(keyCode: value.code, modifiers: .init(rawValue: value.modifiers),
+                physicalModifiers: .init(rawValue: value.physical))
+        }
+        return UnsafeBufferPointer(start: view.rows, count: view.count).map { row in
+            let action: ShortcutAction
+            switch row.kind {
+            case 0:
+                action = .application(target: .init(displayName: text(row.display_name),
+                    bundleIdentifier: row.bundle_present == 0 ? nil : text(row.bundle), applicationPath: text(row.path)),
+                    mode: row.mode == 0 ? .activateExisting : .newWindow)
+            case 1: action = .finderFolder(path: text(row.path))
+            case 2: action = .terminal(fallbackPath: text(row.path), useFrontmostFinder: row.use_finder != 0)
+            case 3: action = .showDesktop
+            case 4: action = .windowLayout(WindowLayout.allCases[Int(row.layout)])
+            case 5: action = .remap(to: key(row.target))
+            default: preconditionFailure("Invalid decoded shortcut action")
+            }
+            return .init(id: UUID(uuid: row.id.bytes), name: text(row.name), source: key(row.source),
+                action: action, isEnabled: row.enabled != 0)
+        }
+    }
+
     static func encode(_ rules: [ShortcutRule]) throws -> Data {
         var bytes = [UInt8]()
         func text(_ value: String) -> AetherRuleText {

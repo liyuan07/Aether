@@ -20,7 +20,7 @@ public struct ShortcutRuleStore: Sendable {
 
     public func load() throws -> [ShortcutRule] {
         guard let data = try RustDisk.read(fileURL, rejectSymbolicLinks: false) else { throw CocoaError(.fileReadNoSuchFile) }
-        return try JSONDecoder().decode([ShortcutRule].self, from: data)
+        return try ShortcutRuleJSON.decode(data)
     }
 
     public func save(_ rules: [ShortcutRule], fileManager: FileManager = .default) throws {
