@@ -770,3 +770,5 @@ mod rule_decode;
 mod shortcut_archive;
 
 mod preference_codec;
+
+mod preference_decode;

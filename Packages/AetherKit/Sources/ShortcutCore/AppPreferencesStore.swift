@@ -31,9 +31,9 @@ public struct AppPreferencesStore: Sendable {
         default: throw CocoaError(.fileNoSuchFile)
         }
         guard let data = try RustDisk.read(sourceURL, rejectSymbolicLinks: false) else { throw CocoaError(.fileReadNoSuchFile) }
-        let decoder = JSONDecoder()
-        let storedSchemaVersion = (try? decoder.decode(SchemaVersion.self, from: data).schemaVersion) ?? Int(RustPreferences.defaults.stored_default)
-        let configuration = try decoder.decode(AppPreferencesConfiguration.self, from: data)
+        let decoded = try PreferenceJSON.decode(data)
+        let storedSchemaVersion = decoded.storedSchemaVersion
+        let configuration = decoded.configuration
         if aether_preferences_should_write(persistingMigrations ? 1 : 0,sourceURL != fileURL ? 1 : 0,Int64(storedSchemaVersion)) != 0 {
             try save(configuration)
         }
@@ -44,5 +44,4 @@ public struct AppPreferencesStore: Sendable {
         try RustDisk.write(PreferenceJSON.encode(configuration), to: fileURL, privateFile: false)
     }
 
-    private struct SchemaVersion: Decodable { let schemaVersion: Int }
 }

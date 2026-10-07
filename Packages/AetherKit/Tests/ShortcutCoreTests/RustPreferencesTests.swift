@@ -22,10 +22,11 @@ import CAetherCore
         }
         let data = try JSONSerialization.data(withJSONObject:document)
         let old = try? JSONDecoder().decode(OldPreferences.self,from:data)
-        let rust = try? JSONDecoder().decode(AppPreferencesConfiguration.self,from:data)
+        let rust = try? PreferenceJSON.decode(data).configuration
         #expect((old == nil) == (rust == nil))
         if let old, let rust {
             successful += 1
+            #expect(PreferenceJSON.decodeCore(data) != nil)
             #expect(old.schemaVersion == rust.schemaVersion)
             #expect(old.app.launchAtLogin == rust.app.launchAtLogin)
             #expect(old.app.blockAutomaticABC == rust.app.blockAutomaticABC)

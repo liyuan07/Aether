@@ -40,9 +40,7 @@ public enum ShortcutConfigurationJSON {
         guard view.status == 0, view.rules.status == 0, let bytes = view.preferences.data else { return nil }
         // Foundation may retain input storage in decoded values; give it an independently owned buffer.
         let preferencesData = Data(bytes: bytes, count: view.preferences.length)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let preferences = try? decoder.decode(AppPreferencesConfiguration.self, from: preferencesData) else { return nil }
+        guard let preferences = try? PreferenceJSON.decode(preferencesData, needsStoredVersion: false).configuration else { return nil }
         var archive = KeyPilotConfigurationArchive(shortcuts: ShortcutRuleJSON.assemble(view.rules), preferences: preferences)
         archive.schemaVersion = Int(view.version)
         return archive

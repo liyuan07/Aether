@@ -231,3 +231,6 @@ sh LaunchAether.command
 
 
 - `PreferenceJSONTests` 对照独立旧 JSONEncoder 与旧类型解码器，验证全部开关/行为、字典及 Unicode 字节、列表顺序/重复、版本、浮点 bitPattern（含负零与次正规数）、保存重开/失败文件保护和并发输出。JSONSerialization 可丢失 -0 符号，不用其二次输出替代浮点验证。Rust 检查非法跨度/区间/UTF-8/标签/重复键及无部分输出。可选局部基准：`AETHER_PREFERENCE_CODEC_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter preferenceJSONReleaseBenchmark`；包含 Swift 条目装配、Rust 排序/编码，不含磁盘 I/O、页面或进程资源。偏好读取与导入事务仍需后续迁移，真实设置页行为另行验收。
+
+
+- `PreferenceDecodeTests` 和实际新路径的六千组 `RustPreferencesTests` 对照原生旧解码器/编码器；普通有效文件要求核心直接成功。验证三个字典独立的 Unicode 首键字节、错误重复值跳过、全部标量/行为/数组、迁移、浮点 bitPattern/次正规与下溢/范围、数值版本与真实隔离迁移写入时机、错误路径、历史编码和并发 owned 值。同步原生键 token 回调不可逃逸，不得把原生对象指针放入核心。可选局部基准：`AETHER_PREFERENCE_DECODE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter preferenceDecodeReleaseBenchmark`，同时比较旧存储版本头+配置、旧配置单次解码与 Rust+原生键/DTO 装配；排除 I/O、页面和正式进程资源。双文件导入事务及真实设置页/平台验收继续单独进行。

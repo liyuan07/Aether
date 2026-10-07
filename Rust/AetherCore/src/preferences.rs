@@ -4,21 +4,21 @@ pub(crate) const ARCHIVE_VERSION: i64 = 2;
 pub(crate) const ARCHIVE_DEFAULT: i64 = 1;
 #[repr(C)]
 pub struct Defaults {
-    version: i64,
-    archive_version: i64,
-    archive_default: i64,
-    stored_default: i64,
-    hold: f64,
-    launch: u8,
-    block: u8,
-    show: u8,
-    restore: u8,
+    pub(crate) version: i64,
+    pub(crate) archive_version: i64,
+    pub(crate) archive_default: i64,
+    pub(crate) stored_default: i64,
+    pub(crate) hold: f64,
+    pub(crate) launch: u8,
+    pub(crate) block: u8,
+    pub(crate) show: u8,
+    pub(crate) restore: u8,
 }
 #[repr(C)]
 pub struct General {
-    launch: u8,
-    block: u8,
-    show: u8,
+    pub(crate) launch: u8,
+    pub(crate) block: u8,
+    pub(crate) show: u8,
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn aether_preferences_defaults() -> Defaults {

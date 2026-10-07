@@ -437,4 +437,20 @@ typedef struct {
     const AetherPreferenceEntry *behaviors; size_t behavior_count;
 } AetherPreferenceInput;
 void *aether_preferences_encode(const AetherPreferenceInput *input, AetherBytes bytes);
+// Native key tokens are scoped per dictionary (0 defaults, 1 order, 2 behavior).
+// Callback and context are borrowed synchronously; only integer tokens survive in the owner.
+typedef size_t (*AetherPreferenceKeyToken)(void *context, uint8_t kind, AetherBytes key);
+typedef struct { AetherPreferenceEntry entry; size_t native_key; } AetherDecodedPreferenceEntry;
+typedef struct {
+    double hold; int64_t version;
+    uint8_t launch, block, show, restore, version_known;
+    const AetherDecodedPreferenceEntry *defaults; size_t default_count;
+    const AetherDecodedPreferenceEntry *orders; size_t order_count;
+    const AetherDecodedPreferenceEntry *behaviors; size_t behavior_count;
+    const AetherRuleText *values; size_t value_count;
+    AetherBytes bytes; uint32_t status;
+} AetherDecodedPreferences;
+void *aether_preferences_decode(AetherBytes bytes, AetherPreferenceKeyToken token, void *context);
+AetherDecodedPreferences aether_preferences_decoded_view(const void *handle);
+void aether_preferences_decoded_destroy(void *handle);
 #endif

@@ -7,7 +7,7 @@ private func nativePreferenceData(_ preferences: AppPreferencesConfiguration) th
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     return try encoder.encode(preferences)
 }
-private func preferenceFixture(_ count: Int) -> AppPreferencesConfiguration {
+func preferenceFixture(_ count: Int) -> AppPreferencesConfiguration {
     var preferences = AppPreferencesConfiguration()
     let strings = ["", "合成", "café", "cafe\u{301}", "a\0b", "\"\n\\", "👨‍👩‍👧‍👦", "路径/带斜线", "\u{2028}\u{2029}"]
     for i in 0..<count {
