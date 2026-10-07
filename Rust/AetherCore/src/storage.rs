@@ -70,6 +70,14 @@ pub fn write(path: &Path, bytes: &[u8], private: bool, synchronize: bool) -> io:
             .map(|m| m.permissions().mode() & 0o777)
             .unwrap_or(0o666)
     };
+    write_mode(path, bytes, mode, synchronize)
+}
+/// Atomic replacement with explicit file mode; parent must exist, directory permissions are unchanged.
+pub fn write_mode(path: &Path, bytes: &[u8], mode: u32, synchronize: bool) -> io::Result<()> {
+    let directory = path
+        .parent()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
+
     for _ in 0..32 {
         let temporary = directory.join(format!(
             ".aether.{}.{}.tmp",

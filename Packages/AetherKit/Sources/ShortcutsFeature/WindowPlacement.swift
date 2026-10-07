@@ -64,14 +64,18 @@ final class WindowMoveLease: @unchecked Sendable {
     private let lock = NSLock()
     private var state: AetherActionDeadline
     private let action: ApplicationActionToken?
+    private let clock: @Sendable () -> TimeInterval
     var deadline: TimeInterval { lock.withLock { state.deadline } }
-    init(now: TimeInterval = ProcessInfo.processInfo.systemUptime, duration: TimeInterval = 10,
-         action: ApplicationActionToken? = nil) {
-        state = aether_action_deadline_create(now, duration)
+    init(now: TimeInterval? = nil, duration: TimeInterval = 10,
+         action: ApplicationActionToken? = nil,
+         clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        state = aether_action_deadline_create(now ?? clock(), duration)
         self.action = action
+        self.clock = clock
     }
     func cancel() { lock.withLock { state = aether_action_deadline_cancel(state) } }
-    func isActive(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Bool {
-        lock.withLock { aether_action_deadline_active(state, now) != 0 } && (action?.isActive(now: now) ?? true)
+    func isActive(now: TimeInterval? = nil) -> Bool {
+        let now = now ?? clock()
+        return lock.withLock { aether_action_deadline_active(state, now) != 0 } && (action?.isActive(now: now) ?? true)
     }
 }

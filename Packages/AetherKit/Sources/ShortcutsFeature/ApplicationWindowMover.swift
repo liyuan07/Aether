@@ -26,17 +26,25 @@ final class ApplicationWindowMover {
     private let permissionGranted: () -> Bool
     private let timeLimit: (WindowCaptureScope) -> TimeInterval
     private let notify: (String, ShortcutDisplayContext) -> Void
+    private let clock: @Sendable () -> TimeInterval
+    private let waitForTimeout: @Sendable (TimeInterval) async throws -> Void
     var onUndoAvailabilityChanged: ((Bool) -> Void)?
 
     init(worker: WindowMoveWorking = WindowMoveWorker(),
          screens: @escaping @MainActor () -> [PlacementScreen] = { PlacementScreen.snapshot() },
          permissionGranted: @escaping () -> Bool = { AccessibilityPermission.isGranted },
          timeLimit: @escaping (WindowCaptureScope) -> TimeInterval = { $0.timeLimit },
+         clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         waitForTimeout: @escaping @Sendable (TimeInterval) async throws -> Void = { duration in
+             try await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+         },
          notify: ((String, ShortcutDisplayContext) -> Void)? = nil) {
         self.worker = worker
         self.screens = screens
         self.permissionGranted = permissionGranted
         self.timeLimit = timeLimit
+        self.clock = clock
+        self.waitForTimeout = waitForTimeout
         // Window placement failures are internal recovery state, not an interruptive
         // notification. Keep the hook injectable for tests and diagnostics, but do not
         // create an on-screen panel during normal application use.
@@ -51,7 +59,7 @@ final class ApplicationWindowMover {
               restoreMinimized: Bool, action: ApplicationActionToken,
               completion: @escaping (WindowMoveReport) -> Void) {
         cancel()
-        guard action.isActive() else { return }
+        guard action.isActive(now: clock()) else { return }
         guard permissionGranted() else {
             var report = WindowMoveReport()
             report.readFailure = .permission
@@ -61,13 +69,14 @@ final class ApplicationWindowMover {
             return
         }
         let duration = timeLimit(scope)
-        let lease = WindowMoveLease(duration: duration, action: action)
+        let lease = WindowMoveLease(duration: duration, action: action, clock: clock)
         let request = Request(lease: lease, action: action, display: display, completion: completion)
         if case .undo = scope { request.report.restoringLayout = true }
         if case .appearing = scope { request.report.awaitingWindow = true }
         self.request = request
+        let waitForTimeout = self.waitForTimeout
         request.timeout = Task { [weak self, weak request] in
-            do { try await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000)) }
+            do { try await waitForTimeout(duration) }
             catch { return }
             guard let self, let request else { return }
             request.report.timedOut = true
@@ -88,7 +97,7 @@ final class ApplicationWindowMover {
                 catch { break }
             }
             if self.request === request {
-                if action.isActive() { request.report.timedOut = true }
+                if action.isActive(now: clock()) { request.report.timedOut = true }
                 self.finish(request)
             }
         }
@@ -99,7 +108,7 @@ final class ApplicationWindowMover {
         Task { [weak self] in
             guard let self else { return }
             let undo = await self.worker.lastUndo()
-            guard action.isActive(), let undo else { return }
+            guard action.isActive(now: clock()), let undo else { return }
             self.move(pid: undo.pid, display: display, scope: .undo(undo), restoreMinimized: true,
                       action: action) { _ in }
         }
@@ -125,7 +134,7 @@ final class ApplicationWindowMover {
         let completion = request.completion
         request.completion = nil
         self.request = nil
-        guard request.action.isActive() else { return }
+        guard request.action.isActive(now: clock()) else { return }
         if let message = request.report.message { notify(message, request.display) }
         completion?(request.report)
     }

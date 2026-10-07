@@ -6,7 +6,7 @@ import ShortcutCore
 @testable import ShortcutsFeature
 
 @MainActor
-private func withIsolatedModel(_ rules: [ShortcutRule], _ body: (AppModel, URL) throws -> Void) throws {
+func withIsolatedModel(_ rules: [ShortcutRule], _ body: (AppModel, URL) throws -> Void) throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("AetherShortcutAnalysis-" + UUID().uuidString)
     let domain = "AetherShortcutAnalysis." + UUID().uuidString
     let defaults = UserDefaults(suiteName: domain)!

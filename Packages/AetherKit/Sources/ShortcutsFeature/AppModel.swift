@@ -61,8 +61,7 @@ final class AppModel: ObservableObject {
     var onConflictScanRequested: (([ShortcutRule]) -> Void)?
     var onAppPreferencesChanged: ((AppPreferencesConfiguration) -> Void)?
 
-    private let store: ShortcutRuleStore
-    private let appPreferencesStore: AppPreferencesStore
+    private let persistence: ShortcutConfigurationPersistence
     private let preferences: UserDefaults
     private var saveWorkItem: DispatchWorkItem?
     private var preferencesSaveWorkItem: DispatchWorkItem?
@@ -100,16 +99,19 @@ final class AppModel: ObservableObject {
         appPreferencesStore: AppPreferencesStore = AppPreferencesStore(fileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("preferences.json"), legacyFileURL: AppEnvironment.directory("Shortcuts").appendingPathComponent("input-automation.json")),
         preferences: UserDefaults = AppEnvironment.shortcutsDefaults
     ) {
-        self.store = store
-        self.appPreferencesStore = appPreferencesStore
+        let persistence = ShortcutConfigurationPersistence(rules: store, preferences: appPreferencesStore)
+        self.persistence = persistence
         self.preferences = preferences
-        if let stored = try? appPreferencesStore.load(persistingMigrations: true) {
+        let recovered: Bool
+        do { try persistence.recover(); recovered = true }
+        catch { recovered = false; lastError = "恢复应用配置失败：\(error.localizedDescription)" }
+        if recovered, let stored = try? appPreferencesStore.load(persistingMigrations: true) {
             appPreferences = stored
         } else {
             let defaultConfiguration = AppPreferencesConfiguration()
             appPreferences = defaultConfiguration
             do {
-                try appPreferencesStore.save(defaultConfiguration)
+                try persistence.savePreferences(defaultConfiguration)
             } catch {
                 lastError = "创建应用配置失败：\(error.localizedDescription)"
             }
@@ -121,7 +123,7 @@ final class AppModel: ObservableObject {
         shortcutGuideFavoriteIDs = Set(
             preferences.stringArray(forKey: Self.shortcutGuideFavoriteIDsKey) ?? []
         )
-        if let storedRules = try? store.load(), !storedRules.isEmpty {
+        if recovered, let storedRules = try? store.load(), !storedRules.isEmpty {
             legacyApplicationTargets = storedRules.compactMap { rule in
                 guard case let .application(target, _) = rule.action else { return nil }
                 return target
@@ -133,7 +135,7 @@ final class AppModel: ObservableObject {
                     fromVersion: storedVersion
                 )
                 do {
-                    try store.save(migratedRules)
+                    try persistence.saveRules(migratedRules)
                     preferences.set(
                         DefaultShortcutRules.currentMigrationVersion,
                         forKey: Self.shortcutMigrationVersionKey
@@ -149,7 +151,7 @@ final class AppModel: ObservableObject {
         } else {
             rules = DefaultShortcutRules.make()
             do {
-                try store.save(rules)
+                try persistence.saveRules(rules)
                 preferences.set(
                     DefaultShortcutRules.currentMigrationVersion,
                     forKey: Self.shortcutMigrationVersionKey
@@ -352,8 +354,11 @@ final class AppModel: ObservableObject {
             let archive = try ShortcutConfigurationJSON.decode(Data(contentsOf: url))
             guard ShortcutConfigurationJSON.isSupported(archive)
             else { throw CocoaError(.coderReadCorrupt) }
-            try store.save(archive.shortcuts)
-            try appPreferencesStore.save(archive.preferences)
+            try persistence.replace(rules: archive.shortcuts, preferences: archive.preferences)
+            saveWorkItem?.cancel()
+            saveWorkItem = nil
+            preferencesSaveWorkItem?.cancel()
+            preferencesSaveWorkItem = nil
             rules = archive.shortcuts
             appPreferences = archive.preferences
             selectedRuleID = rules.first?.id
@@ -383,8 +388,7 @@ final class AppModel: ObservableObject {
         preferencesSaveWorkItem?.cancel()
         preferencesSaveWorkItem = nil
         do {
-            try store.save(rules)
-            try appPreferencesStore.save(appPreferences)
+            try persistence.replace(rules: rules, preferences: appPreferences)
         } catch {
             lastError = "保存配置失败：\(error.localizedDescription)"
         }
@@ -399,10 +403,11 @@ final class AppModel: ObservableObject {
     private func scheduleSave() {
         saveWorkItem?.cancel()
         let rulesSnapshot = rules
-        let store = store
+        let persistence = persistence
+        let generation = persistence.reserveRulesSave()
         let workItem = DispatchWorkItem { [weak self] in
             do {
-                try store.save(rulesSnapshot)
+                try persistence.saveRules(rulesSnapshot, generation: generation)
             } catch {
                 DispatchQueue.main.async {
                     self?.lastError = "保存配置失败：\(error.localizedDescription)"
@@ -416,10 +421,11 @@ final class AppModel: ObservableObject {
     private func schedulePreferencesSave() {
         preferencesSaveWorkItem?.cancel()
         let configuration = appPreferences
-        let store = appPreferencesStore
+        let persistence = persistence
+        let generation = persistence.reservePreferencesSave()
         let workItem = DispatchWorkItem { [weak self] in
             do {
-                try store.save(configuration)
+                try persistence.savePreferences(configuration, generation: generation)
             } catch {
                 DispatchQueue.main.async {
                     self?.lastError = "保存应用配置失败：\(error.localizedDescription)"

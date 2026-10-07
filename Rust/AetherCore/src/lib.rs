@@ -772,3 +772,5 @@ mod shortcut_archive;
 mod preference_codec;
 
 mod preference_decode;
+
+mod configuration_store;

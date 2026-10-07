@@ -453,4 +453,14 @@ typedef struct {
 void *aether_preferences_decode(AetherBytes bytes, AetherPreferenceKeyToken token, void *context);
 AetherDecodedPreferences aether_preferences_decoded_view(const void *handle);
 void aether_preferences_decoded_destroy(void *handle);
+// Owned configuration coordinator. Calls are serialized; destroy after all calls complete.
+// Save returns 1 for a stale generation (no write), 2 for blocked recovery, 3 for write failure.
+void *aether_configuration_store_create(const char *rules, const char *preferences);
+uint32_t aether_configuration_store_recover(const void *store);
+// Reserve per-slot tickets when a snapshot is scheduled. These calls do not wait for disk I/O.
+uint64_t aether_configuration_store_reserve(const void *store, uint8_t slot);
+uint8_t aether_configuration_store_current(const void *store, uint8_t slot, uint64_t generation);
+uint32_t aether_configuration_store_save(const void *store, uint8_t slot, AetherBytes bytes, uint64_t generation);
+uint32_t aether_configuration_store_replace(const void *store, AetherBytes rules, AetherBytes preferences);
+void aether_configuration_store_destroy(void *store);
 #endif

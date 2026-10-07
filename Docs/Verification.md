@@ -234,3 +234,7 @@ sh LaunchAether.command
 
 
 - `PreferenceDecodeTests` 和实际新路径的六千组 `RustPreferencesTests` 对照原生旧解码器/编码器；普通有效文件要求核心直接成功。验证三个字典独立的 Unicode 首键字节、错误重复值跳过、全部标量/行为/数组、迁移、浮点 bitPattern/次正规与下溢/范围、数值版本与真实隔离迁移写入时机、错误路径、历史编码和并发 owned 值。同步原生键 token 回调不可逃逸，不得把原生对象指针放入核心。可选局部基准：`AETHER_PREFERENCE_DECODE_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter preferenceDecodeReleaseBenchmark`，同时比较旧存储版本头+配置、旧配置单次解码与 Rust+原生键/DTO 装配；排除 I/O、页面和正式进程资源。双文件导入事务及真实设置页/平台验收继续单独进行。
+
+- 配置保存协调：`ConfigurationPersistenceTests`、`ConfigurationPersistenceIntegrationTests` 与既有 `shortcutArchiveModelIntegration` 验证整组写入前编码/目标检查、旧 ticket 拒绝及独立槽编辑、实际模型导入成功/失败/延迟保存/启动恢复与未知日志保护。Rust configuration_store 检查故障注入回滚、真实子进程四阶段退出恢复、外部内容及原始权限/链接/缺失文件保护和重复无改动保存不重写 inode。恢复记录仅使用隔离合成数据，未知/损坏记录不得被删除或覆盖。严格区分可恢复事务与同时原子双文件替换；跨进程写入、断电和硬件恢复不以这些测试宣称已验证。
+
+- 窗口超时夹具使用受控时钟和显式超时触发，不依赖主线程在真实 25 ms 内开始模拟 AX。worker 启动/结束等待有界，覆盖 AX 已挂起与 worker 尚未启动两类到期。生产默认仍使用系统 uptime 和原有 Task.sleep/时间限制；真实系统权限与窗口行为验收单独进行。
