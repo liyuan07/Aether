@@ -213,3 +213,6 @@ sh LaunchAether.command
 
 
 - `ApplicationCatalogTests` 与冻结 6eeac41 分组/默认/种子及独立原排序器对照 2000 组合成目录，逐字段/原始 UTF-8 核对重复身份、Unicode、空值/NUL、重复偏好和旧/当前规则优先级；256 个并发读取验证快照寿命。`applicationCatalogModelInvalidation` 使用隔离文件/偏好域核对注册、重排、默认值、规则编辑/添加/删除、导入和无关通用偏好的失效行为。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter applicationCatalogReadBenchmark`；衡量合成应用分组/默认值重复读取，排除初始扫描/目录构建、渲染、持久化及正式进程资源。实际应用唤醒页面的分组、默认选择和拖动效果需独立验收。
+
+
+- 正式进程资源对照必须逐次验证实际输入值与结果，不仅检查调用成功。2026-10-07 的 typeText 中文未提交尝试已排除；有效 setValue 对照使用 10000 条合成记录、六种查询、三组反向/正向交替重启和 30 秒采样。原/新后端通过二进制 SHA/UUID/PID 映射，JSON 重序列化先验证完整逻辑哈希再更新字节哈希。记录见 [搜索资源对照](Benchmarks/SwiftRustSearch20261007.json)。该场景的数据与截图不能替代全部功能、页面、多屏/AX 和端口硬件验收，也不证明总能耗下降。

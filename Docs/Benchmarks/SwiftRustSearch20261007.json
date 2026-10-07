@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-07",
+  "scope": "Formal installed process during synthetic clipboard search; not whole-product completion",
+  "protocol": {
+    "order": [
+      "B1",
+      "A1",
+      "A2",
+      "B2",
+      "B3",
+      "A3"
+    ],
+    "A_source_revision": "8e3f9a5438b2d8cc919d7796a0ea4f8bc901327d",
+    "A_binary_sha256": "922af40947f5cfea9ba5eb00934d78e7a18819a71fa2b706cc2ca54f6d3d45cf",
+    "A_adapter_manifest": ".build/baselines/swift-profile-adapter-v2.json",
+    "B_revision": "c7f8c02002ea67de678f81c337780933a8b1ebf9",
+    "B_binary_sha256": "6a226f56d3446e17f1835970312ac0017964db9ca633b5490d4c93b47052caaa",
+    "profile": "7ba42820-1566-4f74-96e8-d27089ca6c2d",
+    "semantic_sha256": "53496e34b9a0b4f89e8a7dee592d44f271a25dcbf296991ee683f062722e61bc",
+    "queries": [
+      "9999",
+      "文本",
+      "café",
+      "9998",
+      "不存在-合成",
+      ""
+    ],
+    "warmup_cycles": 1,
+    "active_cycles": 4,
+    "sample_seconds": 30,
+    "observations": "CUA fresh complete AX state after each query; focused search and empty query before/after",
+    "limits": [
+      "Single machine synthetic text-only scene",
+      "Whole process during a controlled search sequence plus residual idle in fixed 30s window",
+      "Does not measure total energy or other feature parity",
+      "Sampler checkout revision is not baseline binary source revision; use explicit binary mapping"
+    ],
+    "created_utc": "2026-10-07T13:04:31.371019+00:00",
+    "status": "completed: all six runs; exact query input/results checked after each of 144 assignments",
+    "input_method": "CUA native setValue; verify exact query field and expected visible results after every action"
+  },
+  "comparison": {
+    "protocol": "protocol.json",
+    "records": {
+      "B1": {
+        "summary": {
+          "duration_seconds": 30.007603625,
+          "cpu_percent_one_core": 6.4321148925688885,
+          "resident_median_mib": 136.3125,
+          "footprint_median_mib": 57.172813415527344,
+          "footprint_peak_mib": 58.469688415527344,
+          "idle_wakeups_delta": 4,
+          "interrupt_wakeups_delta": 273,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "6a226f56d3446e17f1835970312ac0017964db9ca633b5490d4c93b47052caaa",
+        "backend_source_revision": "c7f8c02002ea67de678f81c337780933a8b1ebf9",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 16043,
+          "started_epoch_ms": 1791378804380,
+          "finished_epoch_ms": 1791378820423,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 5883
+      },
+      "A1": {
+        "summary": {
+          "duration_seconds": 30.010247854,
+          "cpu_percent_one_core": 7.497467512696449,
+          "resident_median_mib": 140.21875,
+          "footprint_median_mib": 63.719688415527344,
+          "footprint_peak_mib": 64.14156341552734,
+          "idle_wakeups_delta": 0,
+          "interrupt_wakeups_delta": 261,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "922af40947f5cfea9ba5eb00934d78e7a18819a71fa2b706cc2ca54f6d3d45cf",
+        "backend_source_revision": "8e3f9a5438b2d8cc919d7796a0ea4f8bc901327d",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 16596,
+          "started_epoch_ms": 1791378870727,
+          "finished_epoch_ms": 1791378887323,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 6101
+      },
+      "A2": {
+        "summary": {
+          "duration_seconds": 30.009969438,
+          "cpu_percent_one_core": 7.468527543701171,
+          "resident_median_mib": 141.78125,
+          "footprint_median_mib": 64.39156341552734,
+          "footprint_peak_mib": 65.54781341552734,
+          "idle_wakeups_delta": 1,
+          "interrupt_wakeups_delta": 259,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "922af40947f5cfea9ba5eb00934d78e7a18819a71fa2b706cc2ca54f6d3d45cf",
+        "backend_source_revision": "8e3f9a5438b2d8cc919d7796a0ea4f8bc901327d",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 16245,
+          "started_epoch_ms": 1791378937120,
+          "finished_epoch_ms": 1791378953365,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 6268
+      },
+      "B2": {
+        "summary": {
+          "duration_seconds": 30.009398896,
+          "cpu_percent_one_core": 6.584145126823469,
+          "resident_median_mib": 134.078125,
+          "footprint_median_mib": 57.43846130371094,
+          "footprint_peak_mib": 61.23533630371094,
+          "idle_wakeups_delta": 1,
+          "interrupt_wakeups_delta": 282,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "6a226f56d3446e17f1835970312ac0017964db9ca633b5490d4c93b47052caaa",
+        "backend_source_revision": "c7f8c02002ea67de678f81c337780933a8b1ebf9",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 15820,
+          "started_epoch_ms": 1791378989539,
+          "finished_epoch_ms": 1791379005359,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 6429
+      },
+      "B3": {
+        "summary": {
+          "duration_seconds": 30.010417563,
+          "cpu_percent_one_core": 6.58089241017958,
+          "resident_median_mib": 136.75,
+          "footprint_median_mib": 56.71971130371094,
+          "footprint_peak_mib": 58.71971130371094,
+          "idle_wakeups_delta": 1,
+          "interrupt_wakeups_delta": 289,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "6a226f56d3446e17f1835970312ac0017964db9ca633b5490d4c93b47052caaa",
+        "backend_source_revision": "c7f8c02002ea67de678f81c337780933a8b1ebf9",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 15980,
+          "started_epoch_ms": 1791379047736,
+          "finished_epoch_ms": 1791379063716,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 6594
+      },
+      "A3": {
+        "summary": {
+          "duration_seconds": 30.006394709,
+          "cpu_percent_one_core": 7.512981472325403,
+          "resident_median_mib": 141.953125,
+          "footprint_median_mib": 61.954063415527344,
+          "footprint_peak_mib": 65.53218841552734,
+          "idle_wakeups_delta": 0,
+          "interrupt_wakeups_delta": 263,
+          "disk_read_bytes_delta": 0,
+          "disk_write_bytes_delta": 0
+        },
+        "binary_sha256": "922af40947f5cfea9ba5eb00934d78e7a18819a71fa2b706cc2ca54f6d3d45cf",
+        "backend_source_revision": "8e3f9a5438b2d8cc919d7796a0ea4f8bc901327d",
+        "ui": {
+          "actions": 24,
+          "duration_ms": 16654,
+          "started_epoch_ms": 1791379114903,
+          "finished_epoch_ms": 1791379131557,
+          "all_queries_and_results_verified": true,
+          "source": "CUA verifiedLoad result; exact input value and expected visible row checked after every assignment"
+        },
+        "pid": 6756
+      }
+    },
+    "medians": {
+      "cpu_percent_one_core": {
+        "Swift": 7.497467512696449,
+        "Rust": 6.58089241017958,
+        "reduction_percent": 12.22512936487837
+      },
+      "footprint_median_mib": {
+        "Swift": 63.719688415527344,
+        "Rust": 57.172813415527344,
+        "reduction_percent": 10.274493116329559
+      },
+      "resident_median_mib": {
+        "Swift": 141.78125,
+        "Rust": 136.3125,
+        "reduction_percent": 3.8571743442803617
+      }
+    },
+    "paired_reductions": [
+      {
+        "pair": 1,
+        "cpu_percent_one_core": 14.20949965202862,
+        "footprint_median_mib": 10.274493116329559
+      },
+      {
+        "pair": 2,
+        "cpu_percent_one_core": 11.841456186682672,
+        "footprint_median_mib": 10.798156999150823
+      },
+      {
+        "pair": 3,
+        "cpu_percent_one_core": 12.406380417404714,
+        "footprint_median_mib": 8.448763201712024
+      }
+    ],
+    "limits": [
+      "Single machine synthetic text-only scene",
+      "Whole process during a controlled search sequence plus residual idle in fixed 30s window",
+      "Does not measure total energy or other feature parity",
+      "Sampler checkout revision is not baseline binary source revision; use explicit binary mapping",
+      "Three pairs only; not statistical significance or total energy evidence",
+      "UI helper timings include CUA/AX overhead; not application response latency",
+      "Minor hover-state variance was not separately controlled"
+    ]
+  },
+  "rawArtifactSHA256": {
+    "A1-samples.json": "3f11e02f6ed9dc366e8df4c9f8d4f624076c048da59fa4546ad6f2f03b80a572",
+    "A2-samples.json": "990beff9edf3050aa5029f06e6f1e5ba97941a167c6be7ad618dd93f93913735",
+    "A3-samples.json": "19b72b32ce5cac78d5cfcdb096ad2575ccfe37e8953d04a046563984423e8344",
+    "B1-samples.json": "7c06a13421a404a88bcf4afa5c8721691074d1a1555f491e5e95f5f1e0f72d67",
+    "B2-samples.json": "fff706977ca14f17a650751f6c95a1cc0a59ec9c1fdcbe707f328dfda29a2d29",
+    "B3-samples.json": "be09ca0ae04f435324f8a2a08f71f107f7f5996880d491c92bac9e6f51544825"
+  },
+  "baselineAdapter": {
+    "manifestPath": ".build/baselines/swift-profile-adapter-v2.json",
+    "manifestSHA256": "5ff7dc8ab488b40f69d01f6f82a05cdc93f5a5446a49d758b4a19e3080fe46ac",
+    "adaptedFilesReverified": 20,
+    "adaptedTreeIdentitySHA256": "17985ee56a664789a52a95e3e57421752e639f90266b47a65284963a715e5fe1"
+  },
+  "excludedAttempt": {
+    "path": ".build/benchmarks/swift-rust-active/protocol.json",
+    "reason": "Native typeText did not commit CJK inputs. Numeric-only validation was insufficient. All v1 samples excluded."
+  },
+  "restoredInstallation": {
+    "sha256": "6a226f56d3446e17f1835970312ac0017964db9ca633b5490d4c93b47052caaa",
+    "normalPIDAtVerification": 6951,
+    "signatureVerified": true,
+    "builtBinaryIdentical": true
+  }
+}
