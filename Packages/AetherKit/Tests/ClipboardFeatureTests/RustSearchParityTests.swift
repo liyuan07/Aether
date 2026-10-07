@@ -4,6 +4,42 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchParityTests: XCTestCase {
+    func testSharedTypeVocabularyPreservesEverySegmentScoreAndReleasesWrappers() async {
+        var vocabulary: ClipboardSearchVocabulary? = ClipboardSearchVocabulary()
+        var documents: [(ClipboardItem, RustSearchDocument)] = []
+        let bodies = ["", "文本", "图片", "CAFÉ 中文", "👨‍👩‍👦", "a\u{0000}b", "clip board manager"]
+        for type in ClipboardItemType.allCases {
+            let first = vocabulary!.segment(for: type)
+            XCTAssertTrue(first === vocabulary!.segment(for: type))
+            for body in bodies {
+                let item = ClipboardItem(stringData: body, type: type)
+                documents.append((item, ClipboardIndexedDocument(item: item, typeSegment: first).core))
+            }
+        }
+        let files = ClipboardItem(fileURLs:["file:///tmp/文本/CAF%C3%89.txt", "file:///tmp/中文/name"])
+        documents.append((files, ClipboardIndexedDocument(item: files, typeSegment: vocabulary!.segment(for: .file)).core))
+        weak var witness = vocabulary!.segment(for: .text)
+        vocabulary = nil
+        XCTAssertNil(witness, "Documents must retain Rust segments without retaining Swift vocabulary wrappers")
+        for raw in bodies + ClipboardItemType.allCases.map(\.displayName) + ["文本", "café", "clipman", "name", "missing"] {
+            let normalized = normalizedClipboardSearchText(raw)
+            let query = RustSearchSegment(normalizedText: normalized, numeric: normalized.allSatisfy(\.isNumber))
+            for (item, document) in documents {
+                let expected = item.searchableSegments.compactMap {
+                    referenceClipboardSearchScore(query: ReferenceClipboardNormalizedQuery(raw), segment: ReferenceClipboardIndexedSegment($0))
+                }.max()
+                XCTAssertEqual(query.score(document: document), expected)
+            }
+        }
+        let document = documents.first { $0.0.type == .text }!.1
+        let query = RustSearchSegment(normalizedText: normalizedClipboardSearchText("文本"))
+        let expected = query.score(document: document)
+        await withTaskGroup(of: Int?.self) { group in
+            for _ in 0..<128 { group.addTask { query.score(document: document) } }
+            for await score in group { XCTAssertEqual(score, expected) }
+        }
+    }
+
     func testRankingBenchmark() throws {
         guard ProcessInfo.processInfo.environment["AETHER_RUN_CORE_BENCHMARKS"] == "1" else { throw XCTSkip("Run explicitly for ranking comparison") }
         let items = (0..<10_000).map { ClipboardItem(stringData: "Synthetic ranking item \($0)", type: .text, timestamp: Date(timeIntervalSinceReferenceDate: Double(($0 * 7919) % 10000))) }

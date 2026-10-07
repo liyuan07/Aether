@@ -115,6 +115,7 @@ actor ClipboardSearchIndex {
     static let shared = ClipboardSearchIndex()
 
     private var itemDocuments: [UUID: ClipboardIndexedDocument] = [:]
+    private var vocabulary = ClipboardSearchVocabulary()
 
     func search(
         query rawQuery: String,
@@ -175,7 +176,7 @@ actor ClipboardSearchIndex {
         if let cached = itemDocuments[item.id] {
             return cached
         }
-        let document = ClipboardIndexedDocument(item: item)
+        let document = ClipboardIndexedDocument(item: item, typeSegment: vocabulary.segment(for: item.type))
         itemDocuments[item.id] = document
         return document
     }
@@ -424,8 +425,9 @@ func matchedClipboardItems(
     guard !query.text.isEmpty else { return items }
 
     var ranked = ClipboardRankedSources(capacity: items.count)
+    var vocabulary = ClipboardSearchVocabulary()
     for (index, item) in items.enumerated() {
-        let document = ClipboardIndexedDocument(item: item)
+        let document = ClipboardIndexedDocument(item: item, typeSegment: vocabulary.segment(for: item.type))
         if let score = query.core.score(document: document.core) {
             ranked.append(index, score: score, timestamp: item.timestamp)
         }
@@ -441,9 +443,10 @@ func matchedClipboardGroups(
     guard !query.text.isEmpty else { return groups }
 
     var ranked = ClipboardRankedSources(capacity: groups.count)
+    var vocabulary = ClipboardSearchVocabulary()
     for (index, group) in groups.enumerated() {
         let documents = [RustSearchDocument(segments: [ClipboardIndexedSegment(group.title).core])]
-            + group.items.map { ClipboardIndexedDocument(item: $0).core }
+            + group.items.map { ClipboardIndexedDocument(item: $0, typeSegment: vocabulary.segment(for: $0.type)).core }
         if let score = bestClipboardScore(
             query: query,
             documents: documents
@@ -464,10 +467,23 @@ private struct ClipboardNormalizedQuery {
     }
 }
 
-private struct ClipboardIndexedDocument {
+/// Only the finite platform type labels are cached; arbitrary user text is never interned here.
+struct ClipboardSearchVocabulary {
+    private var labels: [ClipboardItemType: RustSearchSegment] = [:]
+    mutating func segment(for type: ClipboardItemType) -> RustSearchSegment {
+        if let cached = labels[type] { return cached }
+        let segment = RustSearchSegment(normalizedText: normalizedClipboardSearchText(type.displayName))
+        labels[type] = segment
+        return segment
+    }
+}
+
+struct ClipboardIndexedDocument {
     let core: RustSearchDocument
-    init(item: ClipboardItem) {
-        core = RustSearchDocument(segments: item.searchableSegments.map { ClipboardIndexedSegment($0).core })
+    init(item: ClipboardItem, typeSegment: RustSearchSegment) {
+        core = RustSearchDocument(segments: item.searchableSegments.map {
+            $0 == item.type.displayName ? typeSegment : ClipboardIndexedSegment($0).core
+        })
     }
 }
 
