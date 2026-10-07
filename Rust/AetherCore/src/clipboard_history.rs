@@ -228,6 +228,137 @@ pub extern "C" fn aether_clipboard_tab_includes(tab: u8, kind: u8, pinned: u8) -
     };
     u8::from(included)
 }
+
+#[repr(C)]
+pub struct SearchBucketEntry {
+    pub kind: u8,
+    pub pinned: u8,
+}
+struct SearchBuckets {
+    indices: [Box<[usize]>; 5],
+    source_count: usize,
+}
+#[repr(C)]
+pub struct SearchBucketView {
+    pub indices: *const usize,
+    pub count: usize,
+    pub identity: u8,
+}
+/// # Safety
+/// Entries are readable for count elements during this call. Result is owned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_search_buckets_create(
+    entries: *const SearchBucketEntry,
+    count: usize,
+) -> *mut std::ffi::c_void {
+    if count != 0 && entries.is_null() {
+        return std::ptr::null_mut();
+    }
+    let entries = if count == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(entries, count) }
+    };
+    let mut indices: [Vec<usize>; 5] = std::array::from_fn(|_| Vec::new());
+    for (index, entry) in entries.iter().enumerate() {
+        for (tab, bucket) in indices.iter_mut().enumerate() {
+            if aether_clipboard_tab_includes(tab as u8, entry.kind, entry.pinned) != 0 {
+                bucket.push(index);
+            }
+        }
+    }
+    Box::into_raw(Box::new(SearchBuckets {
+        indices: indices.map(Vec::into_boxed_slice),
+        source_count: count,
+    }))
+    .cast()
+}
+/// # Safety
+/// Handle is null or live. Returned span borrows the owner and must not outlive it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_search_buckets_view(
+    owner: *const std::ffi::c_void,
+    tab: u8,
+) -> SearchBucketView {
+    if owner.is_null() || tab >= 5 {
+        return SearchBucketView {
+            indices: std::ptr::null(),
+            count: 0,
+            identity: 0,
+        };
+    }
+    let owner = unsafe { &*owner.cast::<SearchBuckets>() };
+    let indices = &owner.indices[tab as usize];
+    SearchBucketView {
+        indices: indices.as_ptr(),
+        count: indices.len(),
+        identity: u8::from(indices.len() == owner.source_count),
+    }
+}
+/// # Safety
+/// Handle is null or a live owned handle, released exactly once after borrowing ends.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_search_buckets_destroy(owner: *mut std::ffi::c_void) {
+    if !owner.is_null() {
+        drop(unsafe { Box::from_raw(owner.cast::<SearchBuckets>()) });
+    }
+}
+
+#[cfg(test)]
+mod search_bucket_tests {
+    use super::*;
+    #[test]
+    fn owned_indices_preserve_order_and_do_not_borrow_entries() {
+        let entries: Vec<_> = (0..=255)
+            .flat_map(|kind| [0, 1, 2].map(|pinned| SearchBucketEntry { kind, pinned }))
+            .collect();
+        let expected: Vec<Vec<usize>> = (0..6)
+            .map(|tab| {
+                entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| {
+                        aether_clipboard_tab_includes(tab, entry.kind, entry.pinned) != 0
+                    })
+                    .map(|(i, _)| i)
+                    .collect()
+            })
+            .collect();
+        let owner =
+            unsafe { aether_clipboard_search_buckets_create(entries.as_ptr(), entries.len()) };
+        drop(entries);
+        for (tab, expected) in expected.iter().enumerate() {
+            let view = unsafe { aether_clipboard_search_buckets_view(owner, tab as u8) };
+            let actual = if view.count == 0 {
+                &[][..]
+            } else {
+                unsafe { std::slice::from_raw_parts(view.indices, view.count) }
+            };
+            assert_eq!(actual, expected);
+        }
+        unsafe {
+            aether_clipboard_search_buckets_destroy(owner);
+        }
+        let text = [SearchBucketEntry { kind: 0, pinned: 0 }];
+        let owner = unsafe { aether_clipboard_search_buckets_create(text.as_ptr(), 1) };
+        for tab in [0, 1] {
+            assert_eq!(
+                unsafe { aether_clipboard_search_buckets_view(owner, tab) }.identity,
+                1
+            );
+        }
+        unsafe {
+            aether_clipboard_search_buckets_destroy(owner);
+            assert!(aether_clipboard_search_buckets_create(std::ptr::null(), 1).is_null());
+            let missing = aether_clipboard_search_buckets_view(std::ptr::null(), 0);
+            assert!(missing.indices.is_null());
+            assert_eq!((missing.count, missing.identity), (0, 0));
+            let empty = aether_clipboard_search_buckets_create(std::ptr::null(), 0);
+            assert_eq!(aether_clipboard_search_buckets_view(empty, 0).count, 0);
+            aether_clipboard_search_buckets_destroy(empty);
+        }
+    }
+}
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct PinResult {

@@ -81,7 +81,8 @@ final class ClipboardSearchModel: ObservableObject {
 }
 
 struct ClipboardSearchSnapshot: Sendable {
-    private let itemsByTab: [ClipboardTab: [ClipboardItem]]
+    private let rankedItems: [ClipboardItem]
+    private let buckets: RustClipboardSearchBuckets
     let groups: [ClipboardGroup]
 
     init(
@@ -89,11 +90,8 @@ struct ClipboardSearchSnapshot: Sendable {
         pinnedItems: [ClipboardItem],
         groups: [ClipboardGroup]
     ) {
-        itemsByTab = Self.makeItemBuckets(
-            rankedItems: history + pinnedItems,
-            pinnedIDs: Set(pinnedItems.map(\.id))
-        )
-        self.groups = groups
+        self.init(rankedItems: pinnedItems.isEmpty ? history : history + pinnedItems,
+            pinnedIDs: Set(pinnedItems.map(\.id)), rankedGroups: groups)
     }
 
     init(
@@ -101,40 +99,15 @@ struct ClipboardSearchSnapshot: Sendable {
         pinnedIDs: Set<UUID>,
         rankedGroups: [ClipboardGroup]
     ) {
-        itemsByTab = Self.makeItemBuckets(
-            rankedItems: rankedItems,
-            pinnedIDs: pinnedIDs
-        )
+        self.rankedItems = rankedItems
+        buckets = RustClipboardSearchBuckets(entries: rankedItems.map {
+            RustSearchBucketEntry(kind: $0.type.rustKind, pinned: pinnedIDs.contains($0.id) ? 1 : 0)
+        })
         groups = rankedGroups
     }
 
     func items(for tab: ClipboardTab) -> [ClipboardItem] {
-        itemsByTab[tab] ?? []
-    }
-
-    private static func makeItemBuckets(
-        rankedItems: [ClipboardItem],
-        pinnedIDs: Set<UUID>
-    ) -> [ClipboardTab: [ClipboardItem]] {
-        var buckets: [ClipboardTab: [ClipboardItem]] = Dictionary(
-            uniqueKeysWithValues: ClipboardTab.allCases.map { ($0, []) }
-        )
-        for item in rankedItems {
-            if pinnedIDs.contains(item.id) {
-                buckets[.favorites, default: []].append(item)
-                continue
-            }
-            buckets[.all, default: []].append(item)
-            switch item.type {
-            case .text, .url, .rtf, .unknown:
-                buckets[.text, default: []].append(item)
-            case .image:
-                buckets[.images, default: []].append(item)
-            case .file:
-                buckets[.files, default: []].append(item)
-            }
-        }
-        return buckets
+        buckets.values(from: rankedItems, tab: tab.rustTab)
     }
 }
 
@@ -215,9 +188,8 @@ final class ClipboardPanelViewModel: ObservableObject {
         let query: String
         let items: [ClipboardItem]
         let groups: [ClipboardGroup]
-        let itemByID: [UUID: ClipboardItem]
-        let groupByID: [UUID: ClipboardGroup]
         let itemIndexByID: [UUID: Int]
+        let groupIndexByID: [UUID: Int]
         let pinnedIDs: Set<UUID>
         let itemIDs: [UUID]
         let groupIDs: [UUID]
@@ -229,15 +201,20 @@ final class ClipboardPanelViewModel: ObservableObject {
             query: "",
             items: [],
             groups: [],
-            itemByID: [:],
-            groupByID: [:],
             itemIndexByID: [:],
+            groupIndexByID: [:],
             pinnedIDs: [],
             itemIDs: [],
             groupIDs: [],
             isSearching: false,
             resultRevision: 0
         )
+        func item(withID id: UUID) -> ClipboardItem? {
+            itemIndexByID[id].map { items[$0] }
+        }
+        func group(withID id: UUID) -> ClipboardGroup? {
+            groupIndexByID[id].map { groups[$0] }
+        }
     }
 
     @Published private(set) var state = State.empty
@@ -406,10 +383,11 @@ final class ClipboardPanelViewModel: ObservableObject {
             query: query,
             items: items,
             groups: groups,
-            itemByID: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
-            groupByID: Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) }),
             itemIndexByID: Dictionary(
                 uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) }
+            ),
+            groupIndexByID: Dictionary(
+                uniqueKeysWithValues: groups.enumerated().map { ($0.element.id, $0.offset) }
             ),
             pinnedIDs: Set(pinnedItems.map(\.id)),
             itemIDs: items.map(\.id),

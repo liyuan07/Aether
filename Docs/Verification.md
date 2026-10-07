@@ -189,3 +189,5 @@ sh LaunchAether.command
 - 隔离场景重新激活时应保持指定页面；剪贴板重复呈现不应关闭窗口或清空搜索。实际检索合成归档末条后重新激活，再确认相同结果仍可见；随后清空查询并按场景采样。普通模式仍使用原切换行为。空白浮层或其他设置页不能作为剪贴板搜索验收证据。
 
 - Rust 排名测试验证稳定键序、整数极值、非有限日期及容量/指针错误不改输出。`RustSearchParityTests.testStableRankingMatchesOriginalNativeComparator` 对照 1,000 组随机顺序与边界数据；`testItemAndGroupRankingMatchesIndependentOriginalScorer` 独立验证同步、actor、收藏与分组排序。局部基准使用 `AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter RustSearchParityTests/testRankingBenchmark`，不得把单次排序收益推导为整应用占用下降。
+
+- `RustSearchSnapshotTests` 对照原生旧分类规则核对全部分类与收藏归属，验证 10000 条完整分类共享数组、来源修改后的快照独立性与并发只读；选择查找检查重排、删除、分组与旧状态副本。Rust 测试覆盖全部 UInt8 类型/收藏值和借用寿命。正式隔离实例应实际搜索、切换分类、选择详情并清空查询，再测量稳定场景；不能把减少 DTO 副本等同于整应用显著降低占用。

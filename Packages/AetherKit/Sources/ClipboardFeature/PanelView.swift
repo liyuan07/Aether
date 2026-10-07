@@ -46,12 +46,12 @@ struct ClipboardPanelView: View {
 
     private var selectedItem: ClipboardItem? {
         guard let selectedItemID else { return nil }
-        return panelModel.state.itemByID[selectedItemID]
+        return panelModel.state.item(withID: selectedItemID)
     }
 
     private var selectedGroup: ClipboardGroup? {
         guard let selectedGroupID else { return nil }
-        return panelModel.state.groupByID[selectedGroupID]
+        return panelModel.state.group(withID: selectedGroupID)
     }
 
     var body: some View {
@@ -547,7 +547,7 @@ struct ClipboardPanelView: View {
     private func selectNeighbor(afterRemoving id: UUID, preferredIndex: Int) {
         selectedItemIDs.remove(id)
         guard selectedItemID == id
-                || selectedItemID.flatMap({ panelModel.state.itemByID[$0] }) == nil else {
+                || selectedItemID.flatMap({ panelModel.state.item(withID: $0) }) == nil else {
             return
         }
         guard !filteredItems.isEmpty else {
@@ -570,7 +570,7 @@ struct ClipboardPanelView: View {
     private func activateSelection(extendingSelection: Bool = false) {
         if selectedTab == .groups {
             guard let selectedGroupID,
-                  let group = panelModel.state.groupByID[selectedGroupID] else {
+                  let group = panelModel.state.group(withID: selectedGroupID) else {
                 return
             }
             activate(group)
@@ -579,7 +579,7 @@ struct ClipboardPanelView: View {
 
         if extendingSelection {
             guard let selectedItemID,
-                  let item = panelModel.state.itemByID[selectedItemID] else {
+                  let item = panelModel.state.item(withID: selectedItemID) else {
                 return
             }
             select(item, extending: true)
@@ -596,7 +596,7 @@ struct ClipboardPanelView: View {
         }
         let item = selected.first
             ?? selectedItemID.flatMap { id in
-                panelModel.state.itemByID[id]
+                panelModel.state.item(withID: id)
             }
         guard let item else { return }
         activate(item)

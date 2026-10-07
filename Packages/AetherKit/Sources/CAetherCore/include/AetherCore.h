@@ -23,6 +23,11 @@ int32_t aether_search_document_score(const void *query, const void *document);
 typedef struct { intptr_t score; double timestamp; } AetherSearchRankEntry;
 // Stable score/date descending order; invalid/nonfinite input leaves output untouched.
 uint8_t aether_search_rank(const AetherSearchRankEntry *entries, size_t count, size_t *order, size_t capacity);
+typedef struct { uint8_t kind, pinned; } AetherSearchBucketEntry;
+typedef struct { const size_t *indices; size_t count; uint8_t identity; } AetherSearchBucketView;
+void *aether_clipboard_search_buckets_create(const AetherSearchBucketEntry *entries, size_t count);
+AetherSearchBucketView aether_clipboard_search_buckets_view(const void *owner, uint8_t tab);
+void aether_clipboard_search_buckets_destroy(void *owner);
 typedef struct {
     double value, away_date;
     uint32_t phase, paused_phase, reason;
