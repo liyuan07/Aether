@@ -279,3 +279,72 @@ private func withIsolatedModel(_ rules: [ShortcutRule], _ body: (AppModel, URL) 
         print("APPLICATION_CATALOG_BENCHMARK " + String(decoding: try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys]), as: UTF8.self))
     }
 }
+
+@Test("实际规则编辑保持通知、删除选择、重复身份和无效重排行为")
+@MainActor func shortcutRuleEditIntegration() throws {
+    let first = ShortcutRule(name: "一", source: .init(keyCode: 1, modifiers: .command), action: .showDesktop)
+    var duplicate = first; duplicate.name = "重复"; duplicate.isEnabled = false
+    let last = ShortcutRule(name: "尾", source: .init(keyCode: 2, modifiers: .command), action: .showDesktop)
+    try withIsolatedModel([first, duplicate, last]) { model, directory in
+        var notifications = 0, scans = 0
+        model.onExecutableRulesChanged = { _ in notifications += 1 }
+        model.onConflictScanRequested = { _ in scans += 1 }
+        var index = model.ruleIndex
+        #expect(model.rule(withID: first.id) == first)
+        #expect(model.ruleIndex === index)
+        #expect(model.rule(withID: nil) == nil)
+        var renamed = first; renamed.name = "改名"; renamed.action = .finderFolder(path: "/synthetic")
+        model.update(renamed)
+        #expect(model.ruleIndex !== index)
+        #expect(model.rules == [renamed, duplicate, last])
+        #expect(notifications == 1 && scans == 0)
+        index = model.ruleIndex
+        model.update(.init(name: "未找到", source: first.source, action: .showDesktop))
+        #expect(model.ruleIndex === index)
+        #expect(notifications == 1 && scans == 0)
+        model.setEnabled(false, for: first.id)
+        #expect(notifications == 2 && scans == 1)
+        #expect(model.rules[0].isEnabled == false)
+        model.moveRules(fromOffsets: [2], toOffset: 0)
+        #expect(model.rules.map(\.name) == ["尾", "改名", "重复"])
+        #expect(notifications == 2 && scans == 1) // Reordering only schedules persistence.
+        index = model.ruleIndex
+        for (offsets, destination) in [(IndexSet(), 0), (IndexSet(integer: 3), 0), (IndexSet(integer: 0), -1), (IndexSet(integer: 0), Int.max)] {
+            model.moveRules(fromOffsets: offsets, toOffset: destination)
+            #expect(model.ruleIndex === index)
+        }
+        model.selectedRuleID = last.id
+        model.finishConflictScan([first.id: [.init(confidence: .confirmed, message: "合成冲突")]])
+        model.removeRule(id: first.id)
+        #expect(model.rules == [last, duplicate])
+        #expect(model.selectedRuleID == duplicate.id)
+        #expect(model.externalConflicts[first.id] == nil)
+        #expect(notifications == 3 && scans == 2)
+        #expect(model.rule(withID: first.id) == duplicate)
+        model.removeRule(id: first.id)
+        #expect(model.selectedRuleID == last.id)
+        model.removeRule(id: last.id)
+        #expect(model.rules.isEmpty && model.selectedRuleID == nil)
+        index = model.ruleIndex
+        model.removeRule(id: last.id)
+        #expect(model.ruleIndex === index)
+        let id = model.addRule()
+        #expect(model.selectedRuleID == id)
+        #expect(model.rules.count == 1 && model.rules[0].id == id && !model.rules[0].isEnabled)
+        model.flushSave()
+        let persisted = try ShortcutRuleStore(fileURL: directory.appendingPathComponent("shortcuts.json")).load()
+        #expect(persisted == model.rules)
+        index = model.ruleIndex
+        let imported = KeyPilotConfigurationArchive(shortcuts: [duplicate, last], preferences: model.appPreferences)
+        let file = directory.appendingPathComponent("rule-edit-import.json")
+        try JSONEncoder().encode(imported).write(to: file)
+        model.importConfiguration(from: file)
+        #expect(model.ruleIndex !== index)
+        #expect(model.rule(withID: duplicate.id) == duplicate)
+        #expect(model.rules == [duplicate, last])
+        index = model.ruleIndex
+        model.moveRules(fromOffsets: [0], toOffset: 1) // Valid identity move still publishes/saves.
+        #expect(model.ruleIndex !== index)
+        #expect(model.rules == [duplicate, last])
+    }
+}

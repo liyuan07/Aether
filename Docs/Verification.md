@@ -216,3 +216,6 @@ sh LaunchAether.command
 
 
 - 正式进程资源对照必须逐次验证实际输入值与结果，不仅检查调用成功。2026-10-07 的 typeText 中文未提交尝试已排除；有效 setValue 对照使用 10000 条合成记录、六种查询、三组反向/正向交替重启和 30 秒采样。原/新后端通过二进制 SHA/UUID/PID 映射，JSON 重序列化先验证完整逻辑哈希再更新字节哈希。记录见 [搜索资源对照](Benchmarks/SwiftRustSearch20261007.json)。该场景的数据与截图不能替代全部功能、页面、多屏/AX 和端口硬件验收，也不证明总能耗下降。
+
+
+- `ShortcutRuleIndexTests` 对照冻结 1782534 原模型的首 UUID、更新扫描资格、删除选择和稳定拖动，检查 2500 组重复身份/全部键位/未支持位/空及极值输入；256 个并发读取验证独立元数据寿命，新规则保持模板与每次新 UUID。`shortcutRuleEditIntegration` 在隔离存储中核对实际通知次数、规则内容、选择/外部冲突清理、导入失效、无效和有效无变化重排以及保存重载。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleEditBenchmark`；分别测预建索引读取及半数规则移动，包含 DTO 装配，排除模型发布/持久化/页面与正式进程资源。真实规则编辑页面和事件 tap 执行仍单独验收。

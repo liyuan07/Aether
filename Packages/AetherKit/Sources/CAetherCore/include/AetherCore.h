@@ -394,4 +394,15 @@ void *aether_app_catalog_create(const AetherCatalogApp *, size_t, const AetherCa
 AetherCatalogInfo aether_app_catalog_info(const void *, size_t);
 intptr_t aether_app_catalog_index(const void *, size_t, size_t);
 void aether_app_catalog_destroy(void *);
+// Immutable rule identity index and edit/move policy; source records borrow only during create.
+typedef struct { AetherUUID id; AetherKey source; uint8_t enabled; } AetherRuleMeta;
+typedef struct { intptr_t index, selection; uint8_t rescan; } AetherRuleEdit;
+typedef struct { AetherKey source; uint8_t enabled, kind; } AetherRuleTemplate;
+AetherRuleTemplate aether_rule_new_template(void);
+void *aether_rule_index_create(const AetherRuleMeta *, size_t);
+intptr_t aether_rule_index_find(const void *, AetherUUID);
+AetherRuleEdit aether_rule_index_edit(const void *, AetherRuleMeta, uint8_t remove);
+void aether_rule_index_destroy(void *);
+uint8_t aether_rule_move(size_t count, const int64_t *offsets, size_t offset_count, int64_t destination,
+    size_t *output, size_t capacity);
 #endif

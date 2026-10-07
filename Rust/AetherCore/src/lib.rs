@@ -760,3 +760,5 @@ mod port_enrichment;
 mod preferences;
 
 mod app_catalog;
+
+mod rule_edit;

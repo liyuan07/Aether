@@ -34,7 +34,7 @@ final class AppModel: ObservableObject {
     private static let shortcutGuideFavoriteIDsKey = "shortcutGuideFavoriteIDs"
 
     @Published private(set) var rules: [ShortcutRule] {
-        didSet { cachedRuleAnalysis = nil; cachedExecutableIDs = nil; cachedApplicationCatalog = nil }
+        didSet { cachedRuleAnalysis = nil; cachedExecutableIDs = nil; cachedApplicationCatalog = nil; cachedRuleIndex = nil }
     }
     @Published private(set) var appPreferences: AppPreferencesConfiguration {
         didSet {
@@ -70,6 +70,14 @@ final class AppModel: ObservableObject {
     private var legacyApplicationTargets: [ApplicationTarget] = []
     private var cachedRuleAnalysis: ShortcutRuleAnalysis?
     private var cachedExecutableIDs: (monitoring: Bool, ids: Set<UUID>)?
+
+    private var cachedRuleIndex: ShortcutRuleIndex?
+    var ruleIndex: ShortcutRuleIndex {
+        if let cachedRuleIndex { return cachedRuleIndex }
+        let index = ShortcutRuleIndex(rules)
+        cachedRuleIndex = index
+        return index
+    }
 
     private var cachedApplicationCatalog: ApplicationCatalog?
     var applicationCatalog: ApplicationCatalog {
@@ -155,15 +163,15 @@ final class AppModel: ObservableObject {
 
     func rule(withID id: UUID?) -> ShortcutRule? {
         guard let id else { return nil }
-        return rules.first { $0.id == id }
+        guard let position = ruleIndex.position(of: id) else { return nil }
+        return rules[position]
     }
 
     func update(_ rule: ShortcutRule) {
-        guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
-        let previous = rules[index]
+        let decision = ruleIndex.updating(rule)
+        guard let index = decision.index else { return }
         rules[index] = rule
-        let conflictRelevantChange = previous.source != rule.source || previous.isEnabled != rule.isEnabled
-        configurationDidChange(rescan: conflictRelevantChange)
+        configurationDidChange(rescan: decision.requiresConflictScan)
     }
 
     func setEnabled(_ isEnabled: Bool, for id: UUID) {
@@ -175,12 +183,7 @@ final class AppModel: ObservableObject {
     @discardableResult
     func addRule() -> UUID {
         let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path ?? "~/Desktop"
-        let rule = ShortcutRule(
-            name: "新快捷键",
-            source: KeyCombination(keyCode: 45, modifiers: [.option, .shift]),
-            action: .finderFolder(path: desktop),
-            isEnabled: false
-        )
+        let rule = ShortcutRuleIndex.newRule(desktopPath: desktop)
         rules.append(rule)
         selectedRuleID = rule.id
         configurationDidChange(rescan: false)
@@ -188,28 +191,17 @@ final class AppModel: ObservableObject {
     }
 
     func removeRule(id: UUID) {
-        guard let index = rules.firstIndex(where: { $0.id == id }) else { return }
+        let decision = ruleIndex.removing(id)
+        guard let index = decision.index else { return }
         rules.remove(at: index)
-        selectedRuleID = rules.indices.contains(index) ? rules[index].id : rules.last?.id
+        selectedRuleID = decision.selection.map { rules[$0].id }
         externalConflicts[id] = nil
-        configurationDidChange(rescan: true)
+        configurationDidChange(rescan: decision.requiresConflictScan)
     }
 
     func moveRules(fromOffsets offsets: IndexSet, toOffset destination: Int) {
-        guard !offsets.isEmpty,
-              offsets.allSatisfy(rules.indices.contains),
-              destination >= 0,
-              destination <= rules.count
-        else { return }
-
-        let movingRules = offsets.map { rules[$0] }
-        let removedBeforeDestination = offsets.filter { $0 < destination }.count
-        let insertionIndex = destination - removedBeforeDestination
-
-        for index in offsets.reversed() {
-            rules.remove(at: index)
-        }
-        rules.insert(contentsOf: movingRules, at: insertionIndex)
+        guard let reordered = ShortcutRuleIndex.moving(rules, offsets: offsets, destination: destination) else { return }
+        rules = reordered
         scheduleSave()
     }
 
