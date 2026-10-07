@@ -350,4 +350,22 @@ AetherSavedWindowLayoutView aether_window_snapshot_saved(const void *snapshot, s
 void aether_window_snapshot_destroy(void *snapshot);
 intptr_t aether_window_focus_choose(const AetherMoveWindow *windows, size_t count,
     const AetherPlacementScreen *screens, size_t screen_count, uint32_t target, uint8_t restore_minimized);
+// Window progress value policy; platform calls and cancellation stay in the native adapter.
+// flags: minimized=1, recorded=2, complete=4, failed=8, closed=16.
+// decision command: 0 none, 1 set frame, 2 set minimized. Summary: 0 pending, 1 undo, 2 finish.
+typedef struct { AetherRect desired; double next_attempt; uint8_t attempts, flags; } AetherWindowProgress;
+typedef struct { AetherWindowProgress state; uint8_t command, disconnected; } AetherWindowProgressDecision;
+typedef struct { AetherWindowProgress state; uint8_t record; } AetherWindowProgressAcknowledgement;
+AetherWindowProgress aether_window_progress_create(AetherRect desired, uint8_t minimized);
+AetherWindowProgressDecision aether_window_progress_decide(AetherWindowProgress state, uint8_t current,
+    uint8_t fullscreen, uint8_t target, uint8_t positioned, uint8_t restored, double now);
+AetherWindowProgressAcknowledgement aether_window_progress_ack(AetherWindowProgress state, uint8_t changed, uint8_t undo);
+typedef struct { AetherRect original, desired; uint8_t flags, preferred; } AetherWindowProgressSummaryEntry;
+typedef struct { size_t moved, failed; intptr_t focus; size_t restored; uint8_t command, valid; } AetherWindowProgressSummary;
+AetherWindowProgressSummary aether_window_progress_summary(const AetherWindowProgressSummaryEntry *entries, size_t count,
+    size_t unreadable, uint8_t undo, size_t *restored, size_t capacity);
+typedef struct { double first; uint8_t has_first; } AetherWindowCollection;
+typedef struct { AetherWindowCollection state; uint8_t ready; } AetherWindowCollectionDecision;
+AetherWindowCollectionDecision aether_window_collection_update(AetherWindowCollection state, uint8_t standard, double now);
+double aether_window_scope_time_limit(uint8_t scope);
 #endif

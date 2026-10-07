@@ -205,3 +205,5 @@ sh LaunchAether.command
 - `RustApplicationIntentTests` 与冻结 e8b39b9 原生实现对照 800×100 个令牌操作及 100×80 个连续管理器事件；覆盖 nil/零/Int32 极值 PID、目标激活、返回源应用、已取消后的迟到 setTarget、精确截止与 IEEE 特殊值。500 个并发发放/中断后检查每个令牌失效，1000 个并发读写后检查父动作取消阻止窗口租约。既有 ApplicationIntentTests、WindowMoveDeadlineTests 与 WindowMoveSessionTests 保持执行。此类测试不向真实应用发送快捷键或请求权限，不能替代冷启动、多屏和真实 AX 验收。
 
 - `RustWindowLayoutTests` 对照冻结 35439f0 原生布局记忆/焦点选择：3000 次连续操作检查每屏最近布局、首份撤销、批次 PID、部分恢复与关闭清理；逐位验证异常浮点和负尺寸，旧快照与释放历史后的快照保持有效。4000 组焦点输入检查所有优先级、非标准/全屏/最小化窗口、空/重复屏幕和异常几何。Rust 单测验证 owned snapshot、非法输入不修改历史、空句柄和越界读取。既有 WindowMoveSessionTests 全部继续执行；真实多屏/系统 AX 行为另行验收。
+
+- `RustWindowProgressTests` 与冻结 ad24e1a 完整旧会话对照 1000×20 次扫描，核对每步完整报告、文案、平台替身调用、窗口及撤销快照；包含拒绝写入/尺寸、迟到窗口、关闭/断屏、读取失败、取消、焦点回退和全部 scope。定向验证 IEEE 特殊时间、120 ms 收集边界、40 ms 重试和共享三次尝试预算。Rust 检查写入确认与首份记录、关闭优先、集合时钟和非法汇总输出缓冲区保护；既有窗口会话/超时回归继续执行。测试不操作真实系统窗口，真实多屏与 AX 权限验收仍单独进行。

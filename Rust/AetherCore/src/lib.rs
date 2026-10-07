@@ -717,6 +717,7 @@ mod shortcuts;
 mod storage;
 mod versioned;
 mod window_layout;
+mod window_progress;
 
 mod quick_clipboard;
 

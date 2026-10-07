@@ -1,4 +1,11 @@
 import AppKit
+import CAetherCore
+
+private extension CGRect {
+    var progressRawRect: AetherRect { .init(x: origin.x, y: origin.y, width: size.width, height: size.height) }
+    var progressBounds: AetherRect { .init(x: minX, y: minY, width: width, height: height) }
+    init(progress rect: AetherRect) { self.init(x: rect.x, y: rect.y, width: rect.width, height: rect.height) }
+}
 
 struct MovableWindow: Equatable, Sendable {
     let id: Int
@@ -42,8 +49,9 @@ enum WindowCaptureScope: Sendable {
     case undo(WindowLayoutUndo)
 
     var timeLimit: TimeInterval {
-        switch self { case .existing: 0.35; case .appearing: 1.5; case .undo: 0.8 }
+        aether_window_scope_time_limit(coreKind)
     }
+    private var coreKind: UInt8 { switch self { case .existing: 0; case .appearing: 1; case .undo: 2 } }
 }
 
 struct WindowMoveReport: Sendable {
@@ -90,14 +98,17 @@ final class WindowMoveSession {
         let original: MovableWindow
         let source: PlacementScreen
         let target: PlacementScreen
-        var desired: CGRect
-        let minimized: Bool
-        var attempts = 0
-        var nextAttempt: TimeInterval = 0
-        var recorded = false
-        var complete = false
-        var failed = false
-        var closed = false
+        var state: AetherWindowProgress
+        var desired: CGRect {
+            get { .init(progress: state.desired) }
+            set { state.desired = newValue.progressRawRect }
+        }
+        var minimized: Bool { state.flags & 1 != 0 }
+        var isFinished: Bool { state.flags & 12 != 0 }
+        init(original: MovableWindow, source: PlacementScreen, target: PlacementScreen, desired: CGRect, minimized: Bool) {
+            self.original = original; self.source = source; self.target = target
+            state = aether_window_progress_create(desired.progressRawRect, minimized ? 1 : 0)
+        }
     }
     private let access: WindowAccess
     private let history: WindowLayoutHistory
@@ -106,7 +117,7 @@ final class WindowMoveSession {
     private let scope: WindowCaptureScope
     private let restoreMinimized: Bool
     private let operationID: UUID
-    private var firstAppearance: TimeInterval?
+    private var collection = AetherWindowCollection()
     private var frozen = false
     private var progress: [Progress] = []
     private var preferredFocus: Int?
@@ -152,69 +163,61 @@ final class WindowMoveSession {
             case .existing: candidates = windows
             case let .appearing(excluded):
                 candidates = windows.filter { !excluded.contains($0.id) }
-                guard candidates.contains(where: { $0.isStandard }) else { return report }
-                if firstAppearance == nil { firstAppearance = now }
-                // A short, fixed collection interval for startup bursts, never extended by new windows.
-                guard now - firstAppearance! >= 0.12 else { return report }
+                let decision = aether_window_collection_update(collection, candidates.contains(where: { $0.isStandard }) ? 1 : 0, now)
+                collection = decision.state
+                guard decision.ready != 0 else { return report }
             case let .undo(batch): candidates = windows.filter { batch.layouts[$0.id] != nil }
             }
             freeze(candidates, screens: screens)
         }
         for index in progress.indices {
             guard lease.isActive() else { return report }
-            if progress[index].complete || progress[index].failed { continue }
-            guard let current = windows.first(where: { $0.id == progress[index].original.id }) else {
-                progress[index].complete = true
-                progress[index].closed = true
-                continue
-            }
-            if current.isFullScreen {
-                progress[index].complete = true
-                progress[index].closed = true
-                continue
-            }
-            guard screens.contains(where: { $0.id == progress[index].target.id }) else {
-                progress[index].failed = true
-                report.displayDisconnected = true
-                continue
-            }
-            let positioned = WindowPlacement.approximatelyEqual(current.frame, progress[index].desired)
-            let restored = current.isMinimized == progress[index].minimized
-            if positioned && restored { progress[index].complete = true; continue }
-            guard now >= progress[index].nextAttempt else { continue }
-            guard progress[index].attempts < 3 else { progress[index].failed = true; continue }
-            progress[index].attempts += 1
-            progress[index].nextAttempt = now + 0.04
+            if progress[index].isFinished { continue }
+            let current = windows.first(where: { $0.id == progress[index].original.id })
+            let decision = aether_window_progress_decide(progress[index].state, current == nil ? 0 : 1,
+                current?.isFullScreen == true ? 1 : 0,
+                screens.contains(where: { $0.id == progress[index].target.id }) ? 1 : 0,
+                current.map { WindowPlacement.approximatelyEqual($0.frame, progress[index].desired) } == true ? 1 : 0,
+                current?.isMinimized == progress[index].minimized ? 1 : 0, now)
+            progress[index].state = decision.state
+            if decision.disconnected != 0 { report.displayDisconnected = true }
+            guard decision.command != 0, let current else { continue }
             var changed = false
-            if !positioned {
+            if decision.command == 1 {
                 if let accepted = access.setFrame(progress[index].desired, of: current.id, lease: lease) {
                     progress[index].desired = WindowPlacement.destination(
                         for: accepted, source: progress[index].target.visibleFrame,
                         target: progress[index].target.visibleFrame, resizable: false)
                     changed = true
                 }
-            } else if !restored {
+            } else if decision.command == 2 {
                 changed = access.setMinimized(progress[index].minimized, of: current.id, lease: lease)
             }
-            if changed, !progress[index].recorded, !isUndo {
+            let acknowledged = aether_window_progress_ack(progress[index].state, changed ? 1 : 0, isUndo ? 1 : 0)
+            progress[index].state = acknowledged.state
+            if acknowledged.record != 0 {
                 history.record(progress[index].original, screen: progress[index].source, operationID: operationID)
-                progress[index].recorded = true
             }
             // Verify the frame before restoring a minimized window; verify restoration on the next scan.
         }
-        report.moved = progress.filter {
-            $0.complete && !$0.closed && !WindowPlacement.approximatelyEqual($0.original.frame, $0.desired)
-        }.count
-        report.failed = unreadableWindows + progress.filter(\.failed).count
-        if progress.allSatisfy({ $0.complete || $0.failed }) {
-            if isUndo {
-                history.restored(Set(progress.filter { $0.complete }.map { $0.original.id }))
-            } else {
-                let available = progress.filter { $0.complete && !$0.closed && !$0.minimized }
-                if let item = available.first(where: { $0.original.id == preferredFocus }) ?? available.first,
-                   lease.isActive() {
-                    report.focusFailed = !access.focus(item.original.id, lease: lease)
-                }
+        let entries = progress.map {
+            AetherWindowProgressSummaryEntry(original: $0.original.frame.progressBounds, desired: $0.desired.progressBounds,
+                flags: $0.state.flags, preferred: $0.original.id == preferredFocus ? 1 : 0)
+        }
+        var restored = [Int](repeating: 0, count: isUndo ? progress.count : 0)
+        let summary = entries.withUnsafeBufferPointer { entries in
+            restored.withUnsafeMutableBufferPointer {
+                aether_window_progress_summary(entries.baseAddress, entries.count, unreadableWindows, isUndo ? 1 : 0, $0.baseAddress, $0.count)
+            }
+        }
+        precondition(summary.valid != 0)
+        report.moved = summary.moved
+        report.failed = summary.failed
+        if summary.command != 0 {
+            if summary.command == 1 {
+                history.restored(Set(restored.prefix(summary.restored).map { progress[$0].original.id }))
+            } else if summary.focus >= 0, lease.isActive() {
+                report.focusFailed = !access.focus(progress[summary.focus].original.id, lease: lease)
             }
             report.isComplete = true
         }
