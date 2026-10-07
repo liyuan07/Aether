@@ -711,6 +711,7 @@ mod geometry;
 mod memo;
 mod prompt;
 mod prompt_store;
+mod shortcut_defaults;
 mod shortcuts;
 mod storage;
 mod versioned;

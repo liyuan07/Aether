@@ -289,4 +289,20 @@ uint8_t aether_preferences_should_write(uint8_t persist, uint8_t legacy, int64_t
 uint8_t aether_physical_input_switch(uint16_t code);
 uint8_t aether_application_letter(uint16_t code);
 int32_t aether_application_letter_key(const uint8_t *bytes, size_t count);
+// Default catalog strings have static lifetime. Plans own only source/recipe indices.
+typedef struct {
+    AetherBytes name, display, bundle, path;
+    AetherKey source, target;
+    uint8_t kind, argument, valid;
+} AetherShortcutDefaultRecipe;
+typedef struct { size_t index; uint8_t recipe; } AetherShortcutDefaultRef;
+int64_t aether_shortcut_default_version(void);
+AetherShortcutDefaultRecipe aether_shortcut_default_recipe(size_t index);
+// mode: 0 make, 1 merge, 2 migrate. Callback and keys are borrowed synchronously.
+void *aether_shortcut_defaults_plan(const AetherKey *keys, size_t count, uint8_t mode, int64_t version,
+    uint8_t (*matches)(void *, size_t, uint8_t, size_t), void *context);
+size_t aether_shortcut_defaults_count(const void *plan);
+uint8_t aether_shortcut_defaults_identity(const void *plan);
+AetherShortcutDefaultRef aether_shortcut_defaults_ref(const void *plan, size_t index);
+void aether_shortcut_defaults_destroy(void *plan);
 #endif
