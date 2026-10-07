@@ -24,9 +24,7 @@ public struct ShortcutRuleStore: Sendable {
     }
 
     public func save(_ rules: [ShortcutRule], fileManager: FileManager = .default) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(rules)
+        let data = try ShortcutRuleJSON.encode(rules)
         try RustDisk.write(data, to: fileURL, privateFile: false)
     }
 }

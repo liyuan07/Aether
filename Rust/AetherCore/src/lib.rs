@@ -762,3 +762,5 @@ mod preferences;
 mod app_catalog;
 
 mod rule_edit;
+
+mod rule_codec;

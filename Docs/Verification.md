@@ -219,3 +219,6 @@ sh LaunchAether.command
 
 
 - `ShortcutRuleIndexTests` 对照冻结 1782534 原模型的首 UUID、更新扫描资格、删除选择和稳定拖动，检查 2500 组重复身份/全部键位/未支持位/空及极值输入；256 个并发读取验证独立元数据寿命，新规则保持模板与每次新 UUID。`shortcutRuleEditIntegration` 在隔离存储中核对实际通知次数、规则内容、选择/外部冲突清理、导入失效、无效和有效无变化重排以及保存重载。可选局部基准：`AETHER_RUN_CORE_BENCHMARKS=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleEditBenchmark`；分别测预建索引读取及半数规则移动，包含 DTO 装配，排除模型发布/持久化/页面与正式进程资源。真实规则编辑页面和事件 tap 执行仍单独验收。
+
+
+- `ShortcutRuleJSONTests` 以独立旧 JSONEncoder 对照完整规则保存语义，再分别经旧 JSONDecoder 重开；覆盖全部动作/布局/模式、nil/空字段、Unicode/NUL、原始修饰位、空列表、旧文件兼容与并发输出寿命。Rust 检查无效跨度/UTF-8/空指针并返回无部分内容的错误。可选局部基准：`AETHER_RULE_CODEC_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter shortcutRuleJSONReleaseBenchmark`；包含原生 DTO 转换与 JSON 编码，不含磁盘写入/页面/模型发布/正式进程资源。完整配置归档与导入事务尚未迁移，真实编辑页面仍需独立验收。

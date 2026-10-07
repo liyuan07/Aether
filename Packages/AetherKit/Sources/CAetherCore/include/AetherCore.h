@@ -405,4 +405,13 @@ AetherRuleEdit aether_rule_index_edit(const void *, AetherRuleMeta, uint8_t remo
 void aether_rule_index_destroy(void *);
 uint8_t aether_rule_move(size_t count, const int64_t *offsets, size_t offset_count, int64_t destination,
     size_t *output, size_t capacity);
+// Shortcut JSON encoder borrows the common UTF-8 arena and checked spans synchronously.
+typedef struct { size_t start, length; } AetherRuleText;
+typedef struct {
+    AetherUUID id;
+    AetherKey source, target;
+    AetherRuleText name, display_name, bundle, path;
+    uint8_t kind, enabled, bundle_present, mode, layout, use_finder;
+} AetherRuleRecord;
+void *aether_rule_encode(const AetherRuleRecord *rows, size_t count, AetherBytes bytes);
 #endif
