@@ -1,19 +1,50 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 //! Actor-confined cache ownership. Documents remain independently retained by readers.
 use crate::{SearchDocument, abi::Uuid};
-use std::{collections::HashMap, ffi::c_void, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::c_void,
+    sync::Arc,
+};
 struct Entry {
     document: Arc<SearchDocument>,
     active: bool,
 }
 pub struct Cache {
     entries: HashMap<Uuid, Entry>,
+    clients: HashSet<Uuid>,
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn aether_search_cache_create() -> *mut Cache {
     Box::into_raw(Box::new(Cache {
         entries: HashMap::new(),
+        clients: HashSet::new(),
     }))
+}
+/// # Safety
+/// Cache is live and exclusively borrowed. Client updates are serialized with searches.
+/// Returns one when no visible client remains; independent document readers stay valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_cache_visibility(
+    cache: *mut Cache,
+    client: Uuid,
+    visible: u8,
+) -> u8 {
+    let Some(cache) = (unsafe { cache.as_mut() }) else {
+        return 1;
+    };
+    if visible != 0 {
+        cache.clients.insert(client);
+    } else {
+        cache.clients.remove(&client);
+    }
+    if cache.clients.is_empty() {
+        cache.entries = HashMap::new();
+        cache.clients = HashSet::new();
+        1
+    } else {
+        0
+    }
 }
 /// # Safety
 /// Cache calls are serialized. begin/mark/prune constitute one active-source update.
@@ -122,6 +153,10 @@ mod tests {
         unsafe {
             let cache = aether_search_cache_create();
             let id = Uuid { bytes: [7; 16] };
+            let first = Uuid { bytes: [1; 16] };
+            let second = Uuid { bytes: [2; 16] };
+            assert_eq!(aether_search_cache_visibility(cache, first, 1), 0);
+            assert_eq!(aether_search_cache_visibility(cache, second, 1), 0);
             let query = aether_search_create(b"test".as_ptr(), 4, std::ptr::null(), 0, 0);
             let document = aether_search_document_create([query.cast_const()].as_ptr(), 1);
             aether_search_cache_insert(cache, id, document);
@@ -137,6 +172,14 @@ mod tests {
             assert_eq!(score.score, 19996);
             let reader = aether_search_cache_get(cache, id);
             assert!(!reader.is_null());
+            assert_eq!(aether_search_cache_visibility(cache, first, 0), 0);
+            assert_eq!(aether_search_cache_score(cache, id, query).found, 1);
+            assert_eq!(aether_search_cache_visibility(cache, second, 0), 1);
+            assert_eq!((*cache).entries.capacity(), 0);
+            assert_eq!(aether_search_document_score(query, reader), 19996);
+            assert_eq!(aether_search_cache_visibility(cache, first, 1), 0);
+            aether_search_cache_insert(cache, id, reader);
+            assert_eq!(aether_search_cache_score(cache, id, query).found, 1);
             aether_search_cache_begin(cache);
             aether_search_cache_prune(cache);
             assert!(aether_search_cache_get(cache, id).is_null());

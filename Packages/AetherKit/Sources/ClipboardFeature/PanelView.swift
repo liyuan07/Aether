@@ -81,6 +81,8 @@ struct ClipboardPanelView: View {
             content
         }
         .background(ClipboardBackgroundView())
+        .background(SearchSurfaceVisibility { panelModel.setActive($0) }.frame(width: 0, height: 0).allowsHitTesting(false))
+        .onDisappear { panelModel.setActive(false) }
         .onAppear {
             if let lockedTab {
                 panelModel.selectTab(lockedTab)

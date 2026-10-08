@@ -122,6 +122,10 @@ actor ClipboardSearchIndex {
     private let itemDocuments = RustSearchDocumentCache()
     private var vocabulary = ClipboardSearchVocabulary()
 
+    func setVisible(_ visible: Bool, client: UUID) {
+        if itemDocuments.setVisible(visible, client: client) { vocabulary = ClipboardSearchVocabulary() }
+    }
+
     func search(
         query rawQuery: String,
         history: [ClipboardItem],
@@ -238,6 +242,10 @@ final class ClipboardPanelViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var searchFlow = AetherSearchFlow(generation: 0, revision: 0)
     private var pinnedIdentity = RustIdentityIndex([])
+    private let visibilityID = UUID()
+    private var visibilityTask: Task<Void, Never>?
+    private var isActive = false
+    private var requestedQuery = ""
 
     convenience init() {
         self.init(
@@ -262,14 +270,33 @@ final class ClipboardPanelViewModel: ObservableObject {
                 )
             }
             .store(in: &subscriptions)
+        setActive(true)
     }
 
     deinit {
         searchTask?.cancel()
+        let pending = visibilityTask, index = searchIndex, id = visibilityID
+        Task { await pending?.value; await index.setVisible(false, client: id) }
+    }
+
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        let pending = visibilityTask, index = searchIndex, id = visibilityID
+        visibilityTask = Task { await pending?.value; await index.setVisible(active, client: id) }
+        if active {
+            pinnedIdentity = RustIdentityIndex(pinnedItems.map(\.id))
+            scheduleSearch(query: requestedQuery)
+        } else {
+            searchTask?.cancel()
+            searchTask = nil
+            searchFlow = aether_search_flow_begin(searchFlow)
+        }
     }
 
     func updateQuery(_ query: String) {
-        guard query != state.query else { return }
+        guard query != requestedQuery else { return }
+        requestedQuery = query
         scheduleSearch(query: query)
     }
 
@@ -303,11 +330,13 @@ final class ClipboardPanelViewModel: ObservableObject {
         self.history = history
         self.pinnedItems = pinnedItems
         self.groups = groups
+        guard isActive else { return }
         pinnedIdentity = RustIdentityIndex(pinnedItems.map(\.id))
-        scheduleSearch(query: state.query)
+        scheduleSearch(query: requestedQuery)
     }
 
     private func scheduleSearch(query: String) {
+        guard isActive else { return }
         searchTask?.cancel()
         searchFlow = aether_search_flow_begin(searchFlow)
         let pendingGeneration = searchFlow.generation
@@ -338,8 +367,11 @@ final class ClipboardPanelViewModel: ObservableObject {
             isSearching: true,
             incrementsResultRevision: false
         )
+        let pendingVisibility = visibilityTask
         searchTask = Task { [weak self, searchIndex] in
             do {
+                await pendingVisibility?.value
+                try Task.checkCancellation()
                 let result = try await searchIndex.search(
                     query: query,
                     history: history,

@@ -93,6 +93,8 @@ private struct CompactClipboardView: View {
                 .frame(maxWidth: .infinity)
         }
         .padding(14)
+        .background(SearchSurfaceVisibility { model.setActive($0) }.frame(width: 0, height: 0).allowsHitTesting(false))
+        .onDisappear { model.setActive(false) }
         .onChange(of: search.query) { _, value in model.updateQuery(value) }
         .onChange(of: tab) { _, value in model.selectTab(value) }
     }

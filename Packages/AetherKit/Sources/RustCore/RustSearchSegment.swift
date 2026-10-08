@@ -83,6 +83,9 @@ public final class RustSearchDocumentCache {
     private let handle = aether_search_cache_create()
     public init() {}
     deinit { aether_search_cache_destroy(handle) }
+    public func setVisible(_ visible: Bool, client: UUID) -> Bool {
+        aether_search_cache_visibility(handle, .init(bytes: client.uuid), visible ? 1 : 0) != 0
+    }
     public func beginSourceUpdate() { aether_search_cache_begin(handle) }
     public func retainSource(_ id: UUID) { aether_search_cache_mark(handle, .init(bytes: id.uuid)) }
     public func finishSourceUpdate() { aether_search_cache_prune(handle) }
