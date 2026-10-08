@@ -240,3 +240,5 @@ sh LaunchAether.command
 - 窗口超时夹具使用受控时钟和显式超时触发，不依赖主线程在真实 25 ms 内开始模拟 AX。worker 启动/结束等待有界，覆盖 AX 已挂起与 worker 尚未启动两类到期。生产默认仍使用系统 uptime 和原有 Task.sleep/时间限制；真实系统权限与窗口行为验收单独进行。
 
 - 剪贴板紧凑保存：`ClipboardStreamingTests` 对照冻结旧桥接及独立原生编解码器，检查完整字节/可选字段、跨度/分组/URL/UTF-8/Base64/日期错误无覆盖、相同文件 inode、叶链接替换及损坏阻止/明确重载。可选 Release 基准：`AETHER_CLIPBOARD_STREAM_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter 'ClipboardStreamingTests.testStreaming(Release|BridgeLiveAllocation)Benchmark'`。分别报告变化/不变化保存耗时，malloc 存活分配仅代表原生桥接，不替代整应用 RSS/footprint/CPU 采样。后续负载清理仍须保存成功且 cleanup 资格成立。
+
+- 剪贴板历史编码：`RustClipboardArchiveTests.testHistoricalByteEncodingsMatchFoundationAndPreserveOriginalUntilSave` 与 `testHistoricalEncodingsRejectMalformedScalarsLikeFoundation` 对照 Foundation 五种编码、BOM/尾部/空白/非法标量，核对完整内容、读取无重写、保存重开和损坏覆盖保护。Rust 单测检查 UTF-8 借用与历史转码；安装验收仅用新建隔离合成 profile。

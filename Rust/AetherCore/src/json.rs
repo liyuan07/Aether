@@ -1,6 +1,53 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 use serde::Deserialize;
 use std::{borrow::Cow, collections::HashSet};
+/// Match Foundation JSON's byte-order sniffing for historical archive files.
+/// Ordinary UTF-8 stays borrowed. Incomplete final UTF-16/32 units are ignored by Foundation;
+/// malformed complete scalar units are rejected. The UTF-16 BOM check precedes UTF-32 LE.
+pub fn native_json_bytes(bytes: &[u8]) -> Result<Cow<'_, [u8]>, ()> {
+    let (body, width, little) = if let Some(body) = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]) {
+        return Ok(Cow::Borrowed(body));
+    } else if let Some(body) = bytes.strip_prefix(&[0xfe, 0xff]) {
+        (body, 2, false)
+    } else if let Some(body) = bytes.strip_prefix(&[0xff, 0xfe]) {
+        (body, 2, true)
+    } else if let Some(body) = bytes.strip_prefix(&[0, 0, 0xfe, 0xff]) {
+        (body, 4, false)
+    } else if bytes.len() >= 4 && bytes[0..3] == [0, 0, 0] {
+        (bytes, 4, false)
+    } else if bytes.len() >= 4 && bytes[1..4] == [0, 0, 0] {
+        (bytes, 4, true)
+    } else if bytes.len() >= 4 && bytes[0] == 0 && bytes[2] == 0 {
+        (bytes, 2, false)
+    } else if bytes.len() >= 4 && bytes[1] == 0 && bytes[3] == 0 {
+        (bytes, 2, true)
+    } else {
+        return Ok(Cow::Borrowed(bytes));
+    };
+    let mut text = String::with_capacity(body.len() / width);
+    if width == 2 {
+        let units = body.chunks_exact(2).map(|b| {
+            if little {
+                u16::from_le_bytes([b[0], b[1]])
+            } else {
+                u16::from_be_bytes([b[0], b[1]])
+            }
+        });
+        for scalar in char::decode_utf16(units) {
+            text.push(scalar.map_err(|_| ())?);
+        }
+    } else {
+        for b in body.chunks_exact(4) {
+            let unit = if little {
+                u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+            } else {
+                u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+            };
+            text.push(char::from_u32(unit).ok_or(())?);
+        }
+    }
+    Ok(Cow::Owned(text.into_bytes()))
+}
 // Unescaped JSON strings borrow the file buffer; only escaped strings require an owned decode.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Text<'a>(pub Cow<'a, str>);
@@ -177,6 +224,62 @@ pub fn with_first_wins<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn historical_byte_orders_and_scalar_validation() {
+        let text = r#"{"synthetic":"中文👩‍💻é\u0000"}"#;
+        assert!(matches!(
+            native_json_bytes(text.as_bytes()).unwrap(),
+            Cow::Borrowed(_)
+        ));
+        let mut bom8 = vec![0xef, 0xbb, 0xbf];
+        bom8.extend_from_slice(text.as_bytes());
+        assert_eq!(native_json_bytes(&bom8).unwrap(), text.as_bytes());
+        for little in [false, true] {
+            let units: Vec<u16> = text.encode_utf16().collect();
+            let body: Vec<u8> = units
+                .iter()
+                .flat_map(|u| {
+                    if little {
+                        u.to_le_bytes()
+                    } else {
+                        u.to_be_bytes()
+                    }
+                })
+                .collect();
+            assert_eq!(native_json_bytes(&body).unwrap(), text.as_bytes());
+            let mut bom = if little {
+                vec![0xff, 0xfe]
+            } else {
+                vec![0xfe, 0xff]
+            };
+            bom.extend_from_slice(&body);
+            assert_eq!(native_json_bytes(&bom).unwrap(), text.as_bytes());
+            bom.push(0xff);
+            assert_eq!(native_json_bytes(&bom).unwrap(), text.as_bytes());
+            let body: Vec<u8> = text
+                .chars()
+                .flat_map(|u| {
+                    if little {
+                        (u as u32).to_le_bytes()
+                    } else {
+                        (u as u32).to_be_bytes()
+                    }
+                })
+                .collect();
+            assert_eq!(native_json_bytes(&body).unwrap(), text.as_bytes());
+            let mut tail = body.clone();
+            tail.extend_from_slice(&[0xff, 0xff, 0xff]);
+            assert_eq!(native_json_bytes(&tail).unwrap(), text.as_bytes());
+            if !little {
+                let mut bom = vec![0, 0, 0xfe, 0xff];
+                bom.extend_from_slice(&body);
+                assert_eq!(native_json_bytes(&bom).unwrap(), text.as_bytes());
+            }
+        }
+        assert!(native_json_bytes(&[0xfe, 0xff, 0xd8, 0]).is_err());
+        assert!(native_json_bytes(&[0xff, 0xfe, 0, 0xdc]).is_err());
+        assert!(native_json_bytes(&[0, 0, 0xfe, 0xff, 0, 0x11, 0, 0]).is_err());
+    }
     #[test]
     fn unescaped_strings_borrow_and_escaped_strings_decode() {
         let text: Text = serde_json::from_slice(br#""synthetic plain""#).unwrap();

@@ -6,6 +6,61 @@ import RustCore
 @testable import ClipboardFeature
 
 final class RustClipboardArchiveTests: XCTestCase {
+    func testHistoricalByteEncodingsMatchFoundationAndPreserveOriginalUntilSave() throws {
+        let source = #"{"history":[{"id":"12345678-1234-5678-90AB-1234567890AB","type":"text","timestamp":-12.5,"preview":"中文👩‍💻é","isPinned":false,"stringData":"合成\u0000正文","fileURLs":["file:///synthetic/中文","重复","重复"],"rtfData":"AAH/"}],"pinnedItems":[],"groups":[]}"#
+        let encodings: [(String.Encoding, [UInt8])] = [(.utf8, [0xef, 0xbb, 0xbf]),
+            (.utf16LittleEndian, [0xff, 0xfe]), (.utf16BigEndian, [0xfe, 0xff]),
+            (.utf32LittleEndian, [0xff, 0xfe, 0, 0]), (.utf32BigEndian, [0, 0, 0xfe, 0xff])]
+        for (encoding, bom) in encodings {
+            for prefix in ["", " \r\n\t"] {
+                let base = try XCTUnwrap((prefix + source).data(using: encoding))
+                let garbage = try XCTUnwrap("garbage".data(using: encoding))
+                let variants: [Data] = [base, Data(bom) + base, base + Data([0xff]),
+                    base + Data([0xff, 0xff]), base + Data([0xff, 0xff, 0xff]),
+                    Data(base.dropLast()), base + garbage]
+                for bytes in variants {
+                    let expected = try? JSONDecoder().decode(ClipboardArchive.self, from: bytes)
+                    XCTAssertEqual(validate(bytes), expected != nil, "encoding \(encoding.rawValue), prefix \(prefix.count), bytes \(bytes.count)")
+                    let context = Context(); defer { context.cleanup() }
+                    try context.put(bytes)
+                    let actual = try? context.store.load()
+                    XCTAssertEqual(actual != nil, expected != nil)
+                    XCTAssertEqual(try Data(contentsOf: context.file), bytes)
+                    if let expected, let actual {
+                        XCTAssertEqual(try encodedObject(actual), try encodedObject(expected))
+                        XCTAssertEqual(actual.history[0].preview.utf8.map { $0 }, expected.history[0].preview.utf8.map { $0 })
+                        try context.store.save(actual)
+                        XCTAssertEqual(try encodedObject(XCTUnwrap(context.store.load())), try encodedObject(expected))
+                        XCTAssertNoThrow(try JSONDecoder().decode(ClipboardArchive.self, from: Data(contentsOf: context.file)))
+                    } else {
+                        XCTAssertThrowsError(try context.store.save(ClipboardArchive(history: [], pinnedItems: [], groups: [])))
+                        XCTAssertEqual(try Data(contentsOf: context.file), bytes)
+                    }
+                }
+            }
+        }
+    }
+
+    func testHistoricalEncodingsRejectMalformedScalarsLikeFoundation() throws {
+        let source = #"{"history":[{"id":"12345678-1234-5678-90AB-1234567890AB","type":"text","timestamp":0,"preview":"X","isPinned":false}],"pinnedItems":[]}"#
+        for encoding in [String.Encoding.utf16LittleEndian, .utf16BigEndian, .utf32LittleEndian, .utf32BigEndian] {
+            let bytes = try XCTUnwrap(source.data(using: encoding))
+            let target = try XCTUnwrap("X".data(using: encoding))
+            let location = try XCTUnwrap(bytes.range(of: target))
+            let little = encoding == .utf16LittleEndian || encoding == .utf32LittleEndian
+            let width = target.count
+            for value: UInt32 in [0, 0xd800, 0xdc00, 0xdfff, 0xffff, 0x10ffff, 0x110000, 0xffffffff] {
+                if width == 2 && value > 0xffff { continue }
+                let shifts = little ? Array(0..<width) : Array((0..<width).reversed())
+                let replacement = Data(shifts.map { UInt8(truncatingIfNeeded: value >> ($0 * 8)) })
+                var candidate = bytes
+                candidate.replaceSubrange(location, with: replacement)
+                XCTAssertEqual(validate(candidate), nativeAccepts(candidate), "encoding \(encoding.rawValue), scalar \(value)")
+                assertDecodedAcceptance(candidate)
+            }
+        }
+    }
+
     func testTypedWriterPreservesNilEmptyAndRejectsInvalidDatesWithoutReplacement() throws {
         let context = Context(); defer { context.cleanup() }
         for groups: [ClipboardGroup]? in [nil, [], [ClipboardGroup(items: [])]] {

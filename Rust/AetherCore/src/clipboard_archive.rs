@@ -108,6 +108,8 @@ impl Item<'_> {
     }
 }
 fn validate(bytes: &[u8]) -> Result<(), u32> {
+    let normalized = crate::json::native_json_bytes(bytes).map_err(|_| 2_u32)?;
+    let bytes = normalized.as_ref();
     if !crate::json::native_depth_supported(bytes) {
         return Err(2);
     }
@@ -282,6 +284,8 @@ pub struct Decoded {
     status: u32,
 }
 fn decode(bytes: &[u8]) -> Result<Archive<'static>, u32> {
+    let normalized = crate::json::native_json_bytes(bytes).map_err(|_| 2_u32)?;
+    let bytes = normalized.as_ref();
     if !crate::json::native_depth_supported(bytes) {
         return Err(2);
     }
