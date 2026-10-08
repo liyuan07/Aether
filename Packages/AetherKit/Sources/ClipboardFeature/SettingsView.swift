@@ -32,8 +32,8 @@ struct ClipboardSettingsView: View {
 
     var body: some View {
         SettingsContent("剪贴板") {
-            Form {
-                Section("记录") {
+            SettingsForm {
+                SettingsGroup("记录") {
                     Toggle("记录剪贴板历史", isOn: $monitoringEnabled)
                     Stepper(value: $historyLimit, in: 50...20_000, step: 50) {
                         LabeledContent("记录上限", value: "\(historyLimit) 条")
@@ -50,7 +50,7 @@ struct ClipboardSettingsView: View {
 
                 BackgroundSettingsView()
 
-                Section("快捷键") {
+                SettingsGroup("快捷键") {
                     Toggle(isOn: $shortcutEnabled) {
                         LabeledContent("打开剪贴板", value: "⇧⌘J")
                     }
@@ -60,7 +60,7 @@ struct ClipboardSettingsView: View {
                     }
                 }
 
-                Section {
+                SettingsGroup {
                     Toggle("输入停顿后搜索", isOn: $searchDebounceEnabled)
                     Stepper(
                         value: $searchDebounceMilliseconds,
@@ -73,7 +73,7 @@ struct ClipboardSettingsView: View {
                 } header: { Text("搜索") }
                 footer: { Text("关闭后，每次输入都会立即更新搜索结果。") }
 
-                Section("自动粘贴") {
+                SettingsGroup("自动粘贴") {
                     LabeledContent("辅助功能", value: accessibilityTrusted ? "已授权" : "未授权")
                     if !accessibilityTrusted {
                         HStack {
@@ -85,7 +85,7 @@ struct ClipboardSettingsView: View {
                     }
                 }
             }
-            .formStyle(.grouped)
+
         }
         .onAppear {
             searchDebounceMilliseconds = ClipboardSearchDebounce.clamped(

@@ -1,22 +1,17 @@
 import SwiftUI
+import SharedSupport
 
 /// Compact local todo page with optional deadlines.
 struct MemoWorkspaceView: View {
     @ObservedObject var model: MemoModel
-    @State private var title = ""
-    @State private var hasDeadline = false
-    @State private var deadline = Date()
+    @Environment(\.panelBackAction) private var back
     @State private var showingDeadlinePicker = false
     @FocusState private var titleFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label("备忘录", systemImage: "checklist")
-                    .font(.headline)
-                Spacer()
-            }
-            .padding(12)
+            PanelToolbar("备忘录", back: back) { EmptyView() }
+            Divider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -29,7 +24,7 @@ struct MemoWorkspaceView: View {
                     if model.sortedItems.isEmpty {
                         emptyState
                     } else {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 0) {
                             ForEach(model.sortedItems) { item in taskRow(item) }
                         }
                     }
@@ -44,7 +39,7 @@ struct MemoWorkspaceView: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
-            TextField("写下要做的事", text: $title)
+            TextField("写下要做的事", text: $model.draftTitle)
                 .textFieldStyle(.roundedBorder)
                 .focused($titleFocused)
                 .onSubmit(add)
@@ -53,27 +48,27 @@ struct MemoWorkspaceView: View {
             Button {
                 showingDeadlinePicker = true
             } label: {
-                Image(systemName: hasDeadline ? "calendar.badge.clock" : "calendar")
+                Image(systemName: model.draftHasDeadline ? "calendar.badge.clock" : "calendar")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(hasDeadline ? .indigo : .secondary)
-            .help(hasDeadline ? "修改截止时间" : "设置截止时间")
-            .accessibilityLabel(hasDeadline ? "修改截止时间" : "设置截止时间")
+            .foregroundStyle(model.draftHasDeadline ? .indigo : .secondary)
+            .help(model.draftHasDeadline ? "修改截止时间" : "设置截止时间")
+            .accessibilityLabel(model.draftHasDeadline ? "修改截止时间" : "设置截止时间")
             .popover(isPresented: $showingDeadlinePicker, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("截止时间").font(.headline)
-                DatePicker("截止时间", selection: $deadline, displayedComponents: [.date, .hourAndMinute])
+                DatePicker("截止时间", selection: $model.draftDeadline, displayedComponents: [.date, .hourAndMinute])
                     .datePickerStyle(.compact)
                     HStack {
-                        if hasDeadline {
+                        if model.draftHasDeadline {
                             Button("清除截止时间", role: .destructive) {
-                                hasDeadline = false
+                                model.draftHasDeadline = false
                                 showingDeadlinePicker = false
                             }
                         }
                         Spacer()
                         Button("完成") {
-                            hasDeadline = true
+                            model.draftHasDeadline = true
                             showingDeadlinePicker = false
                         }
                     }
@@ -81,7 +76,7 @@ struct MemoWorkspaceView: View {
                 .padding(14)
             }
             Button("添加", action: add)
-                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(model.draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("memo.add")
         }
         .padding(6)
@@ -123,14 +118,12 @@ struct MemoWorkspaceView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 10)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func add() {
-        guard model.add(title: title, deadline: hasDeadline ? deadline : nil) else { return }
-        title = ""
-        hasDeadline = false
+        guard model.addDraft() else { return }
         titleFocused = true
     }
 }

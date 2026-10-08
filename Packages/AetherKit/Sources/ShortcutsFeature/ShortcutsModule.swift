@@ -64,6 +64,7 @@ private struct ShortcutControlsView: View {
 }
 
 private struct ShortcutActionsView: View {
+    @Environment(\.panelBackAction) private var back
     @ObservedObject var model: AppModel
     @ObservedObject var navigation: SettingsNavigationModel
     @State private var query = ""
@@ -86,7 +87,13 @@ private struct ShortcutActionsView: View {
         }
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
+            PanelToolbar("快捷操作", back: back) {
+                Button { open(showApplications ? .applications : .shortcuts) } label: { Image(systemName: "gearshape") }
+                    .help("快捷操作设置").accessibilityLabel("快捷操作设置")
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
             TextField(showApplications ? "搜索已安装的应用" : "搜索快捷动作", text: $query).textFieldStyle(.roundedBorder)
             HStack {
                 Label(showApplications ? "应用启动器" : "收藏快捷动作", systemImage: showApplications ? "app.badge" : "star")
@@ -94,7 +101,7 @@ private struct ShortcutActionsView: View {
                 Button("管理") { open(showApplications ? .applications : .shortcuts) }
             }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     if showApplications {
                         ForEach(model.registeredApplications.filter { query.isEmpty || matches($0.displayName) }) { app in
                             Button {
@@ -134,7 +141,8 @@ private struct ShortcutActionsView: View {
                 Label(showApplications ? "返回收藏动作" : "打开应用启动器", systemImage: showApplications ? "star" : "app.badge")
             }
             Button { open(.general) } label: { Label("实体按钮与按键设置", systemImage: "keyboard") }
-        }.padding(14)
+            }.padding(12)
+        }
         .onAppear {
             guard model.permissionGranted, let app = ShortcutsModule.shared.externalApplication else { return }
             ApplicationShortcutCatalogProvider.shared.load(for: app) { applicationShortcuts = $0.shortcuts }
@@ -146,7 +154,8 @@ private struct ShortcutActionsView: View {
             Text(title).lineLimit(1)
             Spacer()
             Text(detail).font(.caption).foregroundStyle(.secondary)
-        }.padding(10).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        }.padding(.vertical, 10).frame(maxWidth: .infinity)
+            .overlay(alignment: .bottom) { Divider() }
     }
     private func open(_ section: SettingsSection) {
         navigation.section = section

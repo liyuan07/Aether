@@ -219,8 +219,9 @@ struct ClipboardBackgroundView: View {
 struct BackgroundSettingsView: View {
     @ObservedObject private var manager = BackgroundManager.shared
     var body: some View {
-        Section("背景图片") {
+        SettingsGroup("背景图片") {
             VStack(alignment: .leading, spacing: 12) {
+                LabeledContent("当前图片", value: manager.settings.fileName.isEmpty ? "未设置" : manager.settings.fileName)
                 GeometryReader { geometry in
                     let screenSize = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
                     let base = CGSize(width: min(max(screenSize.width * 0.76, 1_120), min(screenSize.width * 0.94, 1_380)),
@@ -239,12 +240,13 @@ struct BackgroundSettingsView: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }.frame(height: 180)
+                }.frame(height: 84)
                 HStack {
                     Button(manager.settings.fileName.isEmpty ? "选择图片…" : "更换图片…") { chooseImage() }
                     Button("移除") { manager.removeImage() }.disabled(manager.settings.fileName.isEmpty && !manager.importing)
                     if manager.importing { ProgressView().controlSize(.small) }
                 }
+                DisclosureGroup("调整图片显示") {
                 Picker("适配模式", selection: $manager.settings.mode) {
                     ForEach(BackgroundMode.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -277,8 +279,9 @@ struct BackgroundSettingsView: View {
                 }
                 Text("0% 完全可见，100% 完全透明；文字和按钮保持清晰。")
                     .font(.caption).foregroundStyle(.secondary)
+                }
                 if let error = manager.error { Text(error).font(.caption).foregroundStyle(.red) }
-            }.padding(8)
+            }
         }
     }
     private func chooseImage() {

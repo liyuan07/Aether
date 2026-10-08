@@ -29,6 +29,13 @@ import PortsFeature
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = AppEnvironment.resourceProfile
+        if AppEnvironment.isResourceProfiling,
+           let index = CommandLine.arguments.firstIndex(of: "--resource-appearance"),
+           index + 1 < CommandLine.arguments.count {
+            let appearance = CommandLine.arguments[index + 1]
+            if appearance == "dark" { NSApp.appearance = NSAppearance(named: .darkAqua) }
+            if appearance == "light" { NSApp.appearance = NSAppearance(named: .aqua) }
+        }
         NSApp.setActivationPolicy(.accessory)
         let peers = NSRunningApplication.runningApplications(withBundleIdentifier: "com.liyuan.aether")
         if peers.contains(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
@@ -76,7 +83,12 @@ import PortsFeature
         case "clipboard-visible":
             status?.hide()
             ClipboardModule.shared.presentWindow()
-        default: NSApp.terminate(nil)
+        case "menu-visible": status?.show()
+        default:
+            if let scene = resourceScene, scene.hasPrefix("settings-"),
+               let page = SharedSupport.SettingsPage(rawValue: String(scene.dropFirst("settings-".count))) {
+                settings?.show(page)
+            } else { NSApp.terminate(nil) }
         }
     }
     private func route(_ route: AppRoute) {

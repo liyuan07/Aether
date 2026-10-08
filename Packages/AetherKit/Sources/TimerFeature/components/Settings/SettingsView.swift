@@ -25,17 +25,13 @@ struct SettingsView: View {
     @State private var showingResetConfirmation = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
+        SettingsContent("计时与护眼") {
+            SettingsForm {
                 timerSettingsCard
                 eyeCareSettingsCard
                 presetsCard
             }
-            .padding(14)
         }
-        .scrollIndicators(.automatic)
-        .frame(minWidth: 500, minHeight: 400)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var eyeCareSettingsCard: some View {
@@ -77,10 +73,12 @@ struct SettingsView: View {
                     )
                 }
 
-                Text("修改从下一阶段生效。休息时请看向约 6 米外；本功能不能替代专业检查。若持续眼痛或明显视物模糊，请咨询眼科医生或视光专业人士。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("修改从下一阶段生效。")
+                    .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("了解 20-20-20 护眼提醒") {
+                    Text("休息时请看向约 6 米外；本功能不能替代专业检查。若持续眼痛或明显视物模糊，请咨询眼科医生或视光专业人士。")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -279,23 +277,7 @@ private struct SettingsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(.primary)
-
-            content
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        }
+        SettingsGroup(title) { content }
     }
 }
 

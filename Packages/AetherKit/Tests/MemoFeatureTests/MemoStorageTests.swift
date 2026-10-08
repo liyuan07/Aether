@@ -43,6 +43,28 @@ final class MemoStorageTests: XCTestCase {
         XCTAssertNil(model.storageMessage)
         XCTAssertTrue(model.add(title: "修复后重试", deadline: nil))
     }
+    @MainActor
+    func testWorkspaceDraftSurvivesReloadAndFailedSaveButClearsAfterCommit() throws {
+        let model = MemoModel(storage: MemoStorage(directory: directory))
+        model.draftTitle = "合成未提交草稿"
+        model.draftHasDeadline = true
+        model.draftDeadline = Date(timeIntervalSince1970: 1234)
+        model.reload()
+        XCTAssertEqual(model.draftTitle, "合成未提交草稿")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("items.json")
+        try Data("{\"schemaVersion\":99,\"payload\":[]}".utf8).write(to: file)
+        XCTAssertFalse(model.addDraft())
+        XCTAssertEqual(model.draftTitle, "合成未提交草稿")
+        XCTAssertTrue(model.draftHasDeadline)
+        try Data("{\"schemaVersion\":1,\"payload\":[]}".utf8).write(to: file)
+        model.reload()
+        XCTAssertTrue(model.addDraft())
+        XCTAssertTrue(model.draftTitle.isEmpty)
+        XCTAssertFalse(model.draftHasDeadline)
+        XCTAssertEqual(model.items.last?.deadline, Date(timeIntervalSince1970: 1234))
+    }
+
     func testCorruptMissingRequiredFieldsAndLinksRemainUntouched() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent("items.json")

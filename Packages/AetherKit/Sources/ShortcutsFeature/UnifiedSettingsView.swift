@@ -43,7 +43,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
                 .padding(.bottom, 12)
                 switch navigation.section {
                 case .general: AppGeneralSettingsView(model: model)
@@ -81,8 +81,8 @@ private struct ApplicationShortcutSettingsView: View {
                 Text("关闭后，最小化窗口保持原位。布局记录仅在本次 Aether 运行期间有效。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
             Divider()
             if model.registeredApplicationGroups.isEmpty {
                 ProgressView("正在扫描 Applications…").frame(maxWidth: .infinity, minHeight: 160)
@@ -150,7 +150,7 @@ private struct ApplicationShortcutSettingsView: View {
 
             Text("拖动应用可调整同首字母选择器中的展示顺序。中文应用按拼音首字母归类；新安装的应用会追加到对应分组末尾。")
                 .font(.caption).foregroundStyle(.secondary)
-                .padding(.horizontal, 22)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 12)
         }
     }
@@ -177,18 +177,18 @@ private struct AppGeneralSettingsView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        Form {
-            Section {
+        SettingsForm {
+            SettingsGroup {
                 Toggle("显示实体按钮", isOn: appBinding(\.showModifierButtons))
             } header: { Text("实体按钮") }
             footer: { Text("在桌面显示可拖动的修饰键、复制与粘贴按钮。") }
 
-            Section {
+            SettingsGroup {
                 Toggle("屏蔽 ABC 自动切换", isOn: appBinding(\.blockAutomaticABC))
             } header: { Text("输入法") }
             footer: { Text("只在按下物理中英键时切换到 ABC，需要输入监控权限。") }
 
-            Section("配置") {
+            SettingsGroup("配置") {
                 LabeledContent("快捷操作配置") {
                     HStack {
                         Button("导入…") { importConfiguration() }
@@ -196,7 +196,7 @@ private struct AppGeneralSettingsView: View {
                     }
                 }
             }
-        }.formStyle(.grouped)
+        }
     }
 
     private func appBinding<Value>(_ keyPath: WritableKeyPath<AppGeneralPreferences, Value>) -> Binding<Value> {

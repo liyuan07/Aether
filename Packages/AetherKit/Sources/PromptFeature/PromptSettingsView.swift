@@ -5,32 +5,40 @@ struct PromptSettingsView: View {
     @ObservedObject var model: PromptModel
 
     var body: some View {
-        SettingsContent("Prompt 优化") {
+        SettingsContent("提示词优化") {
             VStack(spacing: 0) {
-            Form {
-                Section {
-                    Text("输入零散想法或口述内容，一键整理为可直接使用的提示词。")
-                        .foregroundStyle(.secondary)
-                    Button { AppRouter.shared.send(.prompt) } label: {
-                        Label("在菜单栏打开 Prompt 优化", systemImage: "sparkles")
-                    }.accessibilityIdentifier("prompt.settings.openWorkspace")
-                }
-                Section {
+            SettingsForm {
+                SettingsGroup {
+                    SettingsRow("Base URL") {
                     TextField("Base URL", text: $model.draftConfiguration.baseURL, prompt: Text("https://api.example.com/v1"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.baseURL")
+                        .labelsHidden().frame(maxWidth: 380)
+                    }
+                    SettingsRow("模型名称") {
                     TextField("模型名称", text: $model.draftConfiguration.model, prompt: Text("服务商提供的模型 ID"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.model")
+                        .labelsHidden().frame(maxWidth: 380)
+                    }
+                    SettingsRow("API Key") {
                     SecureField("API Key", text: $model.draftAPIKey, prompt: Text("本地服务可留空"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.apiKey")
+                        .labelsHidden().frame(maxWidth: 380)
+                    }
                 } header: {
                     Text("模型服务")
                 } footer: {
-                    Text("使用兼容 OpenAI Chat Completions 的接口。Base URL 可填写服务根地址、/v1 地址或完整 /chat/completions 地址。API Key 仅保存在本机私有文件，不需要系统密码；只有点击“保存设置”后才会更新。")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("修改后需点击“保存设置”。API Key 仅保存在本机私有文件。")
+                        DisclosureGroup("了解接口配置") {
+                            Text("使用兼容 OpenAI Chat Completions 的接口。Base URL 可填写服务根地址、/v1 地址或完整 /chat/completions 地址；本地无鉴权服务可不填 Key。")
+                                .padding(.top, 6)
+                        }
+                    }
                 }
-                Section {
+                SettingsGroup {
                     Toggle("保存历史提示词", isOn: $model.draftConfiguration.saveHistory)
                         .accessibilityIdentifier("prompt.settings.saveHistory")
                     HStack {
@@ -48,11 +56,17 @@ struct PromptSettingsView: View {
                 } header: {
                     Text("历史提示词")
                 } footer: {
-                    Text("每次成功优化后，在本机保存原文、结果、时间和模型。关闭后停止新增，已有记录仍保留；可在菜单栏历史页删除单条或清空。降低保留数量并保存后，会删除最早的超额记录。")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("降低保留数量并保存后，会删除最早的超额记录；关闭保存不会删除已有记录。")
+                        DisclosureGroup("了解历史记录") {
+                            Text("成功优化后保存原文、结果、时间和模型，可在菜单栏历史页回看、删除或清空。")
+                                .padding(.top, 6)
+                        }
+                    }
                 }
-                Section {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("优化指令（系统提示词）").font(.callout.weight(.medium))
+                SettingsGroup {
+                    DisclosureGroup("编辑优化指令（系统提示词）") {
+                        VStack(alignment: .leading, spacing: 10) {
                         TextEditor(text: $model.draftConfiguration.systemPrompt)
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 240, idealHeight: 300)
@@ -63,17 +77,21 @@ struct PromptSettingsView: View {
                             .accessibilityIdentifier("prompt.settings.systemPrompt")
                         Button("恢复默认优化指令") { model.restoreDefaultInstruction() }
                             .accessibilityIdentifier("prompt.settings.restoreDefault")
+                        }.padding(.top, 10)
                     }
                 } header: {
                     Text("优化方式")
                 } footer: {
-                    Text("默认指令会保留真实目标和约束、整理口述内容、补全适用的任务结构；不直接执行你的任务，也不编造缺失信息。恢复默认后仍需保存。")
+                    Text("默认指令保留目标和约束，整理口述内容。编辑或恢复默认后仍需保存。")
                 }
-                Section {
+                Button { AppRouter.shared.send(.prompt) } label: {
+                    Label("打开提示词优化", systemImage: "sparkles")
+                }.accessibilityIdentifier("prompt.settings.openWorkspace")
+                DisclosureGroup("了解数据发送范围") {
                     Text("点击优化时，原始提示词和优化指令将发送给你配置的服务。Aether 不会自动读取剪贴板，也不会上传历史列表；请确认服务地址及其数据使用政策。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped)
+            }
             Divider()
             settingsFooter
             }
@@ -102,6 +120,6 @@ struct PromptSettingsView: View {
                 }
                 Spacer(minLength: 0)
             }
-        }.padding(.horizontal, 24).padding(.vertical, 16)
+        }.padding(.horizontal, 20).padding(.vertical, 12)
     }
 }

@@ -276,3 +276,11 @@ Rust 缓存按可见视图 UUID 管理使用方；最后一个视图隐藏/销�
 长 Unicode 搜索段在密集边界位图比原偏移数组更小时使用位图，稀疏边界继续使用原紧凑数组。保留全部边界、位置排名与顺序模糊匹配；字符数缓存在既有结构对齐空间，超大输入保留完整宽度回退。例如 3,000 字节、1,001 个边界的表示从 2,002 字节变成 376 字节（仅边界载荷，不代表整机降幅）。复用既有边界与搜索回归，补充密集边界的逐位置核对；不增加资源测量矩阵。
 
 本轮 Rust 重构的最终范围、资源观察及验收边界统一见 [RustDelivery.md](RustDelivery.md)。
+
+## 统一设置与菜单栏布局
+
+`SharedSupport` 提供 `AetherLayout`、`SettingsContent`、`SettingsForm`、`SettingsGroup`、`SettingsRow` 与 `PanelToolbar`。应用层装配导航，各功能负责内容和工具栏操作，返回首页通过环境闭包注入；共享层不访问功能实现。渐进展开不改变偏好的保存语义。
+
+菜单栏以首页为默认入口，四个功能进入二级页。`ControlCenterDestination` 规范化原 `controlCenterTabOrder`：保留已知功能顺序、排除概览与重复项、追加缺失项；继续使用原偏好键。普通打开重置为首页，显式路由定位功能。备忘录草稿由模块模型持有，仅成功写入后清空，不写入磁盘。端口摘要仅在首页可见时采集，护眼面板更新同时跟随页面与 popover 可见性。
+
+隔离界面验收复用资源 profile，正式可执行文件支持 `--resource-scene menu-visible` 和 `settings-<SettingsPage.rawValue>`，以及 `--resource-appearance light|dark`；仅指定有效 `AETHER_RESOURCE_PROFILE` 时生效，不改变系统外观或真实资料。

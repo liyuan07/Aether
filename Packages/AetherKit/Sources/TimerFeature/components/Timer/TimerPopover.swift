@@ -76,8 +76,11 @@ struct TimerPopover: View {
 
             Divider()
 
-            PresetList(presets: timerPresets, activePresetId: timerManager.activePresetId, startAction: startPreset)
-                .animation(.smooth, value: timerManager.activePresetId)
+            DisclosureGroup("常用预设（\(timerPresets.count)）") {
+                PresetList(presets: timerPresets, activePresetId: timerManager.activePresetId, startAction: startPreset)
+                    .animation(.smooth, value: timerManager.activePresetId)
+                    .padding(.top, 6)
+            }
 
             Divider()
 
@@ -92,7 +95,6 @@ struct TimerPopover: View {
                     .controlSize(.small)
             }
         }
-        .padding(12)
         .frame(maxWidth: .infinity)
         .onAppear {
             syncCustomDuration(with: customTimerDuration)

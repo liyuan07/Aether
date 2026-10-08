@@ -70,13 +70,23 @@ import PortsFeature
             let window = NSWindow(contentViewController: controller)
             window.delegate = self
             window.title = "Aether 设置"
-            window.setFrameAutosaveName("AetherSettingsWindow")
-            window.setContentSize(NSSize(width: 960, height: 680))
-            window.minSize = NSSize(width: 860, height: 580)
+            window.setContentSize(NSSize(width: 900, height: 640))
+            window.contentMinSize = NSSize(width: 820, height: 560)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.center()
+            window.setFrameAutosaveName("AetherSettingsWindow")
+            window.setFrameUsingName("AetherSettingsWindow")
             self.window = window
+        }
+        if let window {
+            let screens = NSScreen.screens
+            let screen = screens.max { a, b in
+                let ai = a.visibleFrame.intersection(window.frame)
+                let bi = b.visibleFrame.intersection(window.frame)
+                return (ai.isNull ? 0 : ai.width * ai.height) < (bi.isNull ? 0 : bi.width * bi.height)
+            } ?? NSScreen.main
+            if let screen { window.setFrame(SettingsWindowGeometry.fitting(window.frame, in: screen.visibleFrame), display: true) }
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.deminiaturize(nil)
@@ -90,15 +100,24 @@ private struct AetherSettingsView: View {
     @ObservedObject var startup: StartupController
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 10) {
-                    Image(systemName: "square.3.layers.3d").font(.title).foregroundStyle(.indigo)
-                    VStack(alignment: .leading) { Text("Aether").font(.title3.bold()); Text("以太").foregroundStyle(.secondary).font(.caption) }
-                }.padding(.horizontal, 16).padding(.top, 24)
-                List(SharedSupport.SettingsPage.allCases, selection: $navigation.page) { page in
-                    Label(page.title, systemImage: page.symbol).tag(page).padding(.vertical, 5)
+            VStack(alignment: .leading, spacing: 0) {
+                Label("Aether", systemImage: "square.3.layers.3d")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 16).padding(.vertical, 16)
+                List(selection: $navigation.page) {
+                    Section("通用") { navigationRow(.general) }
+                    Section("功能") {
+                        navigationRow(.clipboard)
+                        navigationRow(.shortcuts)
+                        navigationRow(.timer)
+                        navigationRow(.prompt)
+                    }
+                    Section("系统") {
+                        navigationRow(.ports)
+                        navigationRow(.permissions)
+                    }
                 }.listStyle(.sidebar)
-            }.frame(width: 185)
+            }.frame(width: 168)
             Divider()
             Group {
                 if !startup.ready && navigation.page != .permissions {
@@ -119,6 +138,11 @@ private struct AetherSettingsView: View {
             .accessibilityIdentifier("AetherSettingsPage." + navigation.page.rawValue)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }.tint(.indigo)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+    private func navigationRow(_ page: SharedSupport.SettingsPage) -> some View {
+        Label(page.title, systemImage: page.symbol)
+            .font(.system(size: 13)).tag(page).padding(.vertical, 2)
     }
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -134,14 +158,14 @@ private struct AetherSettingsView: View {
 private struct GeneralSettingsView: View {
     @ObservedObject private var login = LoginService.shared
     var body: some View {
-        Form {
-            Section {
-                Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set))
+        SettingsForm {
+            SettingsGroup {
+                SettingsRow("登录时启动 Aether") { Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set)).labelsHidden() }
                 LabeledContent("系统登录项状态", value: login.status)
                 if let error = login.error { Text(error).foregroundStyle(.red) }
             } header: { Text("启动") }
 
-        }.formStyle(.grouped)
+        }
     }
 }
 
@@ -149,28 +173,34 @@ private struct PermissionSettingsView: View {
     @State private var accessibility = AXIsProcessTrusted()
     @State private var monitoring = CGPreflightListenEventAccess()
     var body: some View {
-        Form {
-            Section("辅助功能") {
-                LabeledContent("状态", value: accessibility ? "已授权" : "未授权")
-                Text("用于自动粘贴、快捷键映射、应用操作及系统时钟镜像。未授权时仍可记录和复制剪贴板、使用本地计时。")
-                Button("打开辅助功能设置") { open("Privacy_Accessibility") }
+        SettingsForm {
+            permissionGroup("辅助功能", granted: accessibility,
+                            purpose: "自动粘贴、快捷键映射、应用操作及系统时钟镜像。",
+                            anchor: "Privacy_Accessibility")
+            permissionGroup("输入监控", granted: monitoring,
+                            purpose: "识别左右修饰键和物理中英键、快捷键提示及 ABC 自动切换防护。",
+                            anchor: "Privacy_ListenEvent")
+            DisclosureGroup("了解详情") {
+                Text("未授权时仍可记录和复制剪贴板、使用本地计时。若系统要求重新打开应用，请使用菜单栏右键的“重新启动”。系统时钟镜像受 macOS 版本及系统接口限制。")
+                    .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
             }
-            Section("输入监控") {
-                LabeledContent("状态", value: monitoring ? "已授权" : "未授权")
-                Text("用于识别左右修饰键和物理中英键、快捷键提示及 ABC 自动切换防护。")
-                Button("打开输入监控设置") { open("Privacy_ListenEvent") }
-            }
-            Section {
-                Text("若系统要求重新打开应用，请使用菜单栏右键的“重新启动”。")
-                Text("系统时钟镜像受 macOS 版本及系统接口限制；本地倒计时不依赖镜像。")
-            }
-        }.formStyle(.grouped)
+        }
         .task {
             while !Task.isCancelled {
                 accessibility = AXIsProcessTrusted()
                 monitoring = CGPreflightListenEventAccess()
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
             }
+        }
+    }
+    private func permissionGroup(_ title: String, granted: Bool, purpose: String, anchor: String) -> some View {
+        SettingsGroup(title) {
+            SettingsRow("授权状态") {
+                Label(granted ? "已授权" : "未授权", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .foregroundStyle(granted ? Color.secondary : Color.orange)
+                Button("前往授权") { open(anchor) }
+            }
+            Text(purpose).font(.caption).foregroundStyle(.secondary)
         }
     }
     private func open(_ anchor: String) {

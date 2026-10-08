@@ -50,12 +50,19 @@ private struct ClipboardMonitoringControl: View {
 }
 
 private struct CompactClipboardView: View {
+    @Environment(\.panelBackAction) private var back
     @StateObject private var model = ClipboardPanelViewModel()
     @StateObject private var search = ClipboardSearchModel()
     @State private var tab: ClipboardTab = .all
     @State private var error: String?
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
+            PanelToolbar("剪贴板", back: back) {
+                Button { AppRouter.shared.send(.settings(.clipboard)) } label: { Image(systemName: "gearshape") }
+                    .help("剪贴板设置").accessibilityLabel("剪贴板设置")
+            }
+            Divider()
+            VStack(spacing: 10) {
             TextField("搜索剪贴板", text: $search.text)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("AetherClipboardSearch")
@@ -92,7 +99,8 @@ private struct CompactClipboardView: View {
             Button("打开完整剪贴板  ⇧⌘J") { AppRouter.shared.send(.clipboard) }
                 .frame(maxWidth: .infinity)
         }
-        .padding(14)
+            .padding(12)
+        }
         .background(SearchSurfaceVisibility { model.setActive($0) }.frame(width: 0, height: 0).allowsHitTesting(false))
         .onDisappear { model.setActive(false) }
         .onChange(of: search.query) { _, value in model.updateQuery(value) }
@@ -114,7 +122,7 @@ private struct CompactClipboardView: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Image(systemName: "return").font(.caption).foregroundStyle(.tertiary)
-            }.padding(10).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+            }.padding(10).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 4))
         }.buttonStyle(.plain)
     }
 }

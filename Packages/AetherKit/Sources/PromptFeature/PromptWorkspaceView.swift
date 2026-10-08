@@ -8,6 +8,7 @@ struct PromptWorkspaceView: View {
         var id: String { rawValue }
     }
 
+    @Environment(\.panelBackAction) private var back
     @ObservedObject var model: PromptModel
     @State private var page: Page = .input
     @State private var confirmingClear = false
@@ -18,9 +19,7 @@ struct PromptWorkspaceView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    Label("Prompt 优化", systemImage: "sparkles").font(.headline)
-                    Spacer(minLength: 4)
+                PanelToolbar("提示词优化", back: back) {
                     Button {
                         awaitingResult = false
                         model.newPrompt()
@@ -39,7 +38,10 @@ struct PromptWorkspaceView: View {
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .accessibilityIdentifier("prompt.pages")
-            }.padding(12)
+                .padding(.horizontal, 12)
+            }
+            .padding(.bottom, 10)
+            Divider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
