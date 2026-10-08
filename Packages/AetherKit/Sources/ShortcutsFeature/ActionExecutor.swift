@@ -2,6 +2,7 @@ import SharedSupport
 import AppKit
 import ApplicationServices
 import ShortcutCore
+import CAetherCore
 
 @MainActor
 final class ActionExecutor {
@@ -85,14 +86,15 @@ final class ActionExecutor {
             }
         let action = ApplicationIntent.shared.begin(sourcePID: workspace.frontmostApplication?.processIdentifier,
                                                     targetPID: running?.processIdentifier)
+        let plan = applicationLaunchPlan(mode: mode, running: running != nil, hasURL: applicationURL != nil, hasDisplay: display != nil)
         if let running {
             // Activation is the visible part of an activate-existing shortcut. Start it
             // immediately and keep window placement as a guarded background refinement.
             // This is especially important for a full-screen window in another Space:
             // waiting for AX inspection first makes the shortcut feel stuck even though
             // there is no movable window to prepare.
-            if mode == .activateExisting { activateImmediately(running) }
-            if display == nil, mode == .activateExisting, let applicationURL {
+            if plan.activate_now != 0 { activateImmediately(running) }
+            if plan.open_existing_background != 0, let applicationURL {
                 openInBackground(applicationURL, mode: mode, display: nil,
                                  restoreMinimized: false, action: action)
                 return
@@ -101,9 +103,9 @@ final class ActionExecutor {
                     action: action) { [weak self] report in
                 guard let self, action.isActive() else { return }
                 // Only a successful, empty inventory justifies reopening. Unknown is not windowless.
-                if mode == .activateExisting, display != nil, !report.hasWindows,
-                   report.readFailure == nil, !report.timedOut, !report.displayDisconnected,
-                   let applicationURL {
+                let decision = applicationLaunchPlan(mode: mode, running: true, hasURL: applicationURL != nil,
+                    hasDisplay: display != nil, report: report)
+                if decision.reopen_existing != 0, let applicationURL {
                     self.openInBackground(applicationURL, mode: mode, display: display,
                                           restoreMinimized: behavior.restoreMinimized, action: action)
                 } else {
@@ -111,7 +113,7 @@ final class ActionExecutor {
                                   report: report, action: action)
                 }
             }
-        } else if let applicationURL {
+        } else if plan.launch != 0, let applicationURL {
             openInBackground(applicationURL, mode: mode, display: display,
                              restoreMinimized: behavior.restoreMinimized, action: action)
         } else { NSSound.beep() }
@@ -128,7 +130,7 @@ final class ActionExecutor {
                 guard let self, action.isActive() else { return }
                 guard let app else { NSSound.beep(); return }
                 action.setTarget(app.processIdentifier)
-                if mode == .activateExisting { self.activateImmediately(app) }
+                if applicationLaunchPlan(mode: mode, running: true, hasURL: true, hasDisplay: display != nil).activate_now != 0 { self.activateImmediately(app) }
                 self.prepare(app, display: display, scope: .appearing(excluding: []),
                              restoreMinimized: restoreMinimized, action: action) { [weak self] report in
                     self?.activate(app, mode: mode, display: display, restoreMinimized: restoreMinimized,
@@ -156,7 +158,8 @@ final class ActionExecutor {
                           restoreMinimized: Bool, report: WindowMoveReport, action: ApplicationActionToken) {
         guard action.isActive(), !app.isTerminated else { return }
         activateImmediately(app)
-        guard mode == .newWindow else { return }
+        let decision = applicationLaunchPlan(mode: mode, running: true, hasURL: true, hasDisplay: display != nil, report: report)
+        guard decision.request_new_window != 0 else { return }
         commandTask = Task { [weak self] in
             guard let self else { return }
             let deadline = ProcessInfo.processInfo.systemUptime + 0.8
@@ -166,7 +169,7 @@ final class ActionExecutor {
                                   frontmostPID: self.workspace.frontmostApplication?.processIdentifier) {
                     // Target the process as well as checking focus: a focus race cannot send Command+N to another app.
                     SyntheticKeySender.send(KeyCombination(keyCode: 45, modifiers: [.command]), to: app.processIdentifier)
-                    if let display, !report.timedOut, !report.displayDisconnected, report.readFailure == nil {
+                    if decision.followup_prepare != 0, let display {
                         self.prepare(app, display: display, scope: .appearing(excluding: report.knownIDs),
                                      restoreMinimized: restoreMinimized, action: action) { _ in }
                     }
@@ -237,7 +240,6 @@ private enum SystemShowDesktopShortcut {
     private static let preferencesDomain = "com.apple.symbolichotkeys"
     private static let symbolicHotKeysKey = "AppleSymbolicHotKeys"
     private static let showDesktopID = "36"
-    private static let defaultF11KeyCode: CGKeyCode = 103
 
     static func perform() -> Bool {
         guard let shortcut = resolveShortcut(),
@@ -264,32 +266,17 @@ private enum SystemShowDesktopShortcut {
     }
 
     private static func resolveShortcut() -> (keyCode: CGKeyCode, flags: CGEventFlags)? {
-        guard let domain = AppEnvironment.shortcutsDefaults.persistentDomain(forName: preferencesDomain),
-              let symbolicHotKeys = domain[symbolicHotKeysKey] as? [String: Any],
-              let showDesktop = symbolicHotKeys[showDesktopID] as? [String: Any]
-        else {
-            return (defaultF11KeyCode, .maskSecondaryFn)
-        }
-
-        if let enabled = showDesktop["enabled"] as? Bool, !enabled {
-            return nil
-        }
-        guard let value = showDesktop["value"] as? [String: Any],
-              let parameters = value["parameters"] as? [Any],
-              parameters.count >= 3,
-              let keyCodeValue = integer(from: parameters[1]),
-              let modifierValue = integer(from: parameters[2]),
-              keyCodeValue >= 0,
-              keyCodeValue <= Int(UInt16.max),
-              modifierValue >= 0
-        else {
-            return (defaultF11KeyCode, .maskSecondaryFn)
-        }
-
-        return (
-            CGKeyCode(keyCodeValue),
-            CGEventFlags(rawValue: UInt64(modifierValue))
-        )
+        let domain = AppEnvironment.shortcutsDefaults.persistentDomain(forName: preferencesDomain)
+        let symbolicHotKeys = domain?[symbolicHotKeysKey] as? [String: Any]
+        let showDesktop = symbolicHotKeys?[showDesktopID] as? [String: Any]
+        let value = showDesktop?["value"] as? [String: Any]
+        let parameters = value?["parameters"] as? [Any]
+        let key = parameters.flatMap { $0.count >= 3 ? integer(from: $0[1]) : nil }
+        let modifiers = parameters.flatMap { $0.count >= 3 ? integer(from: $0[2]) : nil }
+        let plan = aether_desktop_shortcut_plan(showDesktop == nil ? 0 : 1,
+            (showDesktop?["enabled"] as? Bool) == false ? 1 : 0,
+            key != nil && modifiers != nil ? 1 : 0, Int64(key ?? 0), Int64(modifiers ?? 0), CGEventFlags.maskSecondaryFn.rawValue)
+        return plan.enabled == 0 ? nil : (CGKeyCode(plan.key), CGEventFlags(rawValue: plan.flags))
     }
 
     private static func integer(from value: Any) -> Int? {
@@ -297,4 +284,12 @@ private enum SystemShowDesktopShortcut {
         if let integer = value as? Int { return integer }
         return nil
     }
+}
+
+private func applicationLaunchPlan(mode: ApplicationOpenMode, running: Bool, hasURL: Bool,
+                                   hasDisplay: Bool, report: WindowMoveReport? = nil) -> AetherApplicationLaunchPlan {
+    aether_application_launch_plan(.init(running: running ? 1 : 0, has_url: hasURL ? 1 : 0,
+        has_display: hasDisplay ? 1 : 0, new_window: mode == .newWindow ? 1 : 0,
+        has_windows: report?.hasWindows == true ? 1 : 0, read_failed: report?.readFailure == nil ? 0 : 1,
+        timed_out: report?.timedOut == true ? 1 : 0, display_disconnected: report?.displayDisconnected == true ? 1 : 0))
 }

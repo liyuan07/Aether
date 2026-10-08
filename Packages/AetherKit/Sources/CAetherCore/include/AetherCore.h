@@ -548,4 +548,13 @@ typedef struct { uint8_t section; intptr_t index; } AetherClipboardActivation;
 typedef intptr_t (*AetherClipboardFind)(void *context, uint8_t section);
 AetherClipboardActivation aether_clipboard_activation_plan(AetherClipboardFind find, void *context);
 uint8_t aether_clipboard_group_copy_text(const AetherClipboardRow *rows, size_t count);
+typedef struct { uint8_t presentation, capture_targets, hide_menu, hide_clipboard; } AetherAppRoutePlan;
+AetherAppRoutePlan aether_app_route_plan(uint8_t route, uint8_t ready);
+uint8_t aether_legacy_route(uint8_t identifier_present, uint8_t identifier_matches, uint8_t path_matches);
+typedef struct { uint8_t running, has_url, has_display, new_window, has_windows, read_failed, timed_out, display_disconnected; } AetherApplicationLaunchFacts;
+typedef struct { uint8_t activate_now, open_existing_background, launch, reopen_existing, request_new_window, followup_prepare; } AetherApplicationLaunchPlan;
+AetherApplicationLaunchPlan aether_application_launch_plan(AetherApplicationLaunchFacts facts);
+typedef struct { uint8_t enabled; uint16_t key; uint64_t flags; } AetherDesktopShortcut;
+AetherDesktopShortcut aether_desktop_shortcut_plan(uint8_t record_present, uint8_t explicitly_disabled,
+    uint8_t parameters_valid, int64_t key, int64_t flags, uint64_t default_fn);
 #endif

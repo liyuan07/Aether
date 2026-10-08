@@ -789,3 +789,5 @@ mod search_cache;
 mod identity_index;
 
 mod clipboard_store;
+
+mod app_policy;

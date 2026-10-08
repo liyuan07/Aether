@@ -80,24 +80,19 @@ import PortsFeature
         }
     }
     private func route(_ route: AppRoute) {
-        switch route {
-        case .overview: status?.show(tab: .overview)
-        case .clipboard:
-            guard started else { settings?.show(.general); return }
+        let plan = AppRoutePolicy.plan(for: route, ready: started)
+        if plan.capture_targets != 0 {
             ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget()
-            status?.hide()
-            ClipboardModule.shared.showWindow()
-        case .prompt:
-            guard started else { settings?.show(.general); return }
-            ClipboardModule.shared.hideWindow()
-            status?.show(tab: .prompt)
-        case let .settings(page):
-            if started { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
-            status?.hide()
-            settings?.show(page)
-        case .dismissPanels:
-            status?.hide()
-            if started { ClipboardModule.shared.hideWindow() }
+        }
+        if plan.hide_menu != 0 { status?.hide() }
+        if plan.hide_clipboard != 0 { ClipboardModule.shared.hideWindow() }
+        switch plan.presentation {
+        case 1: status?.show(tab: .overview)
+        case 2: ClipboardModule.shared.showWindow()
+        case 3: status?.show(tab: .prompt)
+        case 4: if case let .settings(page) = route { settings?.show(page) }
+        case 5: settings?.show(.general)
+        default: break
         }
     }
     func applicationDidBecomeActive(_ notification: Notification) {

@@ -1,4 +1,5 @@
 import Foundation
+import CAetherCore
 
 /// Known predecessors are routed inside Aether; unrelated applications retain
 /// their original launch behavior. Stored user rules are never rewritten.
@@ -26,9 +27,13 @@ public enum LegacyApplication: String, CaseIterable {
         }
     }
     public static func route(identifier: String?, path: String) -> AppRoute? {
-        allCases.first { app in
-            if let identifier { return identifier == app.bundleIdentifier }
-            return path == app.path
-        }?.route
+        var identifierMatches: UInt8 = 0, pathMatches: UInt8 = 0
+        for (index, app) in allCases.enumerated() {
+            if let identifier {
+                if identifier == app.bundleIdentifier { identifierMatches |= 1 << index }
+            } else if path == app.path { pathMatches |= 1 << index }
+        }
+        let route = aether_legacy_route(identifier == nil ? 0 : 1, identifierMatches, pathMatches)
+        return route == 0 ? nil : allCases[Int(route) - 1].route
     }
 }
