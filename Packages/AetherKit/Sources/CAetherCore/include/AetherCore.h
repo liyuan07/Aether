@@ -463,4 +463,14 @@ uint8_t aether_configuration_store_current(const void *store, uint8_t slot, uint
 uint32_t aether_configuration_store_save(const void *store, uint8_t slot, AetherBytes bytes, uint64_t generation);
 uint32_t aether_configuration_store_replace(const void *store, AetherBytes rules, AetherBytes preferences);
 void aether_configuration_store_destroy(void *store);
+// Compact synchronous archive encoding: shared UTF-8 bytes and contiguous spans, no retained input.
+typedef struct {
+    AetherRuleText id, preview, string_data, image_file_name, image_content_hash, rtf_data, rtf_file_name;
+    double timestamp; size_t url_start, file_count; uint16_t present; uint8_t kind, pinned;
+} AetherClipboardArchiveSpanItem;
+typedef struct { AetherRuleText id; double timestamp; size_t start, count; } AetherClipboardArchiveSpanGroup;
+uint32_t aether_clipboard_archive_write_spans(void *store,
+    const AetherClipboardArchiveSpanItem *rows, size_t count, size_t history_count, size_t pinned_count,
+    const AetherRuleText *urls, size_t url_count, const AetherClipboardArchiveSpanGroup *groups,
+    size_t group_count, uint8_t has_groups, AetherBytes bytes);
 #endif

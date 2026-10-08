@@ -774,3 +774,5 @@ mod preference_codec;
 mod preference_decode;
 
 mod configuration_store;
+
+mod clipboard_codec;

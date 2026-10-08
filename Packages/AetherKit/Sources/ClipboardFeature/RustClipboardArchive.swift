@@ -46,85 +46,72 @@ final class RustClipboardArchive: @unchecked Sendable {
     func save(_ archive: ClipboardArchive) throws {
         lock.lock(); defer { lock.unlock() }
         let wire = ClipboardArchiveWire(archive)
-        let status = wire.withViews { rows, urls, groups in
-            aether_clipboard_archive_write_records(core, rows.baseAddress, rows.count,
+        let status = wire.withViews { rows, urls, groups, bytes in
+            aether_clipboard_archive_write_spans(core, rows.baseAddress, rows.count,
                 archive.history.count, archive.pinnedItems.count, urls.baseAddress, urls.count,
-                groups.baseAddress, groups.count, archive.groups == nil ? 0 : 1)
+                groups.baseAddress, groups.count, archive.groups == nil ? 0 : 1, bytes)
         }
         if status != 0 { throw RustDiskError(status: status) }
     }
 }
 
-/// One UTF-8 arena borrows native values without an intermediate JSON document.
-private struct ClipboardArchiveWire {
-    struct Row {
-        let fields: [Range<Int>?]
-        let timestamp: Double
-        let urlStart: Int, fileCount: Int
-        let present: UInt16
-        let kind: UInt8, pinned: UInt8
-    }
-    struct Group {
-        let id: Range<Int>
-        let timestamp: Double
-        let start: Int, count: Int
-    }
-    var arena = Data()
-    var rows: [Row] = []
-    var urls: [Range<Int>] = []
-    var groups: [Group] = []
+/// Direct compact records and one UTF-8 arena; no per-item field arrays or second record array.
+struct ClipboardArchiveWire {
+    var arena: [UInt8] = []
+    var rows: [AetherClipboardArchiveSpanItem] = []
+    var urls: [AetherRuleText] = []
+    var groups: [AetherClipboardArchiveSpanGroup] = []
 
     init(_ archive: ClipboardArchive) {
         rows.reserveCapacity(archive.history.count + archive.pinnedItems.count + (archive.groups ?? []).reduce(0) { $0 + $1.items.count })
+        groups.reserveCapacity(archive.groups?.count ?? 0)
         for item in archive.history { append(item) }
         for item in archive.pinnedItems { append(item) }
         for group in archive.groups ?? [] {
-            let id = append(group.id.uuidString)!
+            let id = append(group.id.uuidString)
             let start = rows.count
             for item in group.items { append(item) }
-            groups.append(Group(id: id, timestamp: group.timestamp.timeIntervalSinceReferenceDate, start: start, count: group.items.count))
+            groups.append(.init(id: id, timestamp: group.timestamp.timeIntervalSinceReferenceDate, start: start, count: rows.count - start))
         }
     }
-    mutating func append(_ text: String?) -> Range<Int>? {
-        guard let text else { return nil }
+    private mutating func append(_ text: String) -> AetherRuleText {
         let start = arena.count
         arena.append(contentsOf: text.utf8)
-        return start..<arena.count
+        return .init(start: start, length: arena.count - start)
     }
-    mutating func append(_ item: ClipboardItem) {
-        let fields = [append(item.id.uuidString), append(item.preview), append(item.stringData),
-                      append(item.imageFileName), append(item.imageContentHash),
-                      append(item.rtfData?.base64EncodedString()), append(item.rtfFileName)]
-        let bits: [UInt16] = [1, 4, 8, 16, 32, 128, 256]
-        var present: UInt16 = 2
-        for (field, bit) in zip(fields, bits) where field != nil { present |= bit }
-        let urlStart = urls.count
+    private mutating func append(_ text: String?, bit: UInt16, present: inout UInt16) -> AetherRuleText {
+        guard let text else { return .init() }
+        present |= bit
+        return append(text)
+    }
+    private mutating func append(_ item: ClipboardItem) {
+        var row = AetherClipboardArchiveSpanItem()
+        row.present = 7
+        row.id = append(item.id.uuidString)
+        row.preview = append(item.preview)
+        row.string_data = append(item.stringData, bit: 8, present: &row.present)
+        row.image_file_name = append(item.imageFileName, bit: 16, present: &row.present)
+        row.image_content_hash = append(item.imageContentHash, bit: 32, present: &row.present)
+        row.rtf_data = append(item.rtfData?.base64EncodedString(), bit: 128, present: &row.present)
+        row.rtf_file_name = append(item.rtfFileName, bit: 256, present: &row.present)
+        row.timestamp = item.timestamp.timeIntervalSinceReferenceDate
+        row.url_start = urls.count
         if let files = item.fileURLs {
-            present |= 64
-            for file in files { urls.append(append(file)!) }
+            row.present |= 64
+            for file in files { urls.append(append(file)) }
         }
-        rows.append(Row(fields: fields, timestamp: item.timestamp.timeIntervalSinceReferenceDate,
-            urlStart: urlStart, fileCount: urls.count - urlStart, present: present,
-            kind: item.type.rustKind, pinned: item.isPinned ? 1 : 0))
+        row.file_count = urls.count - row.url_start
+        row.kind = item.type.rustKind
+        row.pinned = item.isPinned ? 1 : 0
+        rows.append(row)
     }
-    func withViews<T>(_ body: (UnsafeBufferPointer<AetherClipboardArchiveWriteItem>, UnsafeBufferPointer<AetherBytes>, UnsafeBufferPointer<AetherClipboardArchiveWriteGroup>) -> T) -> T {
-        arena.withUnsafeBytes { raw in
-            let base = raw.bindMemory(to: UInt8.self).baseAddress
-            func bytes(_ range: Range<Int>?) -> AetherBytes {
-                guard let range else { return .init(data: nil, length: 0) }
-                return .init(data: base?.advanced(by: range.lowerBound), length: range.count)
-            }
-            let records = rows.map { row in
-                AetherClipboardArchiveWriteItem(item: .init(id: bytes(row.fields[0]), preview: bytes(row.fields[1]),
-                    string_data: bytes(row.fields[2]), image_file_name: bytes(row.fields[3]), image_content_hash: bytes(row.fields[4]),
-                    rtf_data: bytes(row.fields[5]), rtf_file_name: bytes(row.fields[6]), timestamp: row.timestamp,
-                    file_count: row.fileCount, present: row.present, kind: row.kind, pinned: row.pinned), url_start: row.urlStart)
-            }
-            let fileViews = urls.map { bytes($0) }
-            let groupViews = groups.map { AetherClipboardArchiveWriteGroup(id: bytes($0.id), timestamp: $0.timestamp, start: $0.start, count: $0.count) }
-            return records.withUnsafeBufferPointer { records in
-                fileViews.withUnsafeBufferPointer { urls in
-                    groupViews.withUnsafeBufferPointer { groups in body(records, urls, groups) }
+    func withViews<T>(_ body: (UnsafeBufferPointer<AetherClipboardArchiveSpanItem>, UnsafeBufferPointer<AetherRuleText>, UnsafeBufferPointer<AetherClipboardArchiveSpanGroup>, AetherBytes) -> T) -> T {
+        arena.withUnsafeBufferPointer { bytes in
+            rows.withUnsafeBufferPointer { rows in
+                urls.withUnsafeBufferPointer { urls in
+                    groups.withUnsafeBufferPointer { groups in
+                        body(rows, urls, groups, .init(data: bytes.baseAddress, length: bytes.count))
+                    }
                 }
             }
         }

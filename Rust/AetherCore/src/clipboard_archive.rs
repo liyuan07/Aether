@@ -61,7 +61,7 @@ struct Archive<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     groups: Option<Vec<Group<'a>>>,
 }
-fn valid_base64(value: &str) -> bool {
+pub(crate) fn valid_base64(value: &str) -> bool {
     let bytes = value.as_bytes();
     let padding = bytes.iter().rev().take_while(|&&b| b == b'=').count();
     let data = &bytes[..bytes.len() - padding];
@@ -144,11 +144,18 @@ pub struct Store {
 }
 impl Store {
     fn read(&mut self) -> Result<Option<Vec<u8>>, u32> {
+        self.read_matching(None)
+    }
+    fn read_matching(&mut self, validated: Option<&[u8]>) -> Result<Option<Vec<u8>>, u32> {
         let result = storage::read(&self.path, false)
             .map_err(|_| 2_u32)
             .and_then(|bytes| {
                 if let Some(bytes) = &bytes {
-                    validate(bytes)?;
+                    // Exact bytes from a freshly validated encoder output are already known valid.
+                    // Every differing external file still goes through the complete legacy validator.
+                    if validated != Some(bytes.as_slice()) {
+                        validate(bytes)?;
+                    }
                 }
                 Ok(bytes)
             });
@@ -159,12 +166,28 @@ impl Store {
         validate(bytes).map_err(|_| 3_u32)?;
         self.write_validated(bytes)
     }
-    fn write_validated(&mut self, bytes: &[u8]) -> Result<(), u32> {
+    pub(crate) fn write_validated(&mut self, bytes: &[u8]) -> Result<(), u32> {
+        self.write_checked(bytes, false)
+    }
+    /// Called only with fully validated compact records encoded by the streaming serializer.
+    pub(crate) fn write_compact(&mut self, bytes: &[u8]) -> Result<(), u32> {
+        self.write_checked(bytes, true)
+    }
+    fn write_checked(&mut self, bytes: &[u8], skip_identical: bool) -> Result<(), u32> {
         if self.blocked {
             return Err(2);
         }
         // External updates must be checked before a replacement, including writes before initial load.
-        self.read()?;
+        // Preserve legacy replacement of leaf symbolic links, even if their target bytes match.
+        let can_skip = skip_identical
+            && std::fs::symlink_metadata(&self.path)
+                .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink());
+        let current = self.read_matching(if can_skip { Some(bytes) } else { None })?;
+        if can_skip && current.as_deref() == Some(bytes) {
+            return Ok(());
+        }
+        // Release the prior file bytes before the write; retain only the encoded output.
+        drop(current);
         storage::write(&self.path, bytes, false, false).map_err(|_| 3_u32)
     }
 }
@@ -643,4 +666,44 @@ pub unsafe extern "C" fn aether_clipboard_archive_write_records(
         store.write_validated(&bytes)
     })();
     result.err().unwrap_or(0)
+}
+
+#[cfg(test)]
+mod compact_gate_tests {
+    use super::*;
+    use std::{
+        fs,
+        os::unix::fs::MetadataExt,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static ID: AtomicU64 = AtomicU64::new(0);
+    #[test]
+    fn exact_validated_output_skips_rewrite_but_never_bypasses_blocking() {
+        let directory = std::env::temp_dir().join(format!(
+            "aether-compact-gate-{}-{}",
+            std::process::id(),
+            ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let path = directory.join("history.json");
+        let bytes = br#"{"history":[],"pinnedItems":[]}"#;
+        validate(bytes).unwrap();
+        let mut s = Store {
+            path: path.clone(),
+            blocked: false,
+        };
+        s.write_compact(bytes).unwrap();
+        let inode = fs::metadata(&path).unwrap().ino();
+        s.write_compact(bytes).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().ino(), inode);
+        fs::write(&path, b"{corrupt synthetic}").unwrap();
+        assert_eq!(s.write_compact(bytes), Err(2));
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(s.write_compact(bytes), Err(2));
+        s.read().unwrap();
+        s.write_compact(bytes).unwrap();
+        fs::write(&path, br#"{"history":[],"pinnedItems":[],"groups":[]}"#).unwrap();
+        s.write_compact(bytes).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        fs::remove_dir_all(directory).unwrap();
+    }
 }

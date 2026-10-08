@@ -238,3 +238,5 @@ sh LaunchAether.command
 - 配置保存协调：`ConfigurationPersistenceTests`、`ConfigurationPersistenceIntegrationTests` 与既有 `shortcutArchiveModelIntegration` 验证整组写入前编码/目标检查、旧 ticket 拒绝及独立槽编辑、实际模型导入成功/失败/延迟保存/启动恢复与未知日志保护。Rust configuration_store 检查故障注入回滚、真实子进程四阶段退出恢复、外部内容及原始权限/链接/缺失文件保护和重复无改动保存不重写 inode。恢复记录仅使用隔离合成数据，未知/损坏记录不得被删除或覆盖。严格区分可恢复事务与同时原子双文件替换；跨进程写入、断电和硬件恢复不以这些测试宣称已验证。
 
 - 窗口超时夹具使用受控时钟和显式超时触发，不依赖主线程在真实 25 ms 内开始模拟 AX。worker 启动/结束等待有界，覆盖 AX 已挂起与 worker 尚未启动两类到期。生产默认仍使用系统 uptime 和原有 Task.sleep/时间限制；真实系统权限与窗口行为验收单独进行。
+
+- 剪贴板紧凑保存：`ClipboardStreamingTests` 对照冻结旧桥接及独立原生编解码器，检查完整字节/可选字段、跨度/分组/URL/UTF-8/Base64/日期错误无覆盖、相同文件 inode、叶链接替换及损坏阻止/明确重载。可选 Release 基准：`AETHER_CLIPBOARD_STREAM_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter 'ClipboardStreamingTests.testStreaming(Release|BridgeLiveAllocation)Benchmark'`。分别报告变化/不变化保存耗时，malloc 存活分配仅代表原生桥接，不替代整应用 RSS/footprint/CPU 采样。后续负载清理仍须保存成功且 cleanup 资格成立。
