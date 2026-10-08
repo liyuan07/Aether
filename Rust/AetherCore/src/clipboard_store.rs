@@ -162,7 +162,7 @@ mod tests {
             let result =
                 aether_clipboard_activation_plan(Some(find), (&mut calls as *mut Vec<u8>).cast());
             assert_eq!((result.section, result.index), (0, 3));
-            assert_eq!(calls, vec![0]);
+            assert_eq!(calls, vec![0_u8]);
             for kind in 0..6 {
                 let row = Row {
                     id: Uuid { bytes: [0; 16] },
