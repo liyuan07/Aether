@@ -777,3 +777,5 @@ mod preference_decode;
 mod configuration_store;
 
 mod clipboard_codec;
+
+mod data_migration;

@@ -1,6 +1,17 @@
 import XCTest
 @testable import SharedSupport
 final class MigrationTests: XCTestCase {
+    func testExistingDestinationWithoutReceiptIsNeverOverwritten() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let marker = root.appendingPathComponent("keep")
+        try Data("synthetic existing data".utf8).write(to: marker)
+        XCTAssertThrowsError(try DataMigration(destination: root).run(sources: [],
+            validate: { _ in XCTFail("must refuse before validation") },
+            applyPreferences: { _, _ in XCTFail("must not apply preferences") }))
+        XCTAssertEqual(try Data(contentsOf: marker), Data("synthetic existing data".utf8))
+    }
     func testFailedValidationLeavesOriginalAndNoDestination() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

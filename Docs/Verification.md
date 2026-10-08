@@ -248,3 +248,5 @@ sh LaunchAether.command
 - Prompt 设置协调：`PromptSettingsPersistenceTests` 对照冻结原生事务的 64 组故障组合、完整配置/Key 字节、文案及调用顺序，检查 Unicode 等价、空 Key、真实私有文件回滚；`PromptModelTests` 覆盖失败不发布、回滚失败持续阻止优化与修复重载/完整保存后的恢复。Rust prompt_settings 检查全部步骤结果组合与历史清理边界。安装 UI 验收仅使用隔离 profile、合成凭证及不可用的合成服务地址，不发送模型请求，不读取真实 Key。
 
 - Prompt 直接记录读取：`PromptRecordReadTests` 对照冻结旧读取器与独立原生封装解码，核对完整字段/Unicode 字节/日期位、nil 与空、所有权过期和错误无覆盖；Rust prompt_store decoded_tests 验证句柄/磁盘独立寿命与安全空视图。可选 Release 时间和返回数组存活分配基准：`AETHER_PROMPT_RECORD_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter PromptRecordReadTests`，后者不是峰值、RSS 或整应用占用。安装验收使用 LaunchServices 启动新隔离 profile，并在界面绑定前后核对 PID，避免直接子进程退出后界面工具打开正常实例。
+
+共享数据迁移：`MigrationTests` 检查验证失败保留源目录、偏好失败后的 copied 恢复及 complete 跳过；Rust `data_migration` 检查同步阶段顺序和失败停止。保持隔离临时目录，发布使用统一交付脚本一次回归。

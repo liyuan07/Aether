@@ -508,4 +508,8 @@ AetherPromptConfigurationView aether_prompt_decoded_configuration(const void *sn
 size_t aether_prompt_decoded_count(const void *snapshot);
 AetherPromptHistoryView aether_prompt_decoded_entry(const void *snapshot, size_t index);
 void aether_prompt_decoded_destroy(void *snapshot);
+// Synchronous migration effects: failed stops immediately; value carries phase/count facts.
+typedef struct { size_t value; uint8_t failed; } AetherMigrationEffectResult;
+typedef AetherMigrationEffectResult (*AetherMigrationEffect)(void *context, uint8_t step, size_t index);
+uint8_t aether_data_migration_run(AetherMigrationEffect effect, void *context);
 #endif
