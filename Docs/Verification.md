@@ -242,3 +242,5 @@ sh LaunchAether.command
 - 剪贴板紧凑保存：`ClipboardStreamingTests` 对照冻结旧桥接及独立原生编解码器，检查完整字节/可选字段、跨度/分组/URL/UTF-8/Base64/日期错误无覆盖、相同文件 inode、叶链接替换及损坏阻止/明确重载。可选 Release 基准：`AETHER_CLIPBOARD_STREAM_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter 'ClipboardStreamingTests.testStreaming(Release|BridgeLiveAllocation)Benchmark'`。分别报告变化/不变化保存耗时，malloc 存活分配仅代表原生桥接，不替代整应用 RSS/footprint/CPU 采样。后续负载清理仍须保存成功且 cleanup 资格成立。
 
 - 剪贴板历史编码：`RustClipboardArchiveTests.testHistoricalByteEncodingsMatchFoundationAndPreserveOriginalUntilSave` 与 `testHistoricalEncodingsRejectMalformedScalarsLikeFoundation` 对照 Foundation 五种编码、BOM/尾部/空白/非法标量，核对完整内容、读取无重写、保存重开和损坏覆盖保护。Rust 单测检查 UTF-8 借用与历史转码；安装验收仅用新建隔离合成 profile。
+
+- 剪贴板资源清理：`ClipboardPersistenceTests` 验证真实隔离目录的引用保护、保存成功前不清理、损坏阻止与显式重载、合并资格、Unicode/链接/目录与 FileManager 故障继续。Rust 测试检查引用计划独立所有权与非法候选先验证。可选完整保存/清理 Release 基准：`AETHER_CLIPBOARD_CLEANUP_BENCHMARK=1 swift test --package-path Packages/AetherKit -c release --filter ClipboardPersistenceTests.testResourceCleanupReleaseBenchmark`；与冻结旧原生拼接/清理流程交替比较，不替代整应用资源采样。

@@ -245,8 +245,111 @@ impl Serialize for Archive<'_> {
         map.end()
     }
 }
+/// Native primitives only: canonical Unicode equality and FileManager enumeration/removal.
+/// Returned name bytes remain valid until the next callback; no pointer survives this call.
+#[repr(C)]
+pub struct ResourceCleanup {
+    context: *mut std::ffi::c_void,
+    canonical: Option<unsafe extern "C" fn(*mut std::ffi::c_void, Bytes) -> Bytes>,
+    enumerate: Option<unsafe extern "C" fn(*mut std::ffi::c_void, u8) -> usize>,
+    name: Option<unsafe extern "C" fn(*mut std::ffi::c_void, usize) -> Bytes>,
+    remove: Option<unsafe extern "C" fn(*mut std::ffi::c_void, usize)>,
+}
+pub struct ResourcePlan {
+    kept: [std::collections::HashSet<Vec<u8>>; 2],
+}
+impl Archive<'_> {
+    unsafe fn resource_plan(&self, callbacks: &ResourceCleanup) -> Option<ResourcePlan> {
+        let canonical = callbacks.canonical?;
+        let mut plan = ResourcePlan {
+            kept: Default::default(),
+        };
+        for (kind, kept) in plan.kept.iter_mut().enumerate() {
+            let mut raw_names = std::collections::HashSet::new();
+            for row in self.rows {
+                let (span, bit) = if kind == 0 {
+                    (row.image_file_name, 16)
+                } else {
+                    (row.rtf_file_name, 256)
+                };
+                if row.present & bit == 0 {
+                    continue;
+                }
+                let value = span
+                    .text(self.bytes)
+                    .expect("validated resource span")
+                    .as_bytes();
+                // Identical raw names have identical canonical names; borrow them only in this scope.
+                if !raw_names.insert(value) {
+                    continue;
+                }
+                // ASCII is already canonically composed; do not cross into Foundation for it.
+                let normalized = if value.is_ascii() {
+                    value
+                } else {
+                    let normalized = unsafe {
+                        canonical(
+                            callbacks.context,
+                            Bytes {
+                                data: value.as_ptr(),
+                                length: value.len(),
+                            },
+                        )
+                    };
+                    unsafe { normalized.slice() }?
+                };
+                if !kept.contains(normalized) {
+                    kept.insert(normalized.to_vec());
+                }
+            }
+        }
+        Some(plan)
+    }
+}
 /// # Safety
-/// Store is live and exclusively borrowed. All arrays/bytes are immutable and live until return.
+/// Plan is live; callback context is live. Run synchronously after the native encoding wire is freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_resource_cleanup_run(
+    plan: *const ResourcePlan,
+    callbacks: *const ResourceCleanup,
+) {
+    let (Some(plan), Some(callbacks)) = (unsafe { plan.as_ref() }, unsafe { callbacks.as_ref() })
+    else {
+        return;
+    };
+    let (Some(enumerate), Some(name), Some(remove)) =
+        (callbacks.enumerate, callbacks.name, callbacks.remove)
+    else {
+        return;
+    };
+    for (kind, kept) in plan.kept.iter().enumerate() {
+        let count = unsafe { enumerate(callbacks.context, kind as u8) };
+        // Validate all candidate names before any removals, matching the prior planner.
+        let mut indices = Vec::new();
+        for index in 0..count {
+            let candidate = unsafe { name(callbacks.context, index) };
+            let Some(candidate) = (unsafe { candidate.slice() }) else {
+                return;
+            };
+            if !kept.contains(candidate) {
+                indices.push(index);
+            }
+        }
+        for index in indices {
+            unsafe { remove(callbacks.context, index) };
+        }
+    }
+}
+/// # Safety
+/// Destroy a live plan once after all synchronous calls finish.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_resource_cleanup_destroy(plan: *mut ResourcePlan) {
+    if !plan.is_null() {
+        drop(unsafe { Box::from_raw(plan) });
+    }
+}
+/// # Safety
+/// Same contract as write_spans_preparing_cleanup; cleanup is omitted.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aether_clipboard_archive_write_spans(
     store: *mut Store,
@@ -261,6 +364,45 @@ pub unsafe extern "C" fn aether_clipboard_archive_write_spans(
     has_groups: u8,
     bytes: Bytes,
 ) -> u32 {
+    unsafe {
+        aether_clipboard_archive_write_spans_preparing_cleanup(
+            store,
+            rows,
+            row_count,
+            history_count,
+            pinned_count,
+            urls,
+            url_count,
+            groups,
+            group_count,
+            has_groups,
+            bytes,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+        )
+    }
+}
+/// # Safety
+/// Store is live and exclusively borrowed. All arrays/bytes are immutable and live until return.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_clipboard_archive_write_spans_preparing_cleanup(
+    store: *mut Store,
+    rows: *const Item,
+    row_count: usize,
+    history_count: usize,
+    pinned_count: usize,
+    urls: *const Span,
+    url_count: usize,
+    groups: *const Group,
+    group_count: usize,
+    has_groups: u8,
+    bytes: Bytes,
+    cleanup: *const ResourceCleanup,
+    plan: *mut *mut ResourcePlan,
+) -> u32 {
+    if let Some(plan) = unsafe { plan.as_mut() } {
+        *plan = std::ptr::null_mut();
+    }
     let result = (|| {
         let store = unsafe { store.as_mut() }.ok_or(3_u32)?;
         let archive = Archive {
@@ -274,7 +416,16 @@ pub unsafe extern "C" fn aether_clipboard_archive_write_spans(
         };
         archive.validate()?;
         let encoded = serde_json::to_vec(&archive).map_err(|_| 3_u32)?;
-        store.write_compact(&encoded)
+        store.write_compact(&encoded)?;
+        drop(encoded);
+        if let (Some(callbacks), Some(output)) =
+            (unsafe { cleanup.as_ref() }, unsafe { plan.as_mut() })
+        {
+            if let Some(plan) = unsafe { archive.resource_plan(callbacks) } {
+                *output = Box::into_raw(Box::new(plan));
+            }
+        }
+        Ok(())
     })();
     result.err().unwrap_or(0)
 }
@@ -289,6 +440,130 @@ mod tests {
             start,
             length: value.len(),
         }
+    }
+    #[derive(Default)]
+    struct Files {
+        kind: u8,
+        removed: Vec<(u8, usize)>,
+        invalid: bool,
+    }
+    unsafe extern "C" fn canonical(_: *mut std::ffi::c_void, value: Bytes) -> Bytes {
+        value
+    }
+    unsafe extern "C" fn enumerate(context: *mut std::ffi::c_void, kind: u8) -> usize {
+        unsafe { &mut *context.cast::<Files>() }.kind = kind;
+        2
+    }
+    unsafe extern "C" fn name(context: *mut std::ffi::c_void, index: usize) -> Bytes {
+        let files = unsafe { &mut *context.cast::<Files>() };
+        if files.invalid && index == 1 {
+            return Bytes {
+                data: std::ptr::null(),
+                length: 1,
+            };
+        }
+        let value: &[u8] = if index == 0 { b"keep" } else { b"old" };
+        Bytes {
+            data: value.as_ptr(),
+            length: value.len(),
+        }
+    }
+    unsafe extern "C" fn remove(context: *mut std::ffi::c_void, index: usize) {
+        let files = unsafe { &mut *context.cast::<Files>() };
+        files.removed.push((files.kind, index));
+    }
+    #[test]
+    fn resource_plan_owns_names_and_validates_all_candidates_before_removal() {
+        let mut files = Files::default();
+        let callbacks = ResourceCleanup {
+            context: (&mut files as *mut Files).cast(),
+            canonical: Some(canonical),
+            enumerate: Some(enumerate),
+            name: Some(name),
+            remove: Some(remove),
+        };
+        let mut bytes = b"keep".to_vec();
+        let field = Span {
+            start: 0,
+            length: bytes.len(),
+        };
+        let unused = Span {
+            start: 0,
+            length: 0,
+        };
+        let rows = [Item {
+            id: unused,
+            preview: unused,
+            string_data: unused,
+            image_file_name: field,
+            image_content_hash: unused,
+            rtf_data: unused,
+            rtf_file_name: field,
+            timestamp: 0.,
+            url_start: 0,
+            file_count: 0,
+            present: 16 | 256,
+            kind: 5,
+            pinned: 0,
+        }];
+        let plan = unsafe {
+            Archive {
+                rows: &rows,
+                urls: &[],
+                groups: &[],
+                bytes: &bytes,
+                history_count: 1,
+                pinned_end: 1,
+                has_groups: false,
+            }
+            .resource_plan(&callbacks)
+        }
+        .unwrap();
+        bytes.fill(b'x');
+        drop(bytes);
+        unsafe { aether_clipboard_resource_cleanup_run(&plan, &callbacks) };
+        assert_eq!(files.removed, [(0, 1), (1, 1)]);
+        files.removed.clear();
+        files.invalid = true;
+        unsafe { aether_clipboard_resource_cleanup_run(&plan, &callbacks) };
+        assert!(files.removed.is_empty());
+        unsafe { aether_clipboard_resource_cleanup_run(std::ptr::null(), &callbacks) };
+        unsafe { aether_clipboard_resource_cleanup_destroy(std::ptr::null_mut()) };
+    }
+    #[test]
+    fn failed_save_resets_cleanup_output_without_any_callbacks() {
+        let mut files = Files::default();
+        let callbacks = ResourceCleanup {
+            context: (&mut files as *mut Files).cast(),
+            canonical: Some(canonical),
+            enumerate: Some(enumerate),
+            name: Some(name),
+            remove: Some(remove),
+        };
+        let mut plan = std::ptr::dangling_mut::<ResourcePlan>();
+        let status = unsafe {
+            aether_clipboard_archive_write_spans_preparing_cleanup(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                0,
+                0,
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                0,
+                Bytes {
+                    data: std::ptr::null(),
+                    length: 0,
+                },
+                &callbacks,
+                &mut plan,
+            )
+        };
+        assert_eq!(status, 3);
+        assert!(plan.is_null());
+        assert!(files.removed.is_empty());
     }
     #[test]
     fn every_presence_combination_streams_exact_fields_and_float_bits() {

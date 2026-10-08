@@ -87,36 +87,8 @@ final class ClipboardPersistenceCoordinator: @unchecked Sendable {
     }
 
     private func write(_ archive: ClipboardArchive, cleanup: Bool) {
-        guard (try? archiveStore.save(archive)) != nil else {
-            return
-        }
-        guard cleanup else { return }
-
-        let allItems = archive.history
-            + archive.pinnedItems
-            + (archive.groups ?? []).flatMap(\.items)
-        removeUnreferencedFiles(
-            in: imagesDirectory,
-            keeping: allItems.compactMap(\.imageFileName)
-        )
-        removeUnreferencedFiles(
-            in: payloadsDirectory,
-            keeping: allItems.compactMap(\.rtfFileName)
-        )
-    }
-
-    private func removeUnreferencedFiles(
-        in directory: URL,
-        keeping names: [String]
-    ) {
-        guard let files = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        ) else {
-            return
-        }
-        let indices = rustClipboardUnreferencedResources(keeping: names, files: files.map(\.lastPathComponent))
-        for index in indices { try? fileManager.removeItem(at: files[index]) }
+        let files = cleanup ? ClipboardResourceFiles(images: imagesDirectory, payloads: payloadsDirectory, fileManager: fileManager) : nil
+        try? archiveStore.save(archive, cleanup: files)
     }
 }
 

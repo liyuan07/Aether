@@ -43,15 +43,30 @@ final class RustClipboardArchive: @unchecked Sendable {
             return ClipboardArchive(history: history, pinnedItems: pinned, groups: groups)
         } catch { aether_clipboard_archive_block(core); throw error }
     }
-    func save(_ archive: ClipboardArchive) throws {
+    func save(_ archive: ClipboardArchive, cleanup: ClipboardResourceFiles? = nil) throws {
         lock.lock(); defer { lock.unlock() }
-        let wire = ClipboardArchiveWire(archive)
-        let status = wire.withViews { rows, urls, groups, bytes in
-            aether_clipboard_archive_write_spans(core, rows.baseAddress, rows.count,
-                archive.history.count, archive.pinnedItems.count, urls.baseAddress, urls.count,
-                groups.baseAddress, groups.count, archive.groups == nil ? 0 : 1, bytes)
+        var callbacks = cleanup?.callbacks ?? AetherClipboardResourceCleanup()
+        var plan: UnsafeMutableRawPointer?
+        defer { aether_clipboard_resource_cleanup_destroy(plan) }
+        let status = withExtendedLifetime(cleanup) {
+            withUnsafePointer(to: &callbacks) { callbacks in
+                let status = encodeAndWrite(archive, callbacks: cleanup == nil ? nil : callbacks, plan: &plan)
+                if status == 0, plan != nil { autoreleasepool { aether_clipboard_resource_cleanup_run(plan, callbacks) } }
+                return status
+            }
         }
         if status != 0 { throw RustDiskError(status: status) }
+    }
+    // This scope ends before enumeration/removal: the complete bridge arena cannot remain live then.
+    @inline(never) private func encodeAndWrite(_ archive: ClipboardArchive, callbacks: UnsafePointer<AetherClipboardResourceCleanup>?, plan: inout UnsafeMutableRawPointer?) -> UInt32 {
+        let wire = ClipboardArchiveWire(archive)
+        return autoreleasepool {
+            wire.withViews { rows, urls, groups, bytes in
+                aether_clipboard_archive_write_spans_preparing_cleanup(core, rows.baseAddress, rows.count,
+                    archive.history.count, archive.pinnedItems.count, urls.baseAddress, urls.count,
+                    groups.baseAddress, groups.count, archive.groups == nil ? 0 : 1, bytes, callbacks, &plan)
+            }
+        }
     }
 }
 
@@ -115,5 +130,41 @@ struct ClipboardArchiveWire {
                 }
             }
         }
+    }
+}
+
+/// Platform file/Unicode primitives; Rust owns reference selection, eligibility and removal planning.
+final class ClipboardResourceFiles {
+    private let directories: [URL]
+    private let fileManager: FileManager
+    private var files: [URL] = []
+    private let nameBuffer = NSMutableData()
+    init(images: URL, payloads: URL, fileManager: FileManager = .default) {
+        directories = [images, payloads]; self.fileManager = fileManager
+    }
+    private func canonical(_ text: String) -> AetherBytes {
+        var normalized = text.precomposedStringWithCanonicalMapping
+        nameBuffer.length = 0
+        normalized.withUTF8 { bytes in
+            if let base = bytes.baseAddress { nameBuffer.append(base, length: bytes.count) }
+        }
+        return .init(data: nameBuffer.bytes.assumingMemoryBound(to: UInt8.self), length: nameBuffer.length)
+    }
+    var callbacks: AetherClipboardResourceCleanup {
+        .init(context: Unmanaged.passUnretained(self).toOpaque(), canonical: { pointer, bytes in
+            let owner = Unmanaged<ClipboardResourceFiles>.fromOpaque(pointer!).takeUnretainedValue()
+            return owner.canonical(clipboardArchiveText(bytes))
+        }, enumerate: { pointer, kind in
+            let owner = Unmanaged<ClipboardResourceFiles>.fromOpaque(pointer!).takeUnretainedValue()
+            guard Int(kind) < owner.directories.count else { return 0 }
+            owner.files = (try? owner.fileManager.contentsOfDirectory(at: owner.directories[Int(kind)], includingPropertiesForKeys: nil)) ?? []
+            return owner.files.count
+        }, name: { pointer, index in
+            let owner = Unmanaged<ClipboardResourceFiles>.fromOpaque(pointer!).takeUnretainedValue()
+            return owner.canonical(owner.files[index].lastPathComponent)
+        }, remove: { pointer, index in
+            let owner = Unmanaged<ClipboardResourceFiles>.fromOpaque(pointer!).takeUnretainedValue()
+            try? owner.fileManager.removeItem(at: owner.files[index])
+        })
     }
 }

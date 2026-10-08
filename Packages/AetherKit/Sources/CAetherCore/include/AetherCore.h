@@ -473,4 +473,20 @@ uint32_t aether_clipboard_archive_write_spans(void *store,
     const AetherClipboardArchiveSpanItem *rows, size_t count, size_t history_count, size_t pinned_count,
     const AetherRuleText *urls, size_t url_count, const AetherClipboardArchiveSpanGroup *groups,
     size_t group_count, uint8_t has_groups, AetherBytes bytes);
+// Prepare an owned reference plan only after successful save; release the encoding wire before run.
+// Names live until the next callback. Destroy the plan after synchronous run.
+// Native callbacks only provide canonicalization, directory enumeration and best-effort removal.
+typedef struct {
+    void *context;
+    AetherBytes (*canonical)(void *context, AetherBytes name);
+    size_t (*enumerate)(void *context, uint8_t kind);
+    AetherBytes (*name)(void *context, size_t index);
+    void (*remove)(void *context, size_t index);
+} AetherClipboardResourceCleanup;
+uint32_t aether_clipboard_archive_write_spans_preparing_cleanup(void *store,
+    const AetherClipboardArchiveSpanItem *rows, size_t count, size_t history_count, size_t pinned_count,
+    const AetherRuleText *urls, size_t url_count, const AetherClipboardArchiveSpanGroup *groups,
+    size_t group_count, uint8_t has_groups, AetherBytes bytes, const AetherClipboardResourceCleanup *cleanup, void **plan);
+void aether_clipboard_resource_cleanup_run(const void *plan, const AetherClipboardResourceCleanup *cleanup);
+void aether_clipboard_resource_cleanup_destroy(void *plan);
 #endif
