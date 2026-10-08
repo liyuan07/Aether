@@ -85,6 +85,17 @@ uint32_t aether_memo_complete(void *store, const char *id);
 void *aether_memo_snapshot(const void *store, uint8_t sorted);
 size_t aether_memo_order(const void *store, size_t *output, size_t capacity);
 typedef struct { const uint8_t *data; size_t length; } AetherBytes;
+// Memo record dates use the existing on-disk milliseconds-since-1970 convention.
+typedef struct { AetherBytes id, title; double created_at, deadline; uint8_t has_deadline; } AetherMemoView;
+uint32_t aether_memo_load_records(void *store);
+size_t aether_memo_count(const void *store);
+uint8_t aether_memo_record(const void *store, size_t index, AetherMemoView *output);
+void *aether_memo_writer_create(void);
+uint32_t aether_memo_writer_append(void *writer, AetherMemoView view);
+uint32_t aether_memo_save_records(void *store, void *writer);
+void aether_memo_writer_destroy(void *writer);
+uint32_t aether_memo_add_record(void *store, AetherMemoView view);
+
 void *aether_prompt_request(AetherBytes model, AetherBytes rules, AetherBytes input);
 void *aether_prompt_response(int32_t status, AetherBytes body);
 void *aether_prompt_endpoint(uint8_t scheme, AetherBytes host, AetherBytes path);

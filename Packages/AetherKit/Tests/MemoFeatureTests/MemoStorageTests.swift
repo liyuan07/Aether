@@ -77,6 +77,27 @@ final class MemoStorageTests: XCTestCase {
         XCTAssertEqual(try storage.load(), [item])
     }
 
+    func testTypedRecordsKeepUnicodeAndRejectPartialInvalidSave() throws {
+        let storage = MemoStorage(directory: directory)
+        let items = [MemoItem(title: "合成\0待办👨‍👩‍👧‍👦e\u{301}", deadline: Date(timeIntervalSince1970: -0.125),
+                              createdAt: Date(timeIntervalSince1970: 1_700_000_123.456)),
+                     MemoItem(title: "", createdAt: Date(timeIntervalSince1970: 0))]
+        try storage.save(items)
+        let file = directory.appendingPathComponent("items.json")
+        let original = try Data(contentsOf: file)
+        // Independent native decoder confirms the unchanged disk contract.
+        struct Envelope: Decodable { let schemaVersion: Int; let payload: [MemoItem] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        let disk = try decoder.decode(Envelope.self, from: original)
+        XCTAssertEqual(disk.schemaVersion, 1)
+        XCTAssertEqual(disk.payload, items)
+        XCTAssertEqual(try storage.load(), items)
+        XCTAssertThrowsError(try storage.save([items[0], MemoItem(title: "无效日期", createdAt: Date(timeIntervalSince1970: .infinity))]))
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        XCTAssertEqual(try storage.presentation().items, items)
+    }
+
     func testNewerFormatIsNotOverwritten() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent("items.json")

@@ -15,7 +15,7 @@ public enum MemoStorageError: LocalizedError {
 }
 
 /// Rust owns data validation, mutation, atomic persistence and ordering.
-/// Swift serializes platform UUID/Date DTOs for the native view adapter.
+/// Swift copies borrowed records into platform UUID/Date DTOs for the native view adapter.
 public final class MemoStorage {
     private let lock = NSRecursiveLock()
     private let core: UnsafeMutableRawPointer?
@@ -27,17 +27,21 @@ public final class MemoStorage {
 
     public func load() throws -> [MemoItem] {
         lock.lock(); defer { lock.unlock() }
-        return try decode(aether_memo_load(core))
+        try check(aether_memo_load_records(core))
+        return try records()
     }
     public func save(_ items: [MemoItem]) throws {
         lock.lock(); defer { lock.unlock() }
-        let data = try encode(items)
-        try check(data.withUnsafeBytes { aether_memo_save(core, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) })
+        let writer = aether_memo_writer_create()
+        defer { aether_memo_writer_destroy(writer) }
+        for item in items {
+            try check(withRecord(item) { aether_memo_writer_append(writer, $0) })
+        }
+        try check(aether_memo_save_records(core, writer))
     }
     func add(_ item: MemoItem) throws {
         lock.lock(); defer { lock.unlock() }
-        let data = try encode(item)
-        try check(data.withUnsafeBytes { aether_memo_add(core, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) })
+        try check(withRecord(item) { aether_memo_add_record(core, $0) })
     }
     func complete(id: UUID) throws {
         lock.lock(); defer { lock.unlock() }
@@ -45,28 +49,36 @@ public final class MemoStorage {
     }
     func presentation(reloading: Bool = false) throws -> (items: [MemoItem], sorted: [MemoItem]) {
         lock.lock(); defer { lock.unlock() }
-        let items = try decode(reloading ? aether_memo_load(core) : aether_memo_snapshot(core, 0))
+        if reloading { try check(aether_memo_load_records(core)) }
+        let items = try records()
         var indices = Array(repeating: 0, count: items.count)
         let count = indices.withUnsafeMutableBufferPointer { aether_memo_order(core, $0.baseAddress, $0.count) }
         guard count == items.count else { throw MemoStorageError.unreadable }
         return (items, indices.map { items[$0] })
     }
-    private func encode<T: Encodable>(_ value: T) throws -> Data {
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .millisecondsSince1970
-            return try encoder.encode(value)
-        } catch { throw MemoStorageError.writeFailed }
+    private func records() throws -> [MemoItem] {
+        guard core != nil else { throw MemoStorageError.unreadable }
+        var items: [MemoItem] = []
+        items.reserveCapacity(aether_memo_count(core))
+        for index in 0..<aether_memo_count(core) {
+            var view = AetherMemoView()
+            guard aether_memo_record(core, index, &view) != 0,
+                  let id = UUID(uuidString: memoText(view.id)) else { throw MemoStorageError.unreadable }
+            items.append(MemoItem(id: id, title: memoText(view.title),
+                deadline: view.has_deadline == 0 ? nil : Date(timeIntervalSince1970: view.deadline / 1000),
+                createdAt: Date(timeIntervalSince1970: view.created_at / 1000)))
+        }
+        return items
     }
-    private func decode(_ buffer: UnsafeMutableRawPointer?) throws -> [MemoItem] {
-        do {
-            let data = try RustBuffer.take(buffer)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .millisecondsSince1970
-            return try decoder.decode([MemoItem].self, from: data)
-        } catch let error as RustDiskError {
-            throw error.status == 4 ? MemoStorageError.unsupportedVersion : MemoStorageError.unreadable
-        } catch { throw MemoStorageError.unreadable }
+    private func withRecord<T>(_ item: MemoItem, body: (AetherMemoView) -> T) -> T {
+        withMemoUTF8(item.id.uuidString) { id in
+            withMemoUTF8(item.title) { title in
+                body(AetherMemoView(id: id, title: title,
+                    created_at: item.createdAt.timeIntervalSince1970 * 1000,
+                    deadline: (item.deadline?.timeIntervalSince1970 ?? 0) * 1000,
+                    has_deadline: item.deadline == nil ? 0 : 1))
+            }
+        }
     }
     private func check(_ status: UInt32) throws {
         switch status {
@@ -76,4 +88,13 @@ public final class MemoStorage {
         default: throw MemoStorageError.writeFailed
         }
     }
+}
+
+private func memoText(_ bytes: AetherBytes) -> String {
+    guard bytes.length != 0, let data = bytes.data else { return "" }
+    return String(decoding: UnsafeBufferPointer(start: data, count: bytes.length), as: UTF8.self)
+}
+private func withMemoUTF8<T>(_ text: String, _ body: (AetherBytes) -> T) -> T {
+    if let result = text.utf8.withContiguousStorageIfAvailable({ body(AetherBytes(data: $0.baseAddress, length: $0.count)) }) { return result }
+    return Array(text.utf8).withUnsafeBufferPointer { body(AetherBytes(data: $0.baseAddress, length: $0.count)) }
 }

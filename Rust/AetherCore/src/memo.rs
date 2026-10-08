@@ -1,4 +1,5 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
+use crate::abi::Bytes;
 use crate::storage::{self, Buffer};
 use crate::versioned;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,29 @@ fn read(path: &std::path::Path) -> Result<Vec<Memo>, u32> {
     Ok(items)
 }
 impl MemoStore {
+    fn load(&mut self) -> Result<(), u32> {
+        match read(&self.path) {
+            Ok(items) => {
+                self.items = items;
+                self.blocked = false;
+                Ok(())
+            }
+            Err(e) => {
+                self.blocked = true;
+                Err(e)
+            }
+        }
+    }
+    fn add(&mut self, item: Memo) -> Result<(), u32> {
+        if !item.valid() || item.title.is_empty() {
+            return Err(3);
+        }
+        self.ensure_writable()?;
+        let items: Vec<&Memo> = self.items.iter().chain(std::iter::once(&item)).collect();
+        self.write(&items)?;
+        self.items.push(item);
+        Ok(())
+    }
     fn ensure_writable(&mut self) -> Result<(), u32> {
         if self.blocked {
             return Err(2);
@@ -114,16 +138,9 @@ pub unsafe extern "C" fn aether_memo_load(store: *mut MemoStore) -> *mut Buffer 
         return storage::buffer(vec![], 2);
     }
     let s = unsafe { &mut *store };
-    match read(&s.path) {
-        Ok(items) => {
-            s.items = items;
-            s.blocked = false;
-            s.result(false)
-        }
-        Err(e) => {
-            s.blocked = true;
-            storage::buffer(vec![], e)
-        }
+    match s.load() {
+        Ok(()) => s.result(false),
+        Err(e) => storage::buffer(vec![], e),
     }
 }
 /// # Safety
@@ -162,19 +179,7 @@ pub unsafe extern "C" fn aether_memo_add(
     else {
         return 3;
     };
-    if !item.valid() || item.title.is_empty() {
-        return 3;
-    }
-    let s = unsafe { &mut *store };
-    if let Err(e) = s.ensure_writable() {
-        return e;
-    }
-    let items: Vec<&Memo> = s.items.iter().chain(std::iter::once(&item)).collect();
-    if let Err(e) = s.write(&items) {
-        return e;
-    }
-    s.items.push(item);
-    0
+    unsafe { &mut *store }.add(item).err().unwrap_or(0)
 }
 /// # Safety
 /// Store is live; ID is a readable NUL-terminated UTF-8 UUID; calls are serialized.
@@ -231,4 +236,143 @@ pub unsafe extern "C" fn aether_memo_order(
         std::ptr::copy_nonoverlapping(indices.as_ptr(), output, indices.len());
     }
     indices.len()
+}
+
+// Borrowed views remain valid until the next mutation of their store.
+#[repr(C)]
+pub struct MemoView {
+    id: Bytes,
+    title: Bytes,
+    created_at: f64,
+    deadline: f64,
+    has_deadline: u8,
+}
+impl MemoView {
+    unsafe fn owned(self) -> Option<Memo> {
+        let item = Memo {
+            id: unsafe { self.id.text()? }.to_owned(),
+            title: unsafe { self.title.text()? }.to_owned(),
+            created_at: self.created_at,
+            deadline: (self.has_deadline != 0).then_some(self.deadline),
+        };
+        item.valid().then_some(item)
+    }
+}
+pub struct MemoWriter {
+    items: Vec<Memo>,
+    failed: bool,
+}
+/// # Safety
+/// Store is live and exclusively borrowed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_load_records(store: *mut MemoStore) -> u32 {
+    let Some(s) = (unsafe { store.as_mut() }) else {
+        return 2;
+    };
+    s.load().err().unwrap_or(0)
+}
+/// # Safety
+/// Store is live and not concurrently mutated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_count(store: *const MemoStore) -> usize {
+    unsafe { store.as_ref() }.map_or(0, |s| s.items.len())
+}
+/// # Safety
+/// Store is live; output is writable. Borrowed bytes must be copied before mutation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_record(
+    store: *const MemoStore,
+    index: usize,
+    output: *mut MemoView,
+) -> u8 {
+    let Some(item) = (unsafe { store.as_ref() }).and_then(|s| s.items.get(index)) else {
+        return 0;
+    };
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return 0;
+    };
+    *output = MemoView {
+        id: Bytes {
+            data: item.id.as_ptr(),
+            length: item.id.len(),
+        },
+        title: Bytes {
+            data: item.title.as_ptr(),
+            length: item.title.len(),
+        },
+        created_at: item.created_at,
+        deadline: item.deadline.unwrap_or(0.0),
+        has_deadline: u8::from(item.deadline.is_some()),
+    };
+    1
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_memo_writer_create() -> *mut MemoWriter {
+    Box::into_raw(Box::new(MemoWriter {
+        items: vec![],
+        failed: false,
+    }))
+}
+/// # Safety
+/// Writer is live and exclusively borrowed; view bytes are readable for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_writer_append(writer: *mut MemoWriter, view: MemoView) -> u32 {
+    let Some(writer) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if writer.failed {
+        return 3;
+    }
+    match unsafe { view.owned() } {
+        Some(item) => {
+            writer.items.push(item);
+            0
+        }
+        None => {
+            writer.failed = true;
+            3
+        }
+    }
+}
+/// # Safety
+/// Store and writer are live, distinct, exclusively borrowed. Writer is consumed on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_save_records(
+    store: *mut MemoStore,
+    writer: *mut MemoWriter,
+) -> u32 {
+    let Some(s) = (unsafe { store.as_mut() }) else {
+        return 3;
+    };
+    let Some(writer) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if writer.failed {
+        return 3;
+    }
+    if let Err(e) = s.ensure_writable().and_then(|()| s.write(&writer.items)) {
+        return e;
+    }
+    s.items = std::mem::take(&mut writer.items);
+    0
+}
+/// # Safety
+/// Writer is live and destroyed exactly once after its borrowers finish.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_writer_destroy(writer: *mut MemoWriter) {
+    if !writer.is_null() {
+        drop(unsafe { Box::from_raw(writer) });
+    }
+}
+/// # Safety
+/// Store is live and exclusively borrowed; view bytes are readable for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_memo_add_record(store: *mut MemoStore, view: MemoView) -> u32 {
+    let Some(s) = (unsafe { store.as_mut() }) else {
+        return 3;
+    };
+    let Some(item) = (unsafe { view.owned() }) else {
+        return 3;
+    };
+    s.add(item).err().unwrap_or(0)
 }

@@ -264,3 +264,7 @@ Prompt 类型化保存沿用 PromptStorage/PromptModel 回归；补充非有限�
 快捷操作启动协调复用 `configurationImportFailureKeepsFilesModelSelectionAndNotifications`、`configurationImportRejectsPendingOldRulesAndPreferences` 和 `configurationStartupRecoversPartialPairAndProtectsUnknownJournal` 集成回归；核心检查初始化阶段顺序及升级失败保留已存规则。统一交付一次回归安装。
 
 紧凑搜索存储沿用 Rust search_contract 与既有 RustSearchParityTests/SearchTests：UTF-8、字符边界、评分、排序、取消和来源行为继续通过原生参照回归。原有核心契约补充掩码碰撞拒绝，统一交付回归安装，不新增基准。
+
+### 备忘录记录桥接
+
+备忘录在 Rust 内持有记录并直接向 Swift 提供借用视图；Swift 在锁内复制原生 UUID、Date 和标题。保存/新增通过类型化记录进入 Rust，移除生产路径重复 JSON 编解码；磁盘版本、毫秒时间戳、排序及写入成功后发布的语义保持不变。未知版本、损坏文件和无效日期不会被部分数据覆盖。验证复用 MemoStorage 回归，并用独立 Foundation 解码确认原文件格式兼容；此变更不单独推导整机资源降幅。
