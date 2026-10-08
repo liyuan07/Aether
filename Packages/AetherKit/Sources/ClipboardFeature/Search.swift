@@ -507,7 +507,7 @@ private func bestClipboardScore(
     query: ClipboardNormalizedQuery,
     documents: [RustSearchDocument]
 ) -> Int? {
-    query.core.score(document: RustSearchDocument(documents: documents))
+    query.core.score(documents: documents)
 }
 
 struct ClipboardRankedSources {

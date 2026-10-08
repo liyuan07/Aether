@@ -44,6 +44,15 @@ public final class RustSearchSegment: @unchecked Sendable {
         }
         return score < 0 ? nil : Int(score)
     }
+    public func score(documents: [RustSearchDocument]) -> Int? {
+        let score = withExtendedLifetime(documents) {
+            documents.map { $0.handle.map(UnsafeRawPointer.init) }.withUnsafeBufferPointer {
+                aether_search_documents_score(handle, $0.baseAddress, $0.count)
+            }
+        }
+        return score < 0 ? nil : Int(score)
+    }
+
 }
 
 /// Rust owns the immutable segment collection. No Swift segment array or

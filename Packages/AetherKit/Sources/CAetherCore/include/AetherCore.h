@@ -593,4 +593,5 @@ uint32_t aether_quick_writer_collection(void *writer, AetherQuickCollectionView 
 uint32_t aether_quick_writer_entry(void *writer, AetherQuickEntryView value, AetherBytes comparison);
 uint32_t aether_quick_save_records(void *store, void *writer);
 void aether_quick_writer_destroy(void *writer);
+int32_t aether_search_documents_score(const void *query, const void *const *documents, size_t count);
 #endif

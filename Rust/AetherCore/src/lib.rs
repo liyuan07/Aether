@@ -140,13 +140,21 @@ impl Boundaries {
 struct Segment {
     bytes: Box<[u8]>,
     boundaries: Boundaries,
-    character_count: usize,
     // A 64-bit ASCII bloom mask is only a rejection accelerator. Collisions may fall
     // through to exact grapheme comparison, but can never create a positive score.
     mask: u64,
     numeric: bool,
 }
 impl Segment {
+    fn character_count(&self) -> usize {
+        match &self.boundaries {
+            Boundaries::Implicit => self.bytes.len(),
+            Boundaries::U8(v) => v.len() - 1,
+            Boundaries::U16(v) => v.len() - 1,
+            Boundaries::U32(v) => v.len() - 1,
+            Boundaries::Native(v) => v.len() - 1,
+        }
+    }
     fn boundary(&self, index: usize) -> usize {
         self.boundaries.boundary(index)
     }
@@ -154,8 +162,8 @@ impl Segment {
         self.boundaries.position(byte)
     }
     fn score(&self, segment: &Self) -> i32 {
-        let qn = self.character_count;
-        let sn = segment.character_count;
+        let qn = self.character_count();
+        let sn = segment.character_count();
         if qn == 0 || sn == 0 {
             return -1;
         }
@@ -257,11 +265,6 @@ pub unsafe extern "C" fn aether_search_create(
     } else {
         boundaries.to_vec()
     };
-    let character_count = if owned_boundaries.is_empty() {
-        length
-    } else {
-        owned_boundaries.len() - 1
-    };
     let mask = bytes
         .iter()
         .filter(|b| **b < 128)
@@ -269,7 +272,6 @@ pub unsafe extern "C" fn aether_search_create(
     std::sync::Arc::into_raw(std::sync::Arc::new(Segment {
         bytes: bytes.into(),
         boundaries: Boundaries::new(&owned_boundaries),
-        character_count,
         mask,
         numeric: numeric != 0,
     }))
@@ -444,6 +446,30 @@ pub unsafe extern "C" fn aether_search_document_score(
         .unwrap_or(-1)
 }
 
+/// # Safety
+/// Query and all non-null documents are live and immutable; span is readable for count.
+/// This call borrows existing segments without allocating or changing reference counts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_search_documents_score(
+    query: *const c_void,
+    documents: *const *const c_void,
+    count: usize,
+) -> i32 {
+    if query.is_null() || (count != 0 && documents.is_null()) {
+        return -1;
+    }
+    let span = if count == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(documents, count) }
+    };
+    span.iter()
+        .filter(|document| !document.is_null())
+        .map(|&document| unsafe { aether_search_document_score(query, document) })
+        .max()
+        .unwrap_or(-1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,7 +503,6 @@ mod tests {
         Segment {
             bytes: s.as_bytes().into(),
             boundaries: Boundaries::Implicit,
-            character_count: s.len(),
             mask: s.bytes().fold(0, |m, b| m | 1_u64 << (b & 63)),
             numeric,
         }
