@@ -155,7 +155,7 @@ private struct ShortcutActionsView: View {
             Spacer()
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }.padding(.vertical, 10).frame(maxWidth: .infinity)
-            .overlay(alignment: .bottom) { Divider() }
+            .overlay(alignment: .bottom) { Divider().frame(height: 1) }
     }
     private func open(_ section: SettingsSection) {
         navigation.section = section

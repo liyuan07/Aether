@@ -167,10 +167,9 @@ private struct EyeCareStatusCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(alignment: .top) { Divider().frame(height: 1) }
         .accessibilityElement(children: .contain)
     }
 
@@ -188,9 +187,8 @@ private struct EyeCareStatusCard: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .controlSize(.small)
-            .tint(.green)
 
         case .working:
             HStack {

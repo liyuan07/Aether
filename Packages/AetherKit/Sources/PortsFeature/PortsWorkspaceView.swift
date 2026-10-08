@@ -31,7 +31,7 @@ struct PortsSummaryView: View {
                 }
             }
             .padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .top) { Divider() }
+            .overlay(alignment: .top) { Divider().frame(height: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

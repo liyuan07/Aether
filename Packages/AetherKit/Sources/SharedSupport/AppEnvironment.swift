@@ -53,7 +53,7 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
         case .clipboard: "剪贴板"
         case .shortcuts: "快捷操作"
         case .timer: "计时与护眼"
-        case .prompt: "Prompt 优化"
+        case .prompt: "提示词优化"
         case .ports: "端口"
         case .permissions: "权限"
         }

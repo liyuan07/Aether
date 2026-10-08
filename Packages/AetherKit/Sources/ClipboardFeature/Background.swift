@@ -222,6 +222,7 @@ struct BackgroundSettingsView: View {
         SettingsGroup("背景图片") {
             VStack(alignment: .leading, spacing: 12) {
                 LabeledContent("当前图片", value: manager.settings.fileName.isEmpty ? "未设置" : manager.settings.fileName)
+                if !manager.settings.fileName.isEmpty {
                 GeometryReader { geometry in
                     let screenSize = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
                     let base = CGSize(width: min(max(screenSize.width * 0.76, 1_120), min(screenSize.width * 0.94, 1_380)),
@@ -241,6 +242,7 @@ struct BackgroundSettingsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }.frame(height: 84)
+                }
                 HStack {
                     Button(manager.settings.fileName.isEmpty ? "选择图片…" : "更换图片…") { chooseImage() }
                     Button("移除") { manager.removeImage() }.disabled(manager.settings.fileName.isEmpty && !manager.importing)

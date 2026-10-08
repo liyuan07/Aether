@@ -39,7 +39,29 @@ public struct SettingsForm<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(AetherLayout.pageInset)
         }
-        .toggleStyle(.switch)
+        .toggleStyle(AlignedSettingsToggleStyle())
+        .labeledContentStyle(AlignedSettingsLabelStyle())
+    }
+}
+
+private struct AlignedSettingsToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 8)
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+                .labelsHidden().toggleStyle(.switch)
+        }.frame(minHeight: AetherLayout.rowHeight)
+    }
+}
+
+private struct AlignedSettingsLabelStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 8)
+            configuration.content
+        }.frame(minHeight: AetherLayout.rowHeight)
     }
 }
 
@@ -71,7 +93,7 @@ public struct SettingsGroup<Content: View>: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header.font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 12) { content }
+            VStack(alignment: .leading, spacing: 4) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))

@@ -75,8 +75,10 @@ import PortsFeature
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.center()
-            window.setFrameAutosaveName("AetherSettingsWindow")
-            window.setFrameUsingName("AetherSettingsWindow")
+            if !AppEnvironment.isResourceProfiling {
+                window.setFrameAutosaveName("AetherSettingsWindow")
+                window.setFrameUsingName("AetherSettingsWindow")
+            }
             self.window = window
         }
         if let window {
