@@ -113,6 +113,19 @@ final class PromptStorageTests: XCTestCase {
     }
 
 
+    func testInvalidDateNeverSavesAPartialTypedHistory() throws {
+        let original = PromptHistoryEntry(original: "synthetic source", optimized: "synthetic result", model: "test")
+        try storage.saveHistory([original])
+        let bytes = try Data(contentsOf: file("history.json"))
+        for date in [Double.infinity, -Double.infinity, Double.nan] {
+            let invalid = PromptHistoryEntry(createdAt: Date(timeIntervalSinceReferenceDate: date),
+                original: "synthetic invalid", optimized: "synthetic result", model: "test")
+            XCTAssertThrowsError(try storage.saveHistory([original, invalid]))
+            XCTAssertEqual(try Data(contentsOf: file("history.json")), bytes)
+        }
+        XCTAssertEqual(try storage.loadHistory(), [original])
+    }
+
     func testNativeVersionOneFixturesKeepDatePrecisionAndIntegralNumbers() throws {
         let dates = [-987654321.1234567, 0, 0.00000001, 812345678.9876543]
         let entries = dates.map { PromptHistoryEntry(createdAt: Date(timeIntervalSinceReferenceDate: $0),

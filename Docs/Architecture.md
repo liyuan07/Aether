@@ -234,3 +234,5 @@ Prompt 配置/历史读取返回 Rust 拥有的已解码快照与借用字段视
 剪贴板搜索 actor 独占 `RustSearchDocumentCache`，核心 HashMap 持有不可变 document 的 Arc。源更新通过 begin/逐项标记/prune 清除失效索引，历史、收藏及分组条目均参与标记；不创建原生 active-ID 集合或缓存字典副本。缓存命中返回独立持有的 document，删除缓存及 actor 销毁不使正在使用的 document 失效。Document 创建/合并/销毁的 C ABI 签名不变，内部所有权统一为 Arc，片段依然共享。
 
 条目缓存命中直接在 Rust 内评分，不创建新的原生 document 包装；缓存未命中时才调用 Foundation 归一化并构建索引。
+
+PromptStorage 的默认配置、配置保存与历史保存通过类型化 C ABI 进入 Rust。单次历史 writer 逐条复制借用 UTF-8，失败即标记不可保存，避免部分历史落盘；writer 只在同步调用范围内存活。Rust 新旧 ABI 共用同一验证/写入入口，继续在覆盖前检查磁盘版本与损坏状态，并执行原子私有同步写入。

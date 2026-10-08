@@ -252,3 +252,5 @@ sh LaunchAether.command
 共享数据迁移：`MigrationTests` 检查验证失败保留源目录、偏好失败后的 copied 恢复及 complete 跳过；Rust `data_migration` 检查同步阶段顺序和失败停止。保持隔离临时目录，发布使用统一交付脚本一次回归。
 
 搜索缓存迁移沿用 Search/RustSearchParity 回归；Rust 单测检查 Arc 独立寿命、首次插入优先和源清理。一次统一交付回归后安装，不重复性能对照。
+
+Prompt 类型化保存沿用 PromptStorage/PromptModel 回归；补充非有限日期在第二条记录出现时也不能写入部分历史的检查。统一交付脚本只跑一次回归和安装，不追加基准。

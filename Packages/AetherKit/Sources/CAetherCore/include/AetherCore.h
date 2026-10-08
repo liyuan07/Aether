@@ -522,4 +522,11 @@ typedef struct { int32_t score; uint8_t found; } AetherCachedSearchScore;
 AetherCachedSearchScore aether_search_cache_score(const void *cache, AetherUUID id, const void *query);
 void aether_search_cache_insert(void *cache, AetherUUID id, const void *document);
 void aether_search_cache_destroy(void *cache);
+// Typed Prompt writes copy text before returning; a failed append prevents partial-history saving.
+void *aether_prompt_store_create_records(const char *directory, AetherPromptConfigurationView fallback);
+uint32_t aether_prompt_store_save_configuration_records(void *store, AetherPromptConfigurationView value);
+void *aether_prompt_history_write_create(void);
+uint32_t aether_prompt_history_write_append(void *writer, AetherPromptHistoryView value);
+uint32_t aether_prompt_store_save_history_records(void *store, const void *writer);
+void aether_prompt_history_write_destroy(void *writer);
 #endif

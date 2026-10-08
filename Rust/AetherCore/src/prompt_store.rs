@@ -154,32 +154,40 @@ pub unsafe extern "C" fn aether_prompt_store_save(
             let Ok(value) = serde_json::from_slice::<Configuration>(bytes) else {
                 return 3;
             };
-            if !(1..=1000).contains(&value.history_limit) {
-                return 5;
-            }
-            if s.blocked[0] {
-                return 2;
-            }
-            s.load_configuration().and_then(|_| {
-                versioned::write(&s.directory.join("configuration.json"), &value, true)
-            })
+            s.save_configuration(&value)
         }
         1 => {
             let Ok(value) = serde_json::from_slice::<Vec<Entry>>(bytes) else {
                 return 3;
             };
-            if !value.iter().all(Entry::valid) {
-                return 3;
-            }
-            if s.blocked[1] {
-                return 2;
-            }
-            s.load_history()
-                .and_then(|_| versioned::write(&s.directory.join("history.json"), &value, true))
+            s.save_history(&value)
         }
         _ => Err(3),
     };
     result.err().unwrap_or(0)
+}
+
+impl Store {
+    fn save_configuration(&mut self, value: &Configuration) -> Result<(), u32> {
+        if !(1..=1000).contains(&value.history_limit) {
+            return Err(5);
+        }
+        if self.blocked[0] {
+            return Err(2);
+        }
+        self.load_configuration()
+            .and_then(|_| versioned::write(&self.directory.join("configuration.json"), value, true))
+    }
+    fn save_history(&mut self, value: &[Entry]) -> Result<(), u32> {
+        if !value.iter().all(Entry::valid) {
+            return Err(3);
+        }
+        if self.blocked[1] {
+            return Err(2);
+        }
+        self.load_history()
+            .and_then(|_| versioned::write(&self.directory.join("history.json"), value, true))
+    }
 }
 
 // Typed read snapshots own decoded records; no serialized intermediate JSON is needed by native DTOs.
@@ -456,5 +464,121 @@ mod decoded_tests {
         }
         assert_eq!(store.blocked, [false, false]);
         std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+impl ConfigurationView {
+    unsafe fn record(&self) -> Option<Configuration> {
+        Some(Configuration {
+            base_url: unsafe { self.base_url.text()? }.to_owned(),
+            model: unsafe { self.model.text()? }.to_owned(),
+            system_prompt: unsafe { self.system_prompt.text()? }.to_owned(),
+            save_history: self.save_history != 0,
+            history_limit: self.history_limit,
+            credential_fingerprint: if self.has_fingerprint == 0 {
+                None
+            } else {
+                Some(unsafe { self.credential_fingerprint.text()? }.to_owned())
+            },
+        })
+    }
+}
+/// # Safety
+/// Directory and all text spans are readable for this call. Core copies the fallback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_prompt_store_create_records(
+    directory: *const c_char,
+    fallback: ConfigurationView,
+) -> *mut Store {
+    let (Some(directory), Some(fallback)) = (unsafe { storage::path(directory) }, unsafe {
+        fallback.record()
+    }) else {
+        return std::ptr::null_mut();
+    };
+    Box::into_raw(Box::new(Store {
+        directory: directory.to_path_buf(),
+        blocked: [false; 2],
+        fallback,
+    }))
+}
+/// # Safety
+/// Store access is serialized; text spans are readable for this call and are copied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_prompt_store_save_configuration_records(
+    store: *mut Store,
+    value: ConfigurationView,
+) -> u32 {
+    let (Some(store), Some(value)) = (unsafe { store.as_mut() }, unsafe { value.record() }) else {
+        return 3;
+    };
+    store.save_configuration(&value).err().unwrap_or(0)
+}
+pub struct HistoryWrite {
+    entries: Vec<Entry>,
+    failed: bool,
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_prompt_history_write_create() -> *mut HistoryWrite {
+    Box::into_raw(Box::new(HistoryWrite {
+        entries: vec![],
+        failed: false,
+    }))
+}
+/// # Safety
+/// Writer is exclusively borrowed; text spans are valid for this call only. A failed append poisons
+/// the writer so a later save can never persist a partial history.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_prompt_history_write_append(
+    writer: *mut HistoryWrite,
+    value: EntryView,
+) -> u32 {
+    let Some(writer) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if writer.failed {
+        return 3;
+    }
+    let record = || -> Option<Entry> {
+        Some(Entry {
+            id: unsafe { value.id.text()? }.to_owned(),
+            original: unsafe { value.original.text()? }.to_owned(),
+            optimized: unsafe { value.optimized.text()? }.to_owned(),
+            model: unsafe { value.model.text()? }.to_owned(),
+            created_at: value.created_at,
+        })
+    };
+    match record() {
+        Some(record) if record.valid() => {
+            writer.entries.push(record);
+            0
+        }
+        _ => {
+            writer.failed = true;
+            3
+        }
+    }
+}
+/// # Safety
+/// Store/writer are live and exclusively borrowed. Caller owns writer until destroy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_prompt_store_save_history_records(
+    store: *mut Store,
+    writer: *const HistoryWrite,
+) -> u32 {
+    let (Some(store), Some(writer)) = (unsafe { store.as_mut() }, unsafe { writer.as_ref() })
+    else {
+        return 3;
+    };
+    if writer.failed {
+        return 3;
+    }
+    store.save_history(&writer.entries).err().unwrap_or(0)
+}
+/// # Safety
+/// Destroy writer exactly once after use; null is allowed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_prompt_history_write_destroy(writer: *mut HistoryWrite) {
+    if !writer.is_null() {
+        drop(unsafe { Box::from_raw(writer) });
     }
 }
