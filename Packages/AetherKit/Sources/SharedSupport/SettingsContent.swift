@@ -23,7 +23,7 @@ public struct SettingsContent<Content: View>: View {
                 .padding(.horizontal, AetherLayout.pageInset)
                 .padding(.vertical, 16)
             Divider()
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .font(.system(size: 13))
         .controlSize(.small)

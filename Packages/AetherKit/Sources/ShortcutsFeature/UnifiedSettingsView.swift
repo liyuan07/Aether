@@ -43,6 +43,8 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 12)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
                 switch navigation.section {
