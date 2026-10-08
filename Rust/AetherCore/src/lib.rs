@@ -99,6 +99,7 @@ enum Boundaries {
     Implicit,
     // Short Unicode segments keep exact boundary bits inline, avoiding an offset allocation.
     Inline([u64; 2]),
+    Bitmap(Box<[u64]>),
     U8(Box<[u8]>),
     U16(Box<[u16]>),
     U32(Box<[u32]>),
@@ -115,14 +116,33 @@ impl Boundaries {
                 bits[offset / 64] |= 1_u64 << (offset % 64);
             }
             Self::Inline(bits)
-        } else if u8::try_from(last).is_ok() {
-            Self::U8(values.iter().map(|&v| v as u8).collect())
-        } else if u16::try_from(last).is_ok() {
-            Self::U16(values.iter().map(|&v| v as u16).collect())
-        } else if u32::try_from(last).is_ok() {
-            Self::U32(values.iter().map(|&v| v as u32).collect())
         } else {
-            Self::Native(values.into())
+            let width = if u8::try_from(last).is_ok() {
+                1
+            } else if u16::try_from(last).is_ok() {
+                2
+            } else if u32::try_from(last).is_ok() {
+                4
+            } else {
+                std::mem::size_of::<usize>()
+            };
+            let words = last / 64 + 1;
+            if words < values.len().saturating_mul(width) / 8 {
+                let mut bits = vec![0_u64; words];
+                for &offset in values {
+                    bits[offset / 64] |= 1_u64 << (offset % 64);
+                }
+                return Self::Bitmap(bits.into_boxed_slice());
+            }
+            if u8::try_from(last).is_ok() {
+                Self::U8(values.iter().map(|&v| v as u8).collect())
+            } else if u16::try_from(last).is_ok() {
+                Self::U16(values.iter().map(|&v| v as u16).collect())
+            } else if u32::try_from(last).is_ok() {
+                Self::U32(values.iter().map(|&v| v as u32).collect())
+            } else {
+                Self::Native(values.into())
+            }
         }
     }
     fn boundary(&self, index: usize) -> usize {
@@ -142,6 +162,21 @@ impl Boundaries {
                 debug_assert_ne!(word, 0);
                 base + word.trailing_zeros() as usize
             }
+            Self::Bitmap(bits) => {
+                let mut rank = index;
+                for (word_index, &word) in bits.iter().enumerate() {
+                    let count = word.count_ones() as usize;
+                    if rank < count {
+                        let mut selected = word;
+                        for _ in 0..rank {
+                            selected &= selected - 1;
+                        }
+                        return word_index * 64 + selected.trailing_zeros() as usize;
+                    }
+                    rank -= count;
+                }
+                unreachable!("validated boundary index")
+            }
             Self::U8(v) => v[index] as usize,
             Self::U16(v) => v[index] as usize,
             Self::U32(v) => v[index] as usize,
@@ -159,31 +194,47 @@ impl Boundaries {
             debug_assert_eq!(word_index, 0);
             return 64 + bits[1].trailing_zeros() as usize;
         }
+        if let Self::Bitmap(bits) = self {
+            let next = byte + 1;
+            let word_index = next / 64;
+            let word = bits[word_index] & (u64::MAX << (next % 64));
+            if word != 0 {
+                return word_index * 64 + word.trailing_zeros() as usize;
+            }
+            for (offset, &word) in bits[word_index + 1..].iter().enumerate() {
+                if word != 0 {
+                    return (word_index + 1 + offset) * 64 + word.trailing_zeros() as usize;
+                }
+            }
+            unreachable!("validated next boundary")
+        }
         self.boundary(index + 1)
     }
     fn position(&self, byte: usize) -> Option<usize> {
         match self {
             Self::Implicit => Some(byte),
-            Self::Inline(bits) => {
-                let word_index = byte / 64;
-                let word = *bits.get(word_index)?;
-                let bit = 1_u64 << (byte % 64);
-                if word & bit == 0 {
-                    return None;
-                }
-                Some(
-                    bits[..word_index]
-                        .iter()
-                        .map(|word| word.count_ones() as usize)
-                        .sum::<usize>()
-                        + (word & (bit - 1)).count_ones() as usize,
-                )
-            }
+            Self::Inline(bits) => Self::bit_position(bits, byte),
+            Self::Bitmap(bits) => Self::bit_position(bits, byte),
             Self::U8(v) => v.binary_search(&u8::try_from(byte).ok()?).ok(),
             Self::U16(v) => v.binary_search(&u16::try_from(byte).ok()?).ok(),
             Self::U32(v) => v.binary_search(&u32::try_from(byte).ok()?).ok(),
             Self::Native(v) => v.binary_search(&byte).ok(),
         }
+    }
+    fn bit_position(bits: &[u64], byte: usize) -> Option<usize> {
+        let word_index = byte / 64;
+        let word = *bits.get(word_index)?;
+        let bit = 1_u64 << (byte % 64);
+        if word & bit == 0 {
+            return None;
+        }
+        Some(
+            bits[..word_index]
+                .iter()
+                .map(|word| word.count_ones() as usize)
+                .sum::<usize>()
+                + (word & (bit - 1)).count_ones() as usize,
+        )
     }
 }
 
@@ -193,13 +244,24 @@ struct Segment {
     // A 64-bit ASCII bloom mask is only a rejection accelerator. Collisions may fall
     // through to exact grapheme comparison, but can never create a positive score.
     mask: u64,
+    // Fits the existing alignment padding. Huge inputs retain the full-width fallback.
+    cached_count: u32,
     numeric: bool,
 }
 impl Segment {
     fn character_count(&self) -> usize {
+        if self.cached_count != u32::MAX {
+            return self.cached_count as usize;
+        }
         match &self.boundaries {
             Boundaries::Implicit => self.bytes.len(),
             Boundaries::Inline(bits) => {
+                bits.iter()
+                    .map(|word| word.count_ones() as usize)
+                    .sum::<usize>()
+                    - 1
+            }
+            Boundaries::Bitmap(bits) => {
                 bits.iter()
                     .map(|word| word.count_ones() as usize)
                     .sum::<usize>()
@@ -331,6 +393,12 @@ pub unsafe extern "C" fn aether_search_create(
     std::sync::Arc::into_raw(std::sync::Arc::new(Segment {
         bytes: bytes.into(),
         boundaries: Boundaries::new(&owned_boundaries),
+        cached_count: u32::try_from(if owned_boundaries.is_empty() {
+            length
+        } else {
+            owned_boundaries.len() - 1
+        })
+        .unwrap_or(u32::MAX),
         mask,
         numeric: numeric != 0,
     }))
@@ -562,6 +630,7 @@ mod tests {
         Segment {
             bytes: s.as_bytes().into(),
             boundaries: Boundaries::Implicit,
+            cached_count: u32::try_from(s.len()).unwrap_or(u32::MAX),
             mask: s.bytes().fold(0, |m, b| m | 1_u64 << (b & 63)),
             numeric,
         }
@@ -691,6 +760,20 @@ mod tests {
             }
             assert_eq!(compact.position(2), None);
             assert_eq!(compact.position(last + 1), None);
+        }
+        let dense: Vec<usize> = (0..=3000).step_by(3).collect();
+        let compact = Boundaries::new(&dense);
+        assert!(matches!(&compact, Boundaries::Bitmap(bits) if bits.len() * 8 < dense.len() * 2));
+        for (index, &offset) in dense.iter().enumerate() {
+            assert_eq!(compact.boundary(index), offset);
+            assert_eq!(compact.position(offset), Some(index));
+            assert_eq!(compact.position(offset + 1), None);
+            if index + 1 < dense.len() {
+                assert_eq!(compact.next_boundary(index, offset), dense[index + 1]);
+            }
+        }
+        if usize::BITS == 64 {
+            assert!(std::mem::size_of::<Segment>() <= 56);
         }
         assert!(matches!(Boundaries::new(&[0, 255]), Boundaries::U8(_)));
         assert!(matches!(Boundaries::new(&[0, 256]), Boundaries::U16(_)));
