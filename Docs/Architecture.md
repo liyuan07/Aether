@@ -281,7 +281,7 @@ Rust 缓存按可见视图 UUID 管理使用方；最后一个视图隐藏/销�
 
 `SharedSupport` 提供独立的菜单栏 `AetherLayout` 与设置专用 `SettingsLayout`、`SettingsContent`、`SettingsForm`、`SettingsGroup`、`SettingsRow`、`SettingsField`、`SettingsToggleRow` 和 `PanelToolbar`。应用层拥有侧栏和应用级设置，各功能只装配内容；共享层不访问功能实现。设置按任务分组，组内共享背景和分隔线，表单字段使用稳定标签列，正文 14 点、标题 22 点；边距 24、组间距 20、普通行高 44、侧栏 184。默认 880 × 620、最小 800 × 560，保留窗口记忆。菜单栏常量及导航不随设置重设计改变。
 
-左侧导航保留六个入口，原 `SettingsPage` 原始值和路由保持兼容。`.general` 和 `.permissions` 都显示“启动与权限”，后者通过 `SettingsForm.initialFocus` 定位系统权限区域；端口可见性仍由实际路由和窗口可见性控制。快捷操作主分类首先展示快捷键列表，其他分类由模块持有。计时和护眼用菜单选择时长；`SettingsDurationOptions` 将合法的既有非整档时长加入选项，展示不会修改偏好。提示词仍显式保存，固定底栏左侧进入优化、右侧保存，并直接显示失败或成功反馈。
+左侧导航保留六个入口，原 `SettingsPage` 原始值和路由保持兼容。`.general` 和 `.permissions` 都显示“启动与权限”，后者通过 `SettingsForm.initialFocus` 定位系统权限区域；端口可见性仍由实际路由和窗口可见性控制。快捷操作主分类首先展示折叠的快捷键列表，新增或指定规则仍直接展开；其他分类由模块持有。应用清单区区分加载中与已加载的空清单，避免空结果永久显示进度。计时和护眼用菜单选择时长；`SettingsDurationOptions` 将合法的既有非整档时长加入选项，展示不会修改偏好。提示词仍显式保存，固定底栏左侧进入优化、右侧保存，并直接显示失败或成功反馈。
 
 菜单栏以首页为默认入口，四个功能进入二级页。`ControlCenterDestination` 规范化原 `controlCenterTabOrder`：保留已知功能顺序、排除概览与重复项、追加缺失项；继续使用原偏好键。普通打开重置为首页，显式路由定位功能。备忘录草稿由模块模型持有，仅成功写入后清空，不写入磁盘。端口摘要仅在首页可见时采集，护眼面板更新同时跟随页面与 popover 可见性。
 

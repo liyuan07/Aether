@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var registeredApplications: [RegisteredApplication] = [] {
         didSet { cachedApplicationCatalog = nil }
     }
+    @Published private(set) var hasLoadedApplicationInventory = false
     @Published var selectedRuleID: UUID?
     @Published var permissionGranted = false
     @Published var inputMonitoringGranted = false
@@ -111,7 +112,7 @@ final class AppModel: ObservableObject {
         shortcutGuideHoldDuration = startup.holdDuration
         shortcutGuideFavoriteIDs = startup.favorites
         lastError = startup.error
-        selectedRuleID = rules.first?.id
+        selectedRuleID = nil
     }
 
     func rule(withID id: UUID?) -> ShortcutRule? {
@@ -287,6 +288,7 @@ final class AppModel: ObservableObject {
     }
 
     func setRegisteredApplications(_ applications: [RegisteredApplication]) {
+        hasLoadedApplicationInventory = true
         registeredApplications = applications
         seedApplicationDefaultsFromExistingRules()
     }

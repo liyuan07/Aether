@@ -92,8 +92,11 @@ private struct ApplicationShortcutSettingsView: View {
             .padding(.horizontal, SettingsLayout.pageInset)
             .padding(.vertical, 8)
             Divider()
-            if model.registeredApplicationGroups.isEmpty {
+            if !model.hasLoadedApplicationInventory {
                 ProgressView("正在扫描 Applications…").frame(maxWidth: .infinity, minHeight: 160)
+            } else if model.registeredApplicationGroups.isEmpty {
+                ContentUnavailableView("暂无可用应用", systemImage: "app.dashed", description: Text("应用扫描完成后，可在这里配置默认应用与窗口行为。"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(model.registeredApplicationGroups) { group in

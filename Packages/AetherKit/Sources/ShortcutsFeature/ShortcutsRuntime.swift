@@ -19,7 +19,7 @@ final class ShortcutsRuntime: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        if AppEnvironment.isResourceProfiling { model.rescanConflicts(); return }
+        if AppEnvironment.isResourceProfiling { model.setRegisteredApplications([]); model.rescanConflicts(); return }
 
         let executor = ActionExecutor(preferences: { [weak model] in
             model?.appPreferences.applicationShortcuts ?? ApplicationShortcutPreferences()

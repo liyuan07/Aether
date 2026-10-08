@@ -96,3 +96,15 @@ import ShortcutCore
         #expect(try Data(contentsOf: journalFile) == unknown)
     }
 }
+
+@Test @MainActor func settingsStartWithRuleListAndDistinguishLoadedEmptyInventory() throws {
+    try withIsolatedModel(Array(DefaultShortcutRules.make().prefix(2))) { model, _ in
+        #expect(model.selectedRuleID == nil)
+        #expect(!model.hasLoadedApplicationInventory)
+        model.setRegisteredApplications([])
+        #expect(model.hasLoadedApplicationInventory)
+        #expect(model.registeredApplicationGroups.isEmpty)
+        let added = model.addRule()
+        #expect(model.selectedRuleID == added)
+    }
+}

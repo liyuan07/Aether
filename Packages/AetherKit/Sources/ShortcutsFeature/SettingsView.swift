@@ -116,7 +116,7 @@ private struct RuleEditorView: View {
     let remove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Button("删除快捷键", role: .destructive, action: remove)
                 Spacer()
@@ -124,13 +124,13 @@ private struct RuleEditorView: View {
                     .toggleStyle(.switch)
             }
 
-            GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 14) {
-                    LabeledContent("名称") {
+                    SettingsField("名称") {
                         TextField("快捷键名称", text: $rule.name)
-                            .frame(width: 280)
+                            .frame(maxWidth: .infinity)
                     }
-                    LabeledContent("触发快捷键") {
+                    SettingsRow("触发快捷键") {
                         ShortcutRecorderView(shortcut: $rule.source, onRecordingChanged: setRecording)
                             .frame(width: 150, height: 28)
                     }
@@ -141,7 +141,7 @@ private struct RuleEditorView: View {
                 .padding(6)
             }
 
-            GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 14) {
                     Picker("动作", selection: actionKindBinding) {
                         ForEach(ShortcutAction.Kind.allCases) { kind in
@@ -157,7 +157,7 @@ private struct RuleEditorView: View {
             }
 
             if !findings.isEmpty {
-                GroupBox("冲突提示") {
+                SettingsGroup("冲突提示") {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(findings) { finding in
                             HStack(alignment: .top, spacing: 8) {
@@ -177,11 +177,12 @@ private struct RuleEditorView: View {
                 }
             }
 
-            Text("冲突扫描会检查软件内重复、部分系统快捷键、排他式全局注册，以及当前运行软件公开在菜单中的快捷键；不能枚举第三方软件的全部内部快捷键。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            DisclosureGroup("了解冲突扫描范围") {
+                Text("检查软件内重复、部分系统快捷键、排他式全局注册及当前运行软件公开在菜单中的快捷键；不能枚举全部内部快捷键。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
         }
-        .padding(18)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onDisappear { setRecording(false) }
     }
