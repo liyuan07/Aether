@@ -254,3 +254,5 @@ sh LaunchAether.command
 搜索缓存迁移沿用 Search/RustSearchParity 回归；Rust 单测检查 Arc 独立寿命、首次插入优先和源清理。一次统一交付回归后安装，不重复性能对照。
 
 Prompt 类型化保存沿用 PromptStorage/PromptModel 回归；补充非有限日期在第二条记录出现时也不能写入部分历史的检查。统一交付脚本只跑一次回归和安装，不追加基准。
+
+面板索引迁移复用 Search/RustSearchSnapshot 回归；核心检查输入独立所有权、重复键首位置、缺失键与搜索代际/取消/版本溢出。只跑一次统一交付回归，不追加性能基准。

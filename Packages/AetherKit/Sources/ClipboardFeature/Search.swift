@@ -10,6 +10,7 @@ import SharedSupport
  */
 
 import RustCore
+import CAetherCore
 import Combine
 import Foundation
 
@@ -91,7 +92,7 @@ struct ClipboardSearchSnapshot: Sendable {
         groups: [ClipboardGroup]
     ) {
         self.init(rankedItems: pinnedItems.isEmpty ? history : history + pinnedItems,
-            pinnedIDs: Set(pinnedItems.map(\.id)), rankedGroups: groups)
+            pinnedIdentity: RustIdentityIndex(pinnedItems.map(\.id)), rankedGroups: groups)
     }
 
     init(
@@ -99,9 +100,13 @@ struct ClipboardSearchSnapshot: Sendable {
         pinnedIDs: Set<UUID>,
         rankedGroups: [ClipboardGroup]
     ) {
+        self.init(rankedItems: rankedItems, pinnedIdentity: RustIdentityIndex(Array(pinnedIDs)), rankedGroups: rankedGroups)
+    }
+
+    init(rankedItems: [ClipboardItem], pinnedIdentity: RustIdentityIndex, rankedGroups: [ClipboardGroup]) {
         self.rankedItems = rankedItems
         buckets = RustClipboardSearchBuckets(entries: rankedItems.map {
-            RustSearchBucketEntry(kind: $0.type.rustKind, pinned: pinnedIDs.contains($0.id) ? 1 : 0)
+            RustSearchBucketEntry(kind: $0.type.rustKind, pinned: pinnedIdentity.contains($0.id) ? 1 : 0)
         })
         groups = rankedGroups
     }
@@ -165,7 +170,7 @@ actor ClipboardSearchIndex {
 
         return ClipboardSearchSnapshot(
             rankedItems: rankedItems.orderedSources.map { allItems[$0] },
-            pinnedIDs: Set(pinnedItems.map(\.id)),
+            pinnedIdentity: RustIdentityIndex(pinnedItems.map(\.id)),
             rankedGroups: rankedGroups.orderedSources.map { groups[$0] }
         )
     }
@@ -189,9 +194,9 @@ final class ClipboardPanelViewModel: ObservableObject {
         let query: String
         let items: [ClipboardItem]
         let groups: [ClipboardGroup]
-        let itemIndexByID: [UUID: Int]
-        let groupIndexByID: [UUID: Int]
-        let pinnedIDs: Set<UUID>
+        let itemIndexByID: RustIdentityIndex
+        let groupIndexByID: RustIdentityIndex
+        let pinnedIDs: RustIdentityIndex
         let itemIDs: [UUID]
         let groupIDs: [UUID]
         let isSearching: Bool
@@ -202,9 +207,9 @@ final class ClipboardPanelViewModel: ObservableObject {
             query: "",
             items: [],
             groups: [],
-            itemIndexByID: [:],
-            groupIndexByID: [:],
-            pinnedIDs: [],
+            itemIndexByID: RustIdentityIndex([]),
+            groupIndexByID: RustIdentityIndex([]),
+            pinnedIDs: RustIdentityIndex([]),
             itemIDs: [],
             groupIDs: [],
             isSearching: false,
@@ -231,7 +236,8 @@ final class ClipboardPanelViewModel: ObservableObject {
     private var groups: [ClipboardGroup] = []
     private var subscriptions = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
-    private var generation: UInt64 = 0
+    private var searchFlow = AetherSearchFlow(generation: 0, revision: 0)
+    private var pinnedIdentity = RustIdentityIndex([])
 
     convenience init() {
         self.init(
@@ -297,13 +303,14 @@ final class ClipboardPanelViewModel: ObservableObject {
         self.history = history
         self.pinnedItems = pinnedItems
         self.groups = groups
+        pinnedIdentity = RustIdentityIndex(pinnedItems.map(\.id))
         scheduleSearch(query: state.query)
     }
 
     private func scheduleSearch(query: String) {
         searchTask?.cancel()
-        generation &+= 1
-        let pendingGeneration = generation
+        searchFlow = aether_search_flow_begin(searchFlow)
+        let pendingGeneration = searchFlow.generation
         let history = self.history
         let pinnedItems = self.pinnedItems
         let groups = self.groups
@@ -339,9 +346,8 @@ final class ClipboardPanelViewModel: ObservableObject {
                     pinnedItems: pinnedItems,
                     groups: groups
                 )
-                guard !Task.isCancelled,
-                      let self,
-                      pendingGeneration == generation else {
+                guard let self,
+                      aether_search_flow_current(searchFlow, pendingGeneration, Task.isCancelled ? 1 : 0) != 0 else {
                     return
                 }
                 snapshot = result
@@ -356,7 +362,7 @@ final class ClipboardPanelViewModel: ObservableObject {
                 return
             } catch {
                 guard let self,
-                      pendingGeneration == generation else {
+                      aether_search_flow_current(searchFlow, pendingGeneration, 0) != 0 else {
                     return
                 }
                 publish(
@@ -379,24 +385,22 @@ final class ClipboardPanelViewModel: ObservableObject {
     ) {
         let items = snapshot.items(for: selectedTab)
         let groups = selectedTab == .groups ? snapshot.groups : []
+        let itemIDs = items.map(\.id), groupIDs = groups.map(\.id)
+        let itemIndex = itemIDs == state.itemIDs ? state.itemIndexByID : RustIdentityIndex(itemIDs, requiringUnique: true)
+        let groupIndex = groupIDs == state.groupIDs ? state.groupIndexByID : RustIdentityIndex(groupIDs, requiringUnique: true)
+        searchFlow = aether_search_flow_publish(searchFlow, incrementsResultRevision ? 1 : 0)
         state = State(
             selectedTab: selectedTab,
             query: query,
             items: items,
             groups: groups,
-            itemIndexByID: Dictionary(
-                uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) }
-            ),
-            groupIndexByID: Dictionary(
-                uniqueKeysWithValues: groups.enumerated().map { ($0.element.id, $0.offset) }
-            ),
-            pinnedIDs: Set(pinnedItems.map(\.id)),
-            itemIDs: items.map(\.id),
-            groupIDs: groups.map(\.id),
+            itemIndexByID: itemIndex,
+            groupIndexByID: groupIndex,
+            pinnedIDs: pinnedIdentity,
+            itemIDs: itemIDs,
+            groupIDs: groupIDs,
             isSearching: isSearching,
-            resultRevision: incrementsResultRevision
-                ? state.resultRevision &+ 1
-                : state.resultRevision
+            resultRevision: searchFlow.revision
         )
     }
 }

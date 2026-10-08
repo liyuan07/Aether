@@ -436,8 +436,8 @@ struct ClipboardPanelView: View {
         }
 
         selectedGroupID = nil
-        let validIDs = Set(panelModel.state.itemIDs)
-        selectedItemIDs.formIntersection(validIDs)
+        let validIDs = panelModel.state.itemIndexByID
+        selectedItemIDs = Set(selectedItemIDs.filter(validIDs.contains))
         if selectedItemID.map(validIDs.contains) != true {
             selectedItemID = filteredItems.first?.id
         }

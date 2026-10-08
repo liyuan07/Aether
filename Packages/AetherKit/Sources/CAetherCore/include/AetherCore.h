@@ -529,4 +529,13 @@ void *aether_prompt_history_write_create(void);
 uint32_t aether_prompt_history_write_append(void *writer, AetherPromptHistoryView value);
 uint32_t aether_prompt_store_save_history_records(void *store, const void *writer);
 void aether_prompt_history_write_destroy(void *writer);
+// Immutable identity table; duplicate keys retain the first position.
+void *aether_identity_index_create(const AetherUUID *ids, size_t count);
+intptr_t aether_identity_index_find(const void *index, AetherUUID id);
+uint8_t aether_identity_index_unique(const void *index);
+void aether_identity_index_destroy(void *index);
+typedef struct { uint64_t generation, revision; } AetherSearchFlow;
+AetherSearchFlow aether_search_flow_begin(AetherSearchFlow state);
+uint8_t aether_search_flow_current(AetherSearchFlow state, uint64_t generation, uint8_t cancelled);
+AetherSearchFlow aether_search_flow_publish(AetherSearchFlow state, uint8_t increment);
 #endif

@@ -785,3 +785,5 @@ mod clipboard_codec;
 mod data_migration;
 
 mod search_cache;
+
+mod identity_index;

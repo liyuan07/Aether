@@ -1,5 +1,6 @@
 // Copyright (C) 2026 Li Yuan. SPDX-License-Identifier: GPL-3.0-or-later
 import XCTest
+import RustCore
 @testable import ClipboardFeature
 
 final class RustSearchSnapshotTests: XCTestCase {
@@ -50,8 +51,8 @@ final class RustSearchSnapshotTests: XCTestCase {
         let group = ClipboardGroup(items:[a,b])
         func state(_ items: [ClipboardItem]) -> ClipboardPanelViewModel.State {
             .init(selectedTab:.all,query:"",items:items,groups:[group],
-                itemIndexByID:Dictionary(uniqueKeysWithValues:items.enumerated().map {($0.element.id,$0.offset)}),
-                groupIndexByID:[group.id:0],pinnedIDs:[],itemIDs:items.map(\.id),groupIDs:[group.id],isSearching:false,resultRevision:1)
+                itemIndexByID:RustIdentityIndex(items.map(\.id), requiringUnique: true),
+                groupIndexByID:RustIdentityIndex([group.id]),pinnedIDs:RustIdentityIndex([]),itemIDs:items.map(\.id),groupIDs:[group.id],isSearching:false,resultRevision:1)
         }
         let before = state([a,b]), reordered = state([b,a]), removed = state([b])
         XCTAssertEqual(before.item(withID:a.id)?.id,a.id)
