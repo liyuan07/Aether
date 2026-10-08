@@ -19,7 +19,7 @@ struct ClipboardPanelView: View {
     let onClose: () -> Void
 
     private let store = ClipboardStore.shared
-    @StateObject private var panelModel = ClipboardPanelViewModel()
+    @StateObject private var panelModel: ClipboardPanelViewModel
     @StateObject private var quickClipboardModel = QuickClipboardModel()
     @State private var selectedItemID: UUID?
     @State private var selectedItemIDs = Set<UUID>()
@@ -27,6 +27,11 @@ struct ClipboardPanelView: View {
     @State private var lastCompletedQuery = ""
     @State private var lockedTab = ClipboardPanelTabLock.tab()
     @State private var quickClipboardPresented = false
+
+    init(onClose: @escaping () -> Void, panelModel: ClipboardPanelViewModel) {
+        self.onClose = onClose
+        _panelModel = StateObject(wrappedValue: panelModel)
+    }
 
     private var selectedTab: ClipboardTab {
         panelModel.state.selectedTab
@@ -81,8 +86,6 @@ struct ClipboardPanelView: View {
             content
         }
         .background(ClipboardBackgroundView())
-        .background(SearchSurfaceVisibility { panelModel.setActive($0) }.frame(width: 0, height: 0).allowsHitTesting(false))
-        .onDisappear { panelModel.setActive(false) }
         .onAppear {
             if let lockedTab {
                 panelModel.selectTab(lockedTab)

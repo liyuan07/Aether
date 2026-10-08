@@ -23,6 +23,7 @@ private enum PanelNotificationKey {
 }
 
 final class ClipboardPanel: NSPanel {
+    private let searchModel = ClipboardPanelViewModel()
     private var localKeyMonitor: Any?
     private var backgroundObserver: NSObjectProtocol?
 
@@ -34,7 +35,7 @@ final class ClipboardPanel: NSPanel {
             defer: true
         )
         configureWindow()
-        let rootView = ClipboardPanelView(onClose: onClose)
+        let rootView = ClipboardPanelView(onClose: onClose, panelModel: searchModel)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.wantsLayer = true
         hostingView.layer?.cornerRadius = 14
@@ -64,6 +65,7 @@ final class ClipboardPanel: NSPanel {
     }
 
     override func close() {
+        searchModel.setActive(false)
         if let backgroundObserver {
             NotificationCenter.default.removeObserver(backgroundObserver)
             self.backgroundObserver = nil

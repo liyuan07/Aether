@@ -6,7 +6,7 @@ import SwiftUI
 struct SearchSurfaceVisibility: NSViewRepresentable {
     let changed: (Bool) -> Void
     func makeNSView(context: Context) -> VisibilityView { VisibilityView(changed: changed) }
-    func updateNSView(_ view: VisibilityView, context: Context) { view.changed = changed }
+    func updateNSView(_ view: VisibilityView, context: Context) { view.changed = changed; view.report() }
     static func dismantleNSView(_ view: VisibilityView, coordinator: ()) { view.detach() }
 
     final class VisibilityView: NSView {
@@ -20,7 +20,7 @@ struct SearchSurfaceVisibility: NSViewRepresentable {
             super.viewDidMoveToWindow()
             detach()
             if let window {
-                for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
+                for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification] {
                     observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                         MainActor.assumeIsolated { self?.report() }
                     })
@@ -34,12 +34,12 @@ struct SearchSurfaceVisibility: NSViewRepresentable {
             observers.removeAll()
             changed(false)
         }
-        private func report() {
+        func report() {
             revision &+= 1
             let expected = revision
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.revision == expected else { return }
-                self.changed(self.window?.isVisible == true && self.window?.occlusionState.contains(.visible) == true)
+                self.changed(self.window?.isVisible == true && self.window?.isMiniaturized == false)
             }
         }
     }
