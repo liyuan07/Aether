@@ -49,6 +49,8 @@ typealias ControlCenterTab = ControlCenterDestination
     }
     func show(tab: ControlCenterTab? = nil) {
         guard let button = item.button else { return }
+        // A popover otherwise inherits the status item's appearance rather than the app override.
+        popover.appearance = NSApp.appearance
         navigation.tab = .opening(explicit: tab)
         if startup.ready { ClipboardModule.shared.captureTarget(); ShortcutsModule.shared.captureTarget() }
         let height = min(580, (button.window?.screen?.visibleFrame.height ?? 700) - 50)
