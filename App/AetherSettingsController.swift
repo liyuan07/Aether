@@ -70,8 +70,8 @@ import PortsFeature
             let window = NSWindow(contentViewController: controller)
             window.delegate = self
             window.title = "Aether 设置"
-            window.setContentSize(NSSize(width: 900, height: 640))
-            window.contentMinSize = NSSize(width: 820, height: 560)
+            window.setContentSize(SettingsLayout.defaultSize)
+            window.contentMinSize = SettingsLayout.minimumSize
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.center()
@@ -105,7 +105,7 @@ private struct AetherSettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Label("Aether", systemImage: "square.3.layers.3d")
                     .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 16).padding(.vertical, 16)
+                    .padding(.horizontal, 12).frame(height: 36)
                 List(selection: $navigation.page) {
                     Section("通用") { navigationRow(.general) }
                     Section("功能") {
@@ -119,7 +119,8 @@ private struct AetherSettingsView: View {
                         navigationRow(.permissions)
                     }
                 }.listStyle(.sidebar)
-            }.frame(width: 168)
+                    .environment(\.defaultMinListRowHeight, SettingsLayout.rowHeight)
+            }.frame(width: SettingsLayout.sidebarWidth)
             Divider()
             Group {
                 if !startup.ready && navigation.page != .permissions {
@@ -144,7 +145,7 @@ private struct AetherSettingsView: View {
     }
     private func navigationRow(_ page: SharedSupport.SettingsPage) -> some View {
         Label(page.title, systemImage: page.symbol)
-            .font(.system(size: 13)).tag(page).padding(.vertical, 2)
+            .font(.system(size: 13)).tag(page)
     }
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -196,13 +197,10 @@ private struct PermissionSettingsView: View {
         }
     }
     private func permissionGroup(_ title: String, granted: Bool, purpose: String, anchor: String) -> some View {
-        SettingsGroup(title) {
-            SettingsRow("授权状态") {
-                Label(granted ? "已授权" : "未授权", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
-                    .foregroundStyle(granted ? Color.secondary : Color.orange)
-                Button("前往授权") { open(anchor) }
-            }
-            Text(purpose).font(.caption).foregroundStyle(.secondary)
+        SettingsRow(title, description: purpose) {
+            Label(granted ? "已授权" : "未授权", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .foregroundStyle(granted ? Color.secondary : Color.orange)
+            Button("前往授权") { open(anchor) }
         }
     }
     private func open(_ anchor: String) {

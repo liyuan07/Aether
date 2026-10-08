@@ -40,7 +40,7 @@ struct ShortcutSettingsView: View {
                             Image(systemName: "line.3.horizontal")
                                 .foregroundStyle(.tertiary).help("拖动调整顺序")
                         }
-                        .padding(.vertical, 8)
+                        .frame(minHeight: SettingsLayout.rowHeight)
                         .contentShape(Rectangle())
                         .onTapGesture { expansion(for: rule.id).wrappedValue.toggle() }
                     }
@@ -55,7 +55,7 @@ struct ShortcutSettingsView: View {
                 Spacer()
                 Text("拖动调整顺序").font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 24).padding(.vertical, 12)
+            .padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 8)
         }
     }
 
@@ -70,7 +70,7 @@ struct ShortcutSettingsView: View {
     }
 
     private var settingsHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: model.permissionGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                     .foregroundStyle(model.permissionGranted ? .green : .orange)
@@ -100,8 +100,8 @@ struct ShortcutSettingsView: View {
                     .disabled(model.isScanningConflicts)
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
+        .padding(.horizontal, SettingsLayout.pageInset)
+        .padding(.vertical, 8)
     }
 
 }
@@ -194,7 +194,7 @@ private struct RuleEditorView: View {
     private var actionConfiguration: some View {
         switch rule.action {
         case let .application(target, mode):
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("应用") {
                     HStack {
                         Text(target.displayName).lineLimit(1)
@@ -238,7 +238,7 @@ private struct RuleEditorView: View {
             }
 
         case let .terminal(fallbackPath, useFrontmostFinder):
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
                 Toggle(
                     "Finder 在前台时使用其当前路径",
                     isOn: Binding(

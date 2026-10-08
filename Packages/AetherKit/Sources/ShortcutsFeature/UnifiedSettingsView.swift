@@ -44,9 +44,9 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+                .padding(.top, 8)
+                .padding(.horizontal, SettingsLayout.pageInset)
+                .padding(.bottom, 0)
                 switch navigation.section {
                 case .general: AppGeneralSettingsView(model: model)
                 case .applications: ApplicationShortcutSettingsView(model: model)
@@ -83,8 +83,8 @@ private struct ApplicationShortcutSettingsView: View {
                 Text("关闭后，最小化窗口保持原位。布局记录仅在本次 Aether 运行期间有效。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, SettingsLayout.pageInset)
+            .padding(.vertical, 8)
             Divider()
             if model.registeredApplicationGroups.isEmpty {
                 ProgressView("正在扫描 Applications…").frame(maxWidth: .infinity, minHeight: 160)
@@ -109,11 +109,12 @@ private struct ApplicationShortcutSettingsView: View {
                             ForEach(group.applications) { application in
                                 HStack(spacing: 10) {
                                     Image(nsImage: NSWorkspace.shared.icon(forFile: application.applicationPath))
-                                        .resizable().frame(width: 28, height: 28)
+                                        .resizable().frame(width: 22, height: 22)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(application.displayName)
                                         Text(application.applicationPath)
-                                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            .truncationMode(.middle).help(application.applicationPath)
                                     }
                                     Spacer(minLength: 12)
                                     Picker("窗口行为", selection: windowBehaviorBinding(for: application.bundleIdentifier)) {
@@ -122,7 +123,7 @@ private struct ApplicationShortcutSettingsView: View {
                                         }
                                     }
                                     .labelsHidden()
-                                    .frame(width: 170)
+                                    .frame(width: 145)
                                     .help("此应用的窗口行为，适用于应用快捷键和应用启动器")
                                     Image(systemName: "line.3.horizontal")
                                         .font(.caption).foregroundStyle(.tertiary)
@@ -152,8 +153,8 @@ private struct ApplicationShortcutSettingsView: View {
 
             Text("拖动应用可调整同首字母选择器中的展示顺序。中文应用按拼音首字母归类；新安装的应用会追加到对应分组末尾。")
                 .font(.caption).foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, SettingsLayout.pageInset)
+                .padding(.vertical, 8)
         }
     }
 
@@ -180,15 +181,10 @@ private struct AppGeneralSettingsView: View {
 
     var body: some View {
         SettingsForm {
-            SettingsGroup {
-                Toggle("显示实体按钮", isOn: appBinding(\.showModifierButtons))
-            } header: { Text("实体按钮") }
-            footer: { Text("在桌面显示可拖动的修饰键、复制与粘贴按钮。") }
-
-            SettingsGroup {
-                Toggle("屏蔽 ABC 自动切换", isOn: appBinding(\.blockAutomaticABC))
-            } header: { Text("输入法") }
-            footer: { Text("只在按下物理中英键时切换到 ABC，需要输入监控权限。") }
+            SettingsGroup("按键行为") {
+                SettingsToggleRow("显示实体按钮", description: "在桌面显示可拖动的修饰键、复制与粘贴按钮。", isOn: appBinding(\.showModifierButtons))
+                SettingsToggleRow("屏蔽 ABC 自动切换", description: "只在按下物理中英键时切换到 ABC，需要输入监控权限。", isOn: appBinding(\.blockAutomaticABC))
+            }
 
             SettingsGroup("配置") {
                 LabeledContent("快捷操作配置") {

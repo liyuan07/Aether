@@ -1,12 +1,23 @@
 import SwiftUI
 
-/// One spacing vocabulary for settings and the menu-bar workspace.
+/// Menu-bar dimensions remain independent from settings density.
 public enum AetherLayout {
     public static let pageInset: CGFloat = 20
     public static let groupSpacing: CGFloat = 16
     public static let rowHeight: CGFloat = 36
     public static let panelInset: CGFloat = 12
     public static let panelWidth: CGFloat = 360
+}
+
+/// Settings-only metrics; changing these must not resize the menu-bar workspace.
+public enum SettingsLayout {
+    public static let pageInset: CGFloat = 14
+    public static let groupSpacing: CGFloat = 10
+    public static let rowHeight: CGFloat = 28
+    public static let titleHeight: CGFloat = 40
+    public static let sidebarWidth: CGFloat = 148
+    public static let defaultSize = CGSize(width: 820, height: 560)
+    public static let minimumSize = CGSize(width: 760, height: 520)
 }
 
 /// Feature views own controls, never another window or sidebar.
@@ -19,9 +30,9 @@ public struct SettingsContent<Content: View>: View {
     }
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.system(size: 20, weight: .semibold))
-                .padding(.horizontal, AetherLayout.pageInset)
-                .padding(.vertical, 16)
+            Text(title).font(.system(size: 15, weight: .semibold))
+                .padding(.horizontal, SettingsLayout.pageInset)
+                .frame(height: SettingsLayout.titleHeight)
             Divider()
             content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -35,9 +46,9 @@ public struct SettingsForm<Content: View>: View {
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AetherLayout.groupSpacing) { content }
+            VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(AetherLayout.pageInset)
+                .padding(SettingsLayout.pageInset)
         }
         .toggleStyle(AlignedSettingsToggleStyle())
         .labeledContentStyle(AlignedSettingsLabelStyle())
@@ -51,7 +62,8 @@ private struct AlignedSettingsToggleStyle: ToggleStyle {
             Spacer(minLength: 8)
             Toggle(isOn: configuration.$isOn) { configuration.label }
                 .labelsHidden().toggleStyle(.switch)
-        }.frame(minHeight: AetherLayout.rowHeight)
+        }.frame(minHeight: SettingsLayout.rowHeight)
+            .settingsRowSeparator()
     }
 }
 
@@ -61,7 +73,8 @@ private struct AlignedSettingsLabelStyle: LabeledContentStyle {
             configuration.label
             Spacer(minLength: 8)
             configuration.content
-        }.frame(maxWidth: .infinity, minHeight: AetherLayout.rowHeight)
+        }.frame(maxWidth: .infinity, minHeight: SettingsLayout.rowHeight)
+            .settingsRowSeparator()
     }
 }
 
@@ -91,31 +104,62 @@ public struct SettingsGroup<Content: View>: View {
         self.content = content()
     }
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             header.font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 4) { content }
+            VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary, lineWidth: 0.5))
             footer.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 
+private extension View {
+    func settingsRowSeparator() -> some View {
+        overlay(alignment: .bottom) { Color.primary.opacity(0.08).frame(height: 0.5) }
+    }
+}
+
 public struct SettingsRow<Content: View>: View {
     private let title: String
+    private let description: String?
     private let content: Content
-    public init(_ title: String, @ViewBuilder content: () -> Content) {
+    public init(_ title: String, description: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.description = description
         self.content = content()
     }
     public var body: some View {
-        HStack(spacing: 16) {
-            Text(title)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).fixedSize(horizontal: false, vertical: true)
+                if let description {
+                    Text(description).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Spacer(minLength: 8)
             content
-        }.frame(minHeight: AetherLayout.rowHeight)
+        }
+        .padding(.vertical, description == nil ? 0 : 4)
+        .frame(minHeight: SettingsLayout.rowHeight)
+        .settingsRowSeparator()
+    }
+}
+
+/// A compact descriptive switch row with one accessible native control.
+public struct SettingsToggleRow: View {
+    private let title: String
+    private let description: String?
+    @Binding private var isOn: Bool
+    public init(_ title: String, description: String? = nil, isOn: Binding<Bool>) {
+        self.title = title
+        self.description = description
+        self._isOn = isOn
+    }
+    public var body: some View {
+        SettingsRow(title, description: description) {
+            Toggle(title, isOn: $isOn).labelsHidden().toggleStyle(.switch)
+        }
     }
 }
 

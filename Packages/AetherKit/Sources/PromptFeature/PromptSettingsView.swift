@@ -30,7 +30,7 @@ struct PromptSettingsView: View {
                 } header: {
                     Text("模型服务")
                 } footer: {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("修改后需点击“保存设置”。API Key 仅保存在本机私有文件。")
                         DisclosureGroup("了解接口配置") {
                             Text("使用兼容 OpenAI Chat Completions 的接口。Base URL 可填写服务根地址、/v1 地址或完整 /chat/completions 地址；本地无鉴权服务可不填 Key。")
@@ -54,7 +54,7 @@ struct PromptSettingsView: View {
                 } header: {
                     Text("历史提示词")
                 } footer: {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("降低保留数量并保存后，会删除最早的超额记录；关闭保存不会删除已有记录。")
                         DisclosureGroup("了解历史记录") {
                             Text("成功优化后保存原文、结果、时间和模型，可在菜单栏历史页回看、删除或清空。")
@@ -64,7 +64,7 @@ struct PromptSettingsView: View {
                 }
                 SettingsGroup {
                     DisclosureGroup("编辑优化指令（系统提示词）") {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 6) {
                         TextEditor(text: $model.draftConfiguration.systemPrompt)
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 240, idealHeight: 300)
@@ -97,7 +97,7 @@ struct PromptSettingsView: View {
     }
 
     private var settingsFooter: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             if let error = model.configurationLoadError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
@@ -118,6 +118,6 @@ struct PromptSettingsView: View {
                 }
                 Spacer(minLength: 0)
             }
-        }.padding(.horizontal, 20).padding(.vertical, 12)
+        }.padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 8)
     }
 }

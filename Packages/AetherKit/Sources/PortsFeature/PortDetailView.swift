@@ -1,5 +1,6 @@
 // Adapted from WhatPort PortDetailView (MIT), Darryl Morley.
 import SwiftUI
+import SharedSupport
 import Charts
 import WhatPortCore
 
@@ -20,7 +21,7 @@ struct PortDetailView: View {
                 cardContent
                 statisticsSection
             }
-            .padding(16)
+            .padding(SettingsLayout.pageInset)
         }
     }
 
@@ -73,10 +74,9 @@ struct PortDetailView: View {
 
     private func sectionCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) { content() }
-            .padding(12)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            .overlay(alignment: .bottom) { Color.primary.opacity(0.08).frame(height: 0.5) }
     }
 
 

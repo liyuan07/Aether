@@ -67,7 +67,7 @@ struct PortsWorkspaceView: View {
                     if model.sleeping { Text("系统休眠，采集已暂停。") }
                     if let note = capabilityNote(model.manager) { Text(note) }
                 }
-                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20).padding(.bottom, 12)
+                .font(.caption).foregroundStyle(.secondary).padding(SettingsLayout.pageInset)
                 Divider()
                 if model.lastUpdated == nil {
                     ProgressView("正在读取端口…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -77,16 +77,16 @@ struct PortsWorkspaceView: View {
                     HStack(spacing: 0) {
                         List(selection: $selection) {
                             ForEach(model.manager.ports) { port in
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(PortPresentation.name(port)).font(.headline)
-                                    if port.isActive, let name = port.deviceName { Text(name).lineLimit(2) }
+                                    if port.isActive, let name = port.deviceName { Text(name).lineLimit(1).help(name) }
                                     Text(PortPresentation.summary(port, phase: model.manager.lifecyclePhases[port.id]))
                                         .font(.caption).foregroundStyle(.secondary)
                                     Text(port.power.map { WattsFormat.string($0.watts) } ?? "功率不可用")
                                         .font(.caption).monospacedDigit()
-                                }.padding(.vertical, 5).tag(port.id)
+                                }.padding(.vertical, 2).tag(port.id)
                             }
-                        }.listStyle(.sidebar).frame(width: 168)
+                        }.listStyle(.sidebar).frame(width: 140)
                         Divider()
                         if let port = model.manager.ports.first(where: { $0.id == selection }) {
                             PortDetailView(port: port, powerHistory: model.history.points[port.id] ?? [], powerMeteringAvailable: model.manager.powerMeteringAvailable, isCharging: model.manager.isCharging, fullyCharged: model.manager.fullyCharged, chargingStatus: model.manager.chargingStatus, reducedDetail: model.manager.portDataTier == .thunderboltOnly || !model.phyAvailable)

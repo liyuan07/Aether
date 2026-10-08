@@ -36,21 +36,7 @@ struct SettingsView: View {
 
     private var eyeCareSettingsCard: some View {
         SettingsCard(title: "护眼提醒", systemImage: "eye") {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("启用 20-20-20 护眼循环")
-                        .font(.body.weight(.medium))
-                    Text("手动开始，不会在应用启动时自动计时")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 12)
-
-                Toggle("", isOn: $eyeCareEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
+            SettingsToggleRow("启用 20-20-20 护眼循环", description: "手动开始，不会在应用启动时自动计时", isOn: $eyeCareEnabled)
 
             if eyeCareEnabled {
                 Divider()
@@ -85,25 +71,11 @@ struct SettingsView: View {
 
     private var timerSettingsCard: some View {
         SettingsCard(title: "常规", systemImage: "gearshape") {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("同步 macOS“时钟”计时器")
-                        .font(.body.weight(.medium))
-                    Text("显示在系统“时钟”App 中启动的计时器")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 12)
-
-                Toggle("", isOn: $mirrorSystemTimer)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
+            SettingsToggleRow("同步 macOS“时钟”计时器", description: "显示在系统“时钟”App 中启动的计时器", isOn: $mirrorSystemTimer)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("默认自定义倒计时")
@@ -287,20 +259,14 @@ private struct CompactDurationStepper: View {
     let range: ClosedRange<Int>
 
     var body: some View {
-        Stepper(value: $value, in: range) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Text(String(format: "%02d", value))
-                    .font(.system(.body, design: .monospaced).weight(.medium))
-            }
+        HStack(spacing: 6) {
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Text(String(format: "%02d", value)).monospacedDigit()
+            Stepper(title, value: $value, in: range).labelsHidden()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: SettingsLayout.rowHeight)
+
     }
 }
 
@@ -312,19 +278,11 @@ private struct EyeCareDurationStepper: View {
     let step: Double
 
     var body: some View {
-        Stepper(value: $value, in: range, step: step) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(valueText)
-                    .font(.system(.body, design: .monospaced).weight(.medium))
-            }
+        SettingsRow(title) {
+            Text(valueText).monospacedDigit().foregroundStyle(.secondary)
+            Stepper(title, value: $value, in: range, step: step).labelsHidden()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-        .frame(maxWidth: .infinity)
+
     }
 }
 
@@ -382,12 +340,12 @@ private struct TimerPresetDisclosureRow: View {
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
                 .contentShape(Rectangle())
-                .padding(.vertical, 8)
+                .frame(minHeight: SettingsLayout.rowHeight)
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 10) {
+                VStack(spacing: 6) {
                     Divider()
 
                     HStack(spacing: 10) {
