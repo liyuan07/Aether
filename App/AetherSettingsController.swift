@@ -162,7 +162,7 @@ private struct GeneralSettingsView: View {
     var body: some View {
         SettingsForm {
             SettingsGroup {
-                SettingsRow("登录时启动 Aether") { Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set)).labelsHidden() }
+                SettingsRow("登录时启动 Aether") { Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set)).toggleStyle(.switch).labelsHidden() }
                 LabeledContent("系统登录项状态", value: login.status)
                 if let error = login.error { Text(error).foregroundStyle(.red) }
             } header: { Text("启动") }

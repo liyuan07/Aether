@@ -47,7 +47,7 @@ public struct SettingsForm<Content: View>: View {
 private struct AlignedSettingsToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 12) {
-            configuration.label
+            configuration.label.accessibilityHidden(true)
             Spacer(minLength: 8)
             Toggle(isOn: configuration.$isOn) { configuration.label }
                 .labelsHidden().toggleStyle(.switch)
@@ -61,7 +61,7 @@ private struct AlignedSettingsLabelStyle: LabeledContentStyle {
             configuration.label
             Spacer(minLength: 8)
             configuration.content
-        }.frame(minHeight: AetherLayout.rowHeight)
+        }.frame(maxWidth: .infinity, minHeight: AetherLayout.rowHeight)
     }
 }
 
