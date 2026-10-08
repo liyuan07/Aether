@@ -6,9 +6,13 @@ private enum ModelTestError: Error { case failed }
 
 private final class ModelTestCredentials: PromptCredentialStore {
     var value = "test-old-key"
+    var failReads = false
     var saveCalls = 0
     var failingSaveCalls: Set<Int> = []
-    func load() throws -> String { value }
+    func load() throws -> String {
+        if failReads { throw ModelTestError.failed }
+        return value
+    }
     func save(_ key: String) throws {
         saveCalls += 1
         if failingSaveCalls.contains(saveCalls) { throw ModelTestError.failed }
@@ -246,4 +250,71 @@ func promptHistoryLimitAndDeletionPersistWithoutChangingDisplayedText() throws {
     model.clearHistory()
     #expect(try PromptStorage(directory: directory).loadHistory().isEmpty)
     #expect(model.outputText == "Result 2")
+}
+
+@Test @MainActor
+func promptRollbackFailureRemainsBlockedUntilRepairedConfigurationIsCompletelySaved() async throws {
+    let directory = modelTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let credentials = ModelTestCredentials(), client = ModelTestClient()
+    let model = try configuredModel(directory: directory, credentials: credentials, client: client)
+    let file = directory.appendingPathComponent("configuration.json")
+    let original = try Data(contentsOf: file)
+    let corrupt = Data("{ invalid synthetic configuration}".utf8)
+    try corrupt.write(to: file)
+    model.outputText = "Retained synthetic output"
+    model.draftConfiguration.baseURL = "https://new.example/v1"
+    model.draftAPIKey = "test-new-key"
+    credentials.failingSaveCalls = [2]
+    model.saveSettings()
+    #expect(model.settingsSaveFailed)
+    #expect(model.credentialInconsistent)
+    #expect(model.configuration.baseURL == "https://old.example/v1")
+    #expect(model.outputText == "Retained synthetic output")
+    #expect(try Data(contentsOf: file) == corrupt)
+    model.inputText = "Synthetic request"
+    model.optimize()
+    #expect(!model.isOptimizing)
+    #expect(await client.calls.isEmpty)
+    try original.write(to: file)
+    model.reloadConfiguration()
+    #expect(model.credentialInconsistent)
+    model.draftConfiguration.baseURL = "https://new.example/v1"
+    model.saveSettings()
+    #expect(!model.settingsSaveFailed)
+    #expect(!model.credentialInconsistent)
+    #expect(model.configuration.baseURL == "https://new.example/v1")
+    model.optimize()
+    try #require(await client.waitForCallCount(1))
+    let calls = await client.calls
+    #expect(calls.first?.key == "test-new-key")
+    #expect(calls.first?.configuration.baseURL == "https://new.example/v1")
+    await client.finish(.success("Synthetic result"))
+    #expect(await modelSettled { !model.isOptimizing })
+}
+
+@Test @MainActor
+func promptReadAndKeyWriteFailuresRetainPublishedConfiguration() throws {
+    let directory = modelTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let credentials = ModelTestCredentials()
+    let model = try configuredModel(directory: directory, credentials: credentials, client: ModelTestClient())
+    let file = directory.appendingPathComponent("configuration.json")
+    let original = try Data(contentsOf: file)
+    model.draftConfiguration.baseURL = "https://new.example/v1"
+    model.draftAPIKey = "test-new-key"
+    credentials.failReads = true
+    model.saveSettings()
+    #expect(model.settingsSaveFailed)
+    #expect(model.configuration.baseURL == "https://old.example/v1")
+    #expect(try Data(contentsOf: file) == original)
+    #expect(credentials.saveCalls == 0)
+    credentials.failReads = false
+    credentials.failingSaveCalls = [1]
+    model.saveSettings()
+    #expect(model.settingsSaveFailed)
+    #expect(!model.credentialInconsistent)
+    #expect(model.configuration.baseURL == "https://old.example/v1")
+    #expect(credentials.value == "test-old-key")
+    #expect(try Data(contentsOf: file) == original)
 }

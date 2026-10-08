@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import CryptoKit
 import Foundation
 import SharedSupport
 import CAetherCore
@@ -75,40 +74,14 @@ final class PromptModel: ObservableObject {
         next.baseURL = next.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         next.model = next.model.trimmingCharacters(in: .whitespacesAndNewlines)
         next.historyLimit = aether_prompt_limit(next.historyLimit)
-        guard !next.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            settingsMessage = "优化指令不能为空，可以恢复默认指令。"
+        let committed = promptCommitSettings(next, draftKey: draftAPIKey, storage: storage, credentials: credentials)
+        guard committed.outcome == 0 else {
+            settingsMessage = committed.message
             settingsSaveFailed = true
+            if committed.outcome == 5 { credentialInconsistent = true }
             return
         }
-        let previousKey: String
-        do { previousKey = try credentials.load() }
-        catch {
-            settingsMessage = "无法读取原 API Key，设置尚未保存，请重试。\(error.localizedDescription)"
-            settingsSaveFailed = true
-            return
-        }
-        let nextKey = draftAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        next.credentialFingerprint = Self.fingerprint(nextKey)
-        // Keep endpoint and credential changes consistent across partial persistence failures.
-        do { if nextKey != previousKey { try credentials.save(nextKey) } }
-        catch {
-            settingsMessage = "API Key 保存失败，设置尚未应用。\(error.localizedDescription)"
-            settingsSaveFailed = true
-            return
-        }
-        do { try storage.saveConfiguration(next) }
-        catch {
-            let configurationError = error.localizedDescription
-            do {
-                if nextKey != previousKey { try credentials.save(previousKey) }
-                settingsMessage = "设置保存失败，API Key 已保留原值，请重试。\(configurationError)"
-            } catch {
-                credentialInconsistent = true
-                settingsMessage = "设置保存失败，且 API Key 无法恢复。已暂停优化，请重新保存完整设置。"
-            }
-            settingsSaveFailed = true
-            return
-        }
+        next = committed.configuration
         configuration = next
         draftConfiguration = next
         configurationLoadError = nil
@@ -116,7 +89,7 @@ final class PromptModel: ObservableObject {
         settingsSaveFailed = false
         credentialInconsistent = false
         let currentHistory = pendingHistoryWrite ?? history
-        if next.saveHistory, currentHistory.count > next.historyLimit {
+        if aether_prompt_settings_trim_required(next.saveHistory ? 1 : 0, currentHistory.count, next.historyLimit) != 0 {
             if !persistHistory(promptHistoryPlan(currentHistory, action: 2, limit: next.historyLimit)) {
                 settingsMessage = "设置已保存，但超额历史尚未清理，请在工具窗口重试历史存储。"
                 settingsSaveFailed = true
@@ -177,7 +150,7 @@ final class PromptModel: ObservableObject {
             return
         }
         if aether_prompt_credential_consistent(configuration.credentialFingerprint == nil ? 0 : 1, apiKey.isEmpty ? 1 : 0,
-            configuration.credentialFingerprint == Self.fingerprint(apiKey) ? 1 : 0) == 0 {
+            configuration.credentialFingerprint == promptCredentialFingerprint(apiKey) ? 1 : 0) == 0 {
             credentialInconsistent = true
             optimizationError = "API Key 与服务设置不匹配，请前往设置重新保存后再试。"
             return
@@ -291,7 +264,5 @@ final class PromptModel: ObservableObject {
         return core.changed != 0
     }
 
-    private static func fingerprint(_ key: String) -> String {
-        SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
+
 }

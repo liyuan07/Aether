@@ -711,6 +711,7 @@ mod application_intent;
 mod geometry;
 mod memo;
 mod prompt;
+mod prompt_settings;
 mod prompt_store;
 mod shortcut_defaults;
 mod shortcuts;

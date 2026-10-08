@@ -489,4 +489,11 @@ uint32_t aether_clipboard_archive_write_spans_preparing_cleanup(void *store,
     size_t group_count, uint8_t has_groups, AetherBytes bytes, const AetherClipboardResourceCleanup *cleanup, void **plan);
 void aether_clipboard_resource_cleanup_run(const void *plan, const AetherClipboardResourceCleanup *cleanup);
 void aether_clipboard_resource_cleanup_destroy(void *plan);
+// Synchronous Prompt settings policy. No credential bytes are passed or retained.
+// Step 0: read old key (0=same, 1=changed, other=failed); steps 1/2/3: new key/config/old key (0=OK).
+// Outcome 0=saved, 1=empty instruction, 2=read failed, 3=key write failed,
+// 4=config failed with key preserved/restored, 5=config failed and rollback failed.
+typedef uint8_t (*AetherPromptSettingsStep)(void *context, uint8_t step);
+uint32_t aether_prompt_settings_commit(uint8_t instruction_valid, AetherPromptSettingsStep step, void *context);
+uint8_t aether_prompt_settings_trim_required(uint8_t save_history, size_t count, size_t limit);
 #endif
