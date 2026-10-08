@@ -36,7 +36,9 @@ struct ShortcutSettingsView: View {
                                     .foregroundStyle(.orange)
                             }
                             Text(rule.source.displayString)
-                                .font(.callout.monospaced()).foregroundStyle(.secondary)
+                                .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 5))
                             Image(systemName: "line.3.horizontal")
                                 .foregroundStyle(.tertiary).help("拖动调整顺序")
                         }
@@ -48,6 +50,7 @@ struct ShortcutSettingsView: View {
                 .onMove(perform: model.moveRules)
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
             HStack {
                 Button { _ = model.addRule() } label: {
                     Label("添加快捷键", systemImage: "plus")

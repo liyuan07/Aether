@@ -31,52 +31,42 @@ struct ClipboardSettingsView: View {
     @ObservedObject private var module = ClipboardModule.shared
 
     var body: some View {
-        SettingsContent("剪贴板") {
+        SettingsContent("剪贴板", subtitle: "决定记录什么、保留多久，以及如何快速取用。") {
             SettingsForm {
                 SettingsGroup("记录") {
-                    Toggle("记录剪贴板历史", isOn: $monitoringEnabled)
+                    SettingsToggleRow("记录剪贴板历史", description: "自动保存复制的文字、图片与文件。", isOn: $monitoringEnabled)
                     SettingsStepperRow("记录上限", display: "\(historyLimit) 条", value: $historyLimit, in: 50...20_000, step: 50)
                     SettingsStepperRow("保留时间", display: expirationDays == 0 ? "永久保留" : "\(expirationDays) 天", value: $expirationDays, in: 0...365)
-                    LabeledContent("存储位置") {
-                        Button("显示数据文件夹") {
-                            NSWorkspace.shared.activateFileViewerSelecting([ClipboardStorage.archiveDirectory])
-                        }
-                    }
                 }
 
-                BackgroundSettingsView()
-
-                SettingsGroup("快捷键") {
-                    Toggle(isOn: $shortcutEnabled) {
-                        LabeledContent("打开剪贴板", value: "⇧⌘J")
-                    }
-                    if let error = module.hotKeyError {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    }
-                }
 
                 SettingsGroup {
-                    Toggle("输入停顿后搜索", isOn: $searchDebounceEnabled)
+                    SettingsToggleRow("输入停顿后搜索", description: "关闭后，每次输入都立即更新结果。", isOn: $searchDebounceEnabled)
                     SettingsStepperRow("等待时间", display: "\(searchDebounceMilliseconds) 毫秒",
                                        value: $searchDebounceMilliseconds,
                                        in: ClipboardSearchDebounce.supportedMilliseconds,
                                        step: ClipboardSearchDebounce.stepMilliseconds)
                     .disabled(!searchDebounceEnabled)
-                } header: { Text("搜索") }
-                footer: { Text("关闭后，每次输入都会立即更新搜索结果。") }
+                } header: { Text("搜索响应") }
 
-                SettingsGroup("自动粘贴") {
-                    LabeledContent("辅助功能", value: accessibilityTrusted ? "已授权" : "未授权")
-                    if !accessibilityTrusted {
-                        HStack {
-                            Text("粘贴到其他应用需要辅助功能权限。")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("权限设置") { AppRouter.shared.send(.settings(.permissions)) }
+                SettingsGroup("快捷访问") {
+                    SettingsRow("打开剪贴板") {
+                        Text("⇧⌘J").monospaced().foregroundStyle(.secondary)
+                        Toggle("启用剪贴板快捷键", isOn: $shortcutEnabled).labelsHidden().toggleStyle(.switch)
+                    }
+                    if let error = module.hotKeyError {
+                        Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    }
+                    SettingsRow("自动粘贴", description: accessibilityTrusted ? "可将选中的内容粘贴到前台应用。" : "粘贴到其他应用需要辅助功能权限。") {
+                        if accessibilityTrusted {
+                            Label("已授权", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                        } else {
+                            Button("前往授权") { AppRouter.shared.send(.settings(.permissions)) }
                         }
                     }
                 }
+                BackgroundSettingsView()
+
             }
 
         }

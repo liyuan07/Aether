@@ -71,6 +71,12 @@ public enum SettingsPage: String, CaseIterable, Identifiable {
     }
 }
 
+public extension SettingsPage {
+    /// Permission deep links still work; startup and permissions now share one page.
+    var navigationPage: SettingsPage { self == .permissions ? .general : self }
+    static var navigationPages: [SettingsPage] { [.general, .clipboard, .shortcuts, .timer, .prompt, .ports] }
+}
+
 public enum AppRoute: Equatable {
     case overview, clipboard, prompt, settings(SettingsPage), dismissPanels
 }

@@ -11,44 +11,55 @@ public enum AetherLayout {
 
 /// Settings-only metrics; changing these must not resize the menu-bar workspace.
 public enum SettingsLayout {
-    public static let pageInset: CGFloat = 14
-    public static let groupSpacing: CGFloat = 10
-    public static let rowHeight: CGFloat = 28
-    public static let titleHeight: CGFloat = 40
-    public static let sidebarWidth: CGFloat = 148
-    public static let defaultSize = CGSize(width: 820, height: 560)
-    public static let minimumSize = CGSize(width: 760, height: 520)
+    public static let pageInset: CGFloat = 24
+    public static let groupSpacing: CGFloat = 20
+    public static let rowHeight: CGFloat = 44
+    public static let sidebarWidth: CGFloat = 184
+    public static let defaultSize = CGSize(width: 880, height: 620)
+    public static let minimumSize = CGSize(width: 800, height: 560)
 }
 
-/// Feature views own controls, never another window or sidebar.
+/// Feature views own their content; the application owns navigation.
 public struct SettingsContent<Content: View>: View {
     private let title: String
+    private let subtitle: String?
     private let content: Content
-    public init(_ title: String, @ViewBuilder content: () -> Content) {
+    public init(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.subtitle = subtitle
         self.content = content()
     }
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.system(size: 15, weight: .semibold))
-                .padding(.horizontal, SettingsLayout.pageInset)
-                .frame(height: SettingsLayout.titleHeight)
-            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.system(size: 22, weight: .semibold))
+                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary) }
+            }
+            .padding(.horizontal, SettingsLayout.pageInset)
+            .padding(.top, 24).padding(.bottom, 8)
             content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .font(.system(size: 13))
-        .controlSize(.small)
+        .font(.system(size: 14))
+        .controlSize(.regular)
     }
 }
 
 public struct SettingsForm<Content: View>: View {
     private let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
+    private let initialFocus: String?
+    public init(initialFocus: String? = nil, @ViewBuilder content: () -> Content) {
+        self.initialFocus = initialFocus
+        self.content = content()
+    }
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(SettingsLayout.pageInset)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) { content }
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .padding(SettingsLayout.pageInset)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .onAppear { if let initialFocus { proxy.scrollTo(initialFocus, anchor: .top) } }
         }
         .toggleStyle(AlignedSettingsToggleStyle())
         .labeledContentStyle(AlignedSettingsLabelStyle())
@@ -104,11 +115,14 @@ public struct SettingsGroup<Content: View>: View {
         self.content = content()
     }
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            header.font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            header.font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
             VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            footer.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16).padding(.vertical, 4)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+            footer.font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -133,16 +147,32 @@ public struct SettingsRow<Content: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fixedSize(horizontal: false, vertical: true)
                 if let description {
-                    Text(description).font(.caption).foregroundStyle(.secondary)
+                    Text(description).font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 8)
             content
         }
-        .padding(.vertical, description == nil ? 0 : 4)
+        .padding(.vertical, description == nil ? 0 : 10)
         .frame(minHeight: SettingsLayout.rowHeight)
         .settingsRowSeparator()
+    }
+}
+
+/// Aligned editing fields, with a stable label column and flexible editor width.
+public struct SettingsField<Content: View>: View {
+    private let title: String
+    private let content: Content
+    public init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+    public var body: some View {
+        HStack(spacing: 16) {
+            Text(title).frame(width: 96, alignment: .leading)
+            content.frame(maxWidth: .infinity)
+        }.frame(minHeight: SettingsLayout.rowHeight).settingsRowSeparator()
     }
 }
 

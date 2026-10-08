@@ -102,38 +102,19 @@ private struct AetherSettingsView: View {
     @ObservedObject var startup: StartupController
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Label("Aether", systemImage: "square.3.layers.3d")
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 12).frame(height: 36)
-                List(selection: $navigation.page) {
-                    Section("通用") { navigationRow(.general) }
-                    Section("功能") {
-                        navigationRow(.clipboard)
-                        navigationRow(.shortcuts)
-                        navigationRow(.timer)
-                        navigationRow(.prompt)
-                    }
-                    Section("系统") {
-                        navigationRow(.ports)
-                        navigationRow(.permissions)
-                    }
-                }.listStyle(.sidebar)
-                    .environment(\.defaultMinListRowHeight, SettingsLayout.rowHeight)
-            }.frame(width: SettingsLayout.sidebarWidth)
+            sidebar
             Divider()
             Group {
                 if !startup.ready && navigation.page != .permissions {
                     setup
                 } else {
                     switch navigation.page {
-                    case .general: SettingsContent("通用") { GeneralSettingsView() }
+                    case .general, .permissions: GeneralSettingsView(focusPermissions: navigation.page == .permissions)
                     case .clipboard: ClipboardModule.shared.settings()
                     case .shortcuts: ShortcutsModule.shared.settings()
                     case .timer: TimerModule.shared.settings()
                     case .prompt: PromptModule.shared.settings()
                     case .ports: PortsModule.shared.details()
-                    case .permissions: SettingsContent("权限") { PermissionSettingsView() }
                     }
                 }
             }
@@ -143,9 +124,52 @@ private struct AetherSettingsView: View {
         }.tint(.indigo)
         .background(Color(nsColor: .windowBackgroundColor))
     }
-    private func navigationRow(_ page: SharedSupport.SettingsPage) -> some View {
-        Label(page.title, systemImage: page.symbol)
-            .font(.system(size: 13)).tag(page)
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.3.layers.3d")
+                    .font(.system(size: 24, weight: .medium)).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Aether").font(.system(size: 17, weight: .semibold))
+                    Text("设置").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }.padding(.horizontal, 18).padding(.vertical, 24)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    navigationRow(.general, title: "启动与权限")
+                    Text("功能设置").font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary).padding(.leading, 12).padding(.top, 18).padding(.bottom, 4)
+                    ForEach([SharedSupport.SettingsPage.clipboard, .shortcuts, .timer, .prompt]) { page in
+                        navigationRow(page, title: page.title)
+                    }
+                    Text("硬件").font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary).padding(.leading, 12).padding(.top, 18).padding(.bottom, 4)
+                    navigationRow(.ports, title: "端口与设备")
+                }.padding(.horizontal, 10)
+            }
+            Text("版本 " + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"))
+                .font(.system(size: 12)).foregroundStyle(.secondary).padding(20)
+        }
+        .frame(width: SettingsLayout.sidebarWidth)
+        .background(.regularMaterial)
+    }
+    private func navigationRow(_ page: SharedSupport.SettingsPage, title: String) -> some View {
+        let selected = navigation.page.navigationPage == page
+        return Button { navigation.page = page } label: {
+            HStack(spacing: 10) {
+                Image(systemName: page == .general ? "slider.horizontal.3" : page.symbol)
+                    .font(.system(size: 16)).frame(width: 22)
+                Text(title).font(.system(size: 14, weight: selected ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).frame(minHeight: 42)
+            .foregroundStyle(selected ? Color.accentColor : Color.primary)
+            .background(selected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.navigation." + page.rawValue)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -159,15 +183,27 @@ private struct AetherSettingsView: View {
 }
 
 private struct GeneralSettingsView: View {
+    let focusPermissions: Bool
     @ObservedObject private var login = LoginService.shared
     var body: some View {
-        SettingsForm {
-            SettingsGroup {
-                SettingsRow("登录时启动 Aether") { Toggle("登录时启动 Aether", isOn: Binding(get: { login.enabled }, set: login.set)).toggleStyle(.switch).labelsHidden() }
-                LabeledContent("系统登录项状态", value: login.status)
-                if let error = login.error { Text(error).foregroundStyle(.red) }
-            } header: { Text("启动") }
-
+        SettingsContent("启动与权限", subtitle: "管理启动方式、系统授权和本机数据。") {
+            SettingsForm(initialFocus: focusPermissions ? "permissions" : nil) {
+                SettingsGroup("启动方式") {
+                    SettingsToggleRow("登录时启动 Aether", description: login.status,
+                                      isOn: Binding(get: { login.enabled }, set: login.set))
+                    if let error = login.error {
+                        Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).padding(.vertical, 8)
+                    }
+                }
+                PermissionSettingsView().id("permissions")
+                SettingsGroup("本机数据") {
+                    SettingsRow("数据文件夹", description: "查看剪贴板、备忘录与配置的本地存储。") {
+                        Button("在访达中打开", systemImage: "folder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([AppEnvironment.root])
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -176,12 +212,12 @@ private struct PermissionSettingsView: View {
     @State private var accessibility = AXIsProcessTrusted()
     @State private var monitoring = CGPreflightListenEventAccess()
     var body: some View {
-        SettingsForm {
+        SettingsGroup("系统权限") {
             permissionGroup("辅助功能", granted: accessibility,
-                            purpose: "自动粘贴、快捷键映射、应用操作及系统时钟镜像。",
+                            purpose: "粘贴到其他应用、映射快捷键、移动窗口。",
                             anchor: "Privacy_Accessibility")
             permissionGroup("输入监控", granted: monitoring,
-                            purpose: "识别左右修饰键和物理中英键、快捷键提示及 ABC 自动切换防护。",
+                            purpose: "识别左右修饰键与物理中英键，显示快捷键提示。",
                             anchor: "Privacy_ListenEvent")
             DisclosureGroup("了解详情") {
                 Text("未授权时仍可记录和复制剪贴板、使用本地计时。若系统要求重新打开应用，请使用菜单栏右键的“重新启动”。系统时钟镜像受 macOS 版本及系统接口限制。")
@@ -200,7 +236,7 @@ private struct PermissionSettingsView: View {
         SettingsRow(title, description: purpose) {
             Label(granted ? "已授权" : "未授权", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
                 .foregroundStyle(granted ? Color.secondary : Color.orange)
-            Button("前往授权") { open(anchor) }
+            Button(granted ? "查看权限" : "前往授权") { open(anchor) }
         }
     }
     private func open(_ anchor: String) {

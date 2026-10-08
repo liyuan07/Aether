@@ -5,12 +5,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, applications, shortcuts
+    case shortcuts, applications, general
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .general: "按键与面板"
+        case .general: "按键与桌面"
         case .applications: "应用唤醒"
         case .shortcuts: "快捷键"
         }
@@ -26,7 +26,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
 @MainActor
 final class SettingsNavigationModel: ObservableObject {
-    @Published var section: SettingsSection = .general
+    @Published var section: SettingsSection = .shortcuts
 }
 
 struct SettingsView: View {
@@ -34,19 +34,25 @@ struct SettingsView: View {
     @ObservedObject var navigation: SettingsNavigationModel
 
     var body: some View {
-        SettingsContent("快捷操作") {
+        SettingsContent("快捷操作", subtitle: "配置快捷键、应用唤醒与桌面按键。") {
             VStack(spacing: 0) {
-                Picker("快捷操作分类", selection: $navigation.section) {
+                HStack(spacing: 4) {
                     ForEach(SettingsSection.allCases) { value in
-                        Label(value.title, systemImage: value.icon).tag(value)
+                        Button { navigation.section = value } label: {
+                            Label(value.title, systemImage: value.icon)
+                                .font(.system(size: 13, weight: navigation.section == value ? .semibold : .regular))
+                                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                .background(navigation.section == value ? Color(nsColor: .controlBackgroundColor) : .clear,
+                                            in: RoundedRectangle(cornerRadius: 7))
+                                .foregroundStyle(navigation.section == value ? Color.primary : Color.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("shortcuts.settings.tab." + value.rawValue)
+                        .accessibilityAddTraits(navigation.section == value ? [.isSelected] : [])
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
-                .padding(.horizontal, SettingsLayout.pageInset)
-                .padding(.bottom, 0)
+                .padding(4).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 12)
                 switch navigation.section {
                 case .general: AppGeneralSettingsView(model: model)
                 case .applications: ApplicationShortcutSettingsView(model: model)
@@ -69,7 +75,7 @@ private struct ApplicationShortcutSettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("轻按 Option+首字母打开默认应用；按住后从同首字母应用中选择")
                     .font(.callout).foregroundStyle(.secondary)
-                Text("普通窗口移到按键时鼠标所在屏幕；全屏窗口保持原位。需要辅助功能权限。")
+                Text("普通窗口移到鼠标所在屏幕；全屏窗口保持原位。需要辅助功能权限。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Toggle("唤起时恢复最小化窗口", isOn: Binding(
@@ -181,13 +187,13 @@ private struct AppGeneralSettingsView: View {
 
     var body: some View {
         SettingsForm {
-            SettingsGroup("按键行为") {
+            SettingsGroup("桌面与输入") {
                 SettingsToggleRow("显示实体按钮", description: "在桌面显示可拖动的修饰键、复制与粘贴按钮。", isOn: appBinding(\.showModifierButtons))
                 SettingsToggleRow("屏蔽 ABC 自动切换", description: "只在按下物理中英键时切换到 ABC，需要输入监控权限。", isOn: appBinding(\.blockAutomaticABC))
             }
 
-            SettingsGroup("配置") {
-                LabeledContent("快捷操作配置") {
+            SettingsGroup("配置迁移") {
+                SettingsRow("导入与导出", description: "在本机备份或迁移快捷操作配置。") {
                     HStack {
                         Button("导入…") { importConfiguration() }
                         Button("导出…") { exportConfiguration() }

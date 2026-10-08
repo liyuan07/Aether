@@ -2,6 +2,13 @@ import XCTest
 @testable import SharedSupport
 
 final class ControlCenterLayoutTests: XCTestCase {
+    func testPermissionDeepLinkUsesSharedStartupPageWithoutChangingRouteIdentity() {
+        XCTAssertEqual(SettingsPage.permissions.navigationPage, .general)
+        XCTAssertEqual(SettingsPage.permissions.rawValue, "permissions")
+        for page in SettingsPage.navigationPages { XCTAssertEqual(page.navigationPage, page) }
+        XCTAssertEqual(Set(SettingsPage.navigationPages).count, SettingsPage.allCases.count - 1)
+    }
+
     func testLegacyOrderRetainsUserOrderAndCompletesUnknownOrDuplicateInput() {
         XCTAssertEqual(ControlCenterDestination.entryOrder(saved: ["prompt", "overview", "memo", "prompt", "future"]),
                        [.prompt, .memo, .clipboard, .shortcuts])

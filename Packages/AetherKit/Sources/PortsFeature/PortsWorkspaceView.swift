@@ -55,19 +55,25 @@ struct PortsWorkspaceView: View {
     @ObservedObject var model: PortsModel
     @State private var selection: Int?
     var body: some View {
-        SettingsContent("端口") {
+        SettingsContent("端口与设备", subtitle: "查看连接状态、供电与链路信息。") {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    DisclosureGroup("了解端口数据") {
-                        Text("协商速率表示链路能力，实际速度取决于设备与负载。仅在查看时采集，历史仅保留在内存，无法读取的项目显示不可用。")
-                            .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Circle().fill(model.collecting ? Color.green : Color.secondary).frame(width: 6, height: 6)
+                        Text(model.collecting ? "实时采集中" : "采集已暂停").accessibilityIdentifier("ports.sampling-status")
+                        Spacer()
+                        Text("\(model.manager.ports.count) 个端口")
                     }
-                    Text(model.collecting ? "实时采集中" : "采集已暂停").accessibilityIdentifier("ports.sampling-status")
+                    DisclosureGroup("数据说明") {
+                        Text("协商速率表示链路能力，实际速度取决于设备与负载。仅在查看时采集，历史仅保留在内存，无法读取的项目显示不可用。")
+                            .fixedSize(horizontal: false, vertical: true).padding(.vertical, 8)
+                    }
                     if model.lastUpdated != nil && !model.phyAvailable { Text("此 Mac 当前未提供通道状态读数。") }
                     if model.sleeping { Text("系统休眠，采集已暂停。") }
                     if let note = capabilityNote(model.manager) { Text(note) }
                 }
-                .font(.caption).foregroundStyle(.secondary).padding(SettingsLayout.pageInset)
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 12)
                 Divider()
                 if model.lastUpdated == nil {
                     ProgressView("正在读取端口…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -77,16 +83,21 @@ struct PortsWorkspaceView: View {
                     HStack(spacing: 0) {
                         List(selection: $selection) {
                             ForEach(model.manager.ports) { port in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(PortPresentation.name(port)).font(.headline)
-                                    if port.isActive, let name = port.deviceName { Text(name).lineLimit(1).help(name) }
-                                    Text(PortPresentation.summary(port, phase: model.manager.lifecyclePhases[port.id]))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Text(port.power.map { WattsFormat.string($0.watts) } ?? "功率不可用")
-                                        .font(.caption).monospacedDigit()
-                                }.padding(.vertical, 2).tag(port.id)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(PortPresentation.name(port)).font(.system(size: 14, weight: .medium))
+                                        Spacer(minLength: 4)
+                                        Circle().fill(port.isActive ? Color.green : Color.secondary.opacity(0.3)).frame(width: 6, height: 6)
+                                    }
+                                    Text(port.deviceName ?? PortPresentation.summary(port, phase: model.manager.lifecyclePhases[port.id]))
+                                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                                        .help(PortPresentation.summary(port, phase: model.manager.lifecyclePhases[port.id]))
+                                    if let power = port.power {
+                                        Text(WattsFormat.string(power.watts)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                                    }
+                                }.padding(.vertical, 8).tag(port.id)
                             }
-                        }.listStyle(.sidebar).frame(width: 140)
+                        }.listStyle(.inset).scrollContentBackground(.hidden).frame(width: 156)
                         Divider()
                         if let port = model.manager.ports.first(where: { $0.id == selection }) {
                             PortDetailView(port: port, powerHistory: model.history.points[port.id] ?? [], powerMeteringAvailable: model.manager.powerMeteringAvailable, isCharging: model.manager.isCharging, fullyCharged: model.manager.fullyCharged, chargingStatus: model.manager.chargingStatus, reducedDetail: model.manager.portDataTier == .thunderboltOnly || !model.phyAvailable)

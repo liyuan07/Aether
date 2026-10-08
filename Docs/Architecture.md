@@ -96,7 +96,7 @@ Rust 核心执行 Prompt 请求体/响应协议、接口路径策略、请求代
 
 ## 设置
 
-应用层持有唯一侧栏，页面标题共用 `SharedSupport.SettingsContent`。剪贴板使用公共紧凑设置行；快捷操作通过顶部分段选择器切换按键与面板、应用唤醒和快捷键。规则在同一列表中展开编辑，同时仅展开一条，不嵌入另一套设置侧栏或独立对话框。配置导入导出位于快捷操作配置区，启动数据准备失败通过通用页重试。
+应用层持有唯一侧栏，启动和权限集中于同一页，页面标题共用 `SharedSupport.SettingsContent`。剪贴板使用公共紧凑设置行；快捷操作通过顶部分段选择器切换按键与面板、应用唤醒和快捷键。规则在同一列表中展开编辑，同时仅展开一条，不嵌入另一套设置侧栏或独立对话框。配置导入导出位于快捷操作配置区，启动数据准备失败通过通用页重试。
 
 ## 计时准确性
 
@@ -279,7 +279,9 @@ Rust 缓存按可见视图 UUID 管理使用方；最后一个视图隐藏/销�
 
 ## 统一设置与菜单栏布局
 
-`SharedSupport` 提供独立的菜单栏 `AetherLayout` 与设置专用 `SettingsLayout`、`SettingsContent`、`SettingsForm`、`SettingsGroup`、`SettingsRow` 与 `PanelToolbar`。应用层装配导航，各功能负责内容和工具栏操作，返回首页通过环境闭包注入；共享层不访问功能实现。渐进展开不改变偏好的保存语义。设置默认 820 × 560、最小 760 × 520，保留已有窗口记忆；页面边距 14、组间距 10、普通行高 28、标题栏高 40。`SettingsGroup` 不绘制卡片，`SettingsRow` 和 `SettingsToggleRow` 支持次级说明及自然增高，普通开关和数值行通过细分隔线对齐。设置密度调整不得改变菜单栏常量和工具栏。
+`SharedSupport` 提供独立的菜单栏 `AetherLayout` 与设置专用 `SettingsLayout`、`SettingsContent`、`SettingsForm`、`SettingsGroup`、`SettingsRow`、`SettingsField`、`SettingsToggleRow` 和 `PanelToolbar`。应用层拥有侧栏和应用级设置，各功能只装配内容；共享层不访问功能实现。设置按任务分组，组内共享背景和分隔线，表单字段使用稳定标签列，正文 14 点、标题 22 点；边距 24、组间距 20、普通行高 44、侧栏 184。默认 880 × 620、最小 800 × 560，保留窗口记忆。菜单栏常量及导航不随设置重设计改变。
+
+左侧导航保留六个入口，原 `SettingsPage` 原始值和路由保持兼容。`.general` 和 `.permissions` 都显示“启动与权限”，后者通过 `SettingsForm.initialFocus` 定位系统权限区域；端口可见性仍由实际路由和窗口可见性控制。快捷操作主分类首先展示快捷键列表，其他分类由模块持有。计时和护眼用菜单选择时长；`SettingsDurationOptions` 将合法的既有非整档时长加入选项，展示不会修改偏好。提示词仍显式保存，固定底栏左侧进入优化、右侧保存，并直接显示失败或成功反馈。
 
 菜单栏以首页为默认入口，四个功能进入二级页。`ControlCenterDestination` 规范化原 `controlCenterTabOrder`：保留已知功能顺序、排除概览与重复项、追加缺失项；继续使用原偏好键。普通打开重置为首页，显式路由定位功能。备忘录草稿由模块模型持有，仅成功写入后清空，不写入磁盘。端口摘要仅在首页可见时采集，护眼面板更新同时跟随页面与 popover 可见性。
 

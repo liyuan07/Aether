@@ -25,81 +25,58 @@ struct SettingsView: View {
     @State private var showingResetConfirmation = false
 
     var body: some View {
-        SettingsContent("计时与护眼") {
+        SettingsContent("计时与护眼", subtitle: "选择默认时长，设置工作与休息的节奏。") {
             SettingsForm {
                 timerSettingsCard
                 eyeCareSettingsCard
-                presetsCard
             }
         }
     }
 
     private var eyeCareSettingsCard: some View {
-        SettingsCard(title: "护眼提醒", systemImage: "eye") {
-            SettingsToggleRow("启用 20-20-20 护眼循环", description: "手动开始，不会在应用启动时自动计时", isOn: $eyeCareEnabled)
-
-            if eyeCareEnabled {
-
-                HStack(spacing: 10) {
-                    EyeCareDurationStepper(
-                        title: "工作时长",
-                        valueText: "\(Int(eyeCareWorkDuration / 60)) 分钟",
-                        value: $eyeCareWorkDuration,
-                        range: EyeCareManager.workDurationRange,
-                        step: 5 * 60
-                    )
-
-                    EyeCareDurationStepper(
-                        title: "休息时长",
-                        valueText: "\(Int(eyeCareRestDuration)) 秒",
-                        value: $eyeCareRestDuration,
-                        range: EyeCareManager.restDurationRange,
-                        step: 10
-                    )
-                }
-
-                Text("修改从下一阶段生效。")
-                    .font(.caption).foregroundStyle(.secondary)
+        SettingsGroup {
+            HStack(spacing: 8) {
+                Text("每工作")
+                EyeCareIntervalPicker(title: "工作时长", value: $eyeCareWorkDuration,
+                                      range: EyeCareManager.workDurationRange, step: 300, minutes: true)
+                    .disabled(!eyeCareEnabled)
+                Text("休息")
+                EyeCareIntervalPicker(title: "休息时长", value: $eyeCareRestDuration,
+                                      range: EyeCareManager.restDurationRange, step: 10, minutes: false)
+                    .disabled(!eyeCareEnabled)
+                Spacer(minLength: 8)
+                Toggle("启用护眼提醒", isOn: $eyeCareEnabled).labelsHidden().toggleStyle(.switch)
+            }.frame(minHeight: SettingsLayout.rowHeight)
+        } header: { Text("护眼提醒") }
+        footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("手动开始，不在应用启动时自动计时；时长修改从下一阶段生效。")
                 DisclosureGroup("了解 20-20-20 护眼提醒") {
                     Text("休息时请看向约 6 米外；本功能不能替代专业检查。若持续眼痛或明显视物模糊，请咨询眼科医生或视光专业人士。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .fixedSize(horizontal: false, vertical: true).padding(.vertical, 6)
                 }
             }
         }
     }
 
     private var timerSettingsCard: some View {
-        SettingsCard(title: "常规", systemImage: "gearshape") {
-            SettingsToggleRow("同步 macOS“时钟”计时器", description: "显示在系统“时钟”App 中启动的计时器", isOn: $mirrorSystemTimer)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("默认自定义倒计时")
-                            .font(.body.weight(.medium))
-                        Text("从操作面板新建倒计时时使用")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Text(customDurationDisplay)
-                        .font(.system(.body, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 10) {
-                    CompactDurationStepper(title: "小时", value: customHours, range: 0...23)
-                    CompactDurationStepper(title: "分钟", value: customMinutes, range: 0...59)
-                    CompactDurationStepper(title: "秒", value: customSeconds, range: 0...59)
+        SettingsGroup("倒计时") {
+            SettingsRow("默认倒计时") {
+                HStack(spacing: 8) {
+                    CompactDurationPicker(title: "时", value: customHours, range: 0...23)
+                    CompactDurationPicker(title: "分", value: customMinutes, range: 0...59)
+                    CompactDurationPicker(title: "秒", value: customSeconds, range: 0...59)
                 }
             }
+            SettingsToggleRow("同步 macOS“时钟”", isOn: $mirrorSystemTimer)
+                .help("同时显示在系统“时钟”App 中启动的计时器。")
+            presetsCard
         }
     }
 
     private var presetsCard: some View {
-        SettingsCard(title: "倒计时预设", systemImage: "list.bullet.rectangle") {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("常用预设").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).padding(.top, 12)
             if timerPresets.isEmpty {
                 ContentUnavailableView(
                     "暂无预设",
@@ -153,15 +130,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private var customDurationDisplay: String {
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = customTimerDuration >= 3600
-            ? [.hour, .minute, .second]
-            : [.minute, .second]
-        formatter.zeroFormattingBehavior = [.pad]
-        return formatter.string(from: customTimerDuration) ?? "0:00"
     }
 
     private var customDurationComponents: TimerPreset.DurationComponents {
@@ -240,46 +208,40 @@ struct SettingsView: View {
 
 }
 
-private struct SettingsCard<Content: View>: View {
-    let title: String
-    let systemImage: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        SettingsGroup(title) { content }
-    }
-}
-
-private struct CompactDurationStepper: View {
+private struct CompactDurationPicker: View {
     let title: String
     @Binding var value: Int
     let range: ClosedRange<Int>
-
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
+            Picker(title, selection: $value) {
+                ForEach(Array(range), id: \.self) { number in
+                    Text(String(format: "%02d", number)).tag(number)
+                }
+            }.labelsHidden().frame(width: 64)
             Text(title).foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            Text(String(format: "%02d", value)).monospacedDigit()
-            Stepper(title, value: $value, in: range).labelsHidden()
         }
-        .frame(maxWidth: .infinity, minHeight: SettingsLayout.rowHeight)
-
     }
 }
 
-private struct EyeCareDurationStepper: View {
+private struct EyeCareIntervalPicker: View {
     let title: String
-    let valueText: String
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
-
+    let minutes: Bool
     var body: some View {
-        SettingsRow(title) {
-            Text(valueText).monospacedDigit().foregroundStyle(.secondary)
-            Stepper(title, value: $value, in: range, step: step).labelsHidden()
+        Picker(title, selection: $value) {
+            ForEach(SettingsDurationOptions.values(in: range, step: step, current: value), id: \.self) { duration in
+                Text(label(duration)).tag(duration)
+            }
+        }.labelsHidden().frame(width: 98)
+    }
+    private func label(_ duration: Double) -> String {
+        if minutes && duration.truncatingRemainder(dividingBy: 60) == 0 {
+            return "\(Int(duration / 60)) 分钟"
         }
-
+        return duration.formatted(.number.precision(.fractionLength(0...2))) + " 秒"
     }
 }
 
@@ -355,9 +317,9 @@ private struct TimerPresetDisclosureRow: View {
                     }
 
                     HStack(spacing: 8) {
-                        CompactDurationStepper(title: "时", value: hours, range: 0...23)
-                        CompactDurationStepper(title: "分", value: minutes, range: 0...59)
-                        CompactDurationStepper(title: "秒", value: seconds, range: 0...59)
+                        CompactDurationPicker(title: "时", value: hours, range: 0...23)
+                        CompactDurationPicker(title: "分", value: minutes, range: 0...59)
+                        CompactDurationPicker(title: "秒", value: seconds, range: 0...59)
                     }
 
                     HStack(spacing: 8) {
@@ -379,7 +341,7 @@ private struct TimerPresetDisclosureRow: View {
                     }
                     .buttonStyle(.borderless)
                 }
-                .padding(.bottom, 10)
+                .padding(.vertical, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

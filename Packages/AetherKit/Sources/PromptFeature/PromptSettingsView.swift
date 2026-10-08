@@ -5,30 +5,30 @@ struct PromptSettingsView: View {
     @ObservedObject var model: PromptModel
 
     var body: some View {
-        SettingsContent("提示词优化") {
+        SettingsContent("提示词优化", subtitle: "连接模型服务，管理优化方式与本地历史。") {
             VStack(spacing: 0) {
             SettingsForm {
                 SettingsGroup {
-                    SettingsRow("Base URL") {
+                    SettingsField("服务地址") {
                     TextField("Base URL", text: $model.draftConfiguration.baseURL, prompt: Text("https://api.example.com/v1"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.baseURL")
-                        .labelsHidden().frame(maxWidth: 380)
+                        .labelsHidden()
                     }
-                    SettingsRow("模型名称") {
+                    SettingsField("模型名称") {
                     TextField("模型名称", text: $model.draftConfiguration.model, prompt: Text("服务商提供的模型 ID"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.model")
-                        .labelsHidden().frame(maxWidth: 380)
+                        .labelsHidden()
                     }
-                    SettingsRow("API Key") {
+                    SettingsField("API 密钥") {
                     SecureField("API Key", text: $model.draftAPIKey, prompt: Text("本地服务可留空"))
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("prompt.settings.apiKey")
-                        .labelsHidden().frame(maxWidth: 380)
+                        .labelsHidden()
                     }
                 } header: {
-                    Text("模型服务")
+                    Text("连接服务")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("修改后需点击“保存设置”。API Key 仅保存在本机私有文件。")
@@ -39,7 +39,7 @@ struct PromptSettingsView: View {
                     }
                 }
                 SettingsGroup {
-                    Toggle("保存历史提示词", isOn: $model.draftConfiguration.saveHistory)
+                    SettingsToggleRow("保存优化历史", description: "保存原文、结果和模型，方便再次使用。", isOn: $model.draftConfiguration.saveHistory)
                         .accessibilityIdentifier("prompt.settings.saveHistory")
                     SettingsRow("最多保留") {
                         TextField("历史记录条数", value: $model.draftConfiguration.historyLimit, format: .number.grouping(.never))
@@ -52,7 +52,7 @@ struct PromptSettingsView: View {
                     }
                     .disabled(!model.draftConfiguration.saveHistory)
                 } header: {
-                    Text("历史提示词")
+                    Text("本地历史")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("降低保留数量并保存后，会删除最早的超额记录；关闭保存不会删除已有记录。")
@@ -78,13 +78,10 @@ struct PromptSettingsView: View {
                         }.padding(.top, 10)
                     }
                 } header: {
-                    Text("优化方式")
+                    Text("优化行为")
                 } footer: {
                     Text("默认指令保留目标和约束，整理口述内容。编辑或恢复默认后仍需保存。")
                 }
-                Button { AppRouter.shared.send(.prompt) } label: {
-                    Label("打开提示词优化", systemImage: "sparkles")
-                }.accessibilityIdentifier("prompt.settings.openWorkspace")
                 DisclosureGroup("了解数据发送范围") {
                     Text("点击优化时，原始提示词和优化指令将发送给你配置的服务。Aether 不会自动读取剪贴板，也不会上传历史列表；请确认服务地址及其数据使用政策。")
                         .font(.caption).foregroundStyle(.secondary)
@@ -104,20 +101,23 @@ struct PromptSettingsView: View {
                 Button("重新读取设置") { model.reloadConfiguration() }
                     .accessibilityIdentifier("prompt.settings.reload")
             }
-            HStack(alignment: .top, spacing: 12) {
+            if let message = model.settingsMessage {
+                Label(message, systemImage: model.settingsSaveFailed ? "exclamationmark.triangle" : "checkmark.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(model.settingsSaveFailed ? Color.orange : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    .accessibilityIdentifier("prompt.settings.status")
+            }
+            HStack(spacing: 12) {
+                Button { AppRouter.shared.send(.prompt) } label: {
+                    Label("打开提示词优化", systemImage: "sparkles")
+                }.accessibilityIdentifier("prompt.settings.openWorkspace")
+                Spacer(minLength: 0)
                 Button("保存设置") { model.saveSettings() }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("prompt.settings.save")
-                if let message = model.settingsMessage {
-                    Label(message, systemImage: model.settingsSaveFailed ? "exclamationmark.triangle" : "checkmark.circle")
-                        .font(.callout)
-                        .foregroundStyle(model.settingsSaveFailed ? Color.orange : Color.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("prompt.settings.status")
-                }
-                Spacer(minLength: 0)
             }
-        }.padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 8)
+
+        }.padding(.horizontal, SettingsLayout.pageInset).padding(.vertical, 14)
     }
 }
