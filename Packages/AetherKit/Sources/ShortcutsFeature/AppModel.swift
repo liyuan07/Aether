@@ -102,64 +102,15 @@ final class AppModel: ObservableObject {
         let persistence = ShortcutConfigurationPersistence(rules: store, preferences: appPreferencesStore)
         self.persistence = persistence
         self.preferences = preferences
-        let recovered: Bool
-        do { try persistence.recover(); recovered = true }
-        catch { recovered = false; lastError = "恢复应用配置失败：\(error.localizedDescription)" }
-        if recovered, let stored = try? appPreferencesStore.load(persistingMigrations: true) {
-            appPreferences = stored
-        } else {
-            let defaultConfiguration = AppPreferencesConfiguration()
-            appPreferences = defaultConfiguration
-            do {
-                try persistence.savePreferences(defaultConfiguration)
-            } catch {
-                lastError = "创建应用配置失败：\(error.localizedDescription)"
-            }
-        }
-        shortcutGuideHoldDuration = ShortcutGuideConfiguration.normalizedHoldDuration(
-            preferences.object(forKey: Self.shortcutGuideHoldDurationKey) as? TimeInterval
-                ?? ShortcutGuideConfiguration.defaultHoldDuration
-        )
-        shortcutGuideFavoriteIDs = Set(
-            preferences.stringArray(forKey: Self.shortcutGuideFavoriteIDsKey) ?? []
-        )
-        if recovered, let storedRules = try? store.load(), !storedRules.isEmpty {
-            legacyApplicationTargets = storedRules.compactMap { rule in
-                guard case let .application(target, _) = rule.action else { return nil }
-                return target
-            }
-            let storedVersion = preferences.integer(forKey: Self.shortcutMigrationVersionKey)
-            if storedVersion < DefaultShortcutRules.currentMigrationVersion {
-                let migratedRules = DefaultShortcutRules.migrate(
-                    storedRules,
-                    fromVersion: storedVersion
-                )
-                do {
-                    try persistence.saveRules(migratedRules)
-                    preferences.set(
-                        DefaultShortcutRules.currentMigrationVersion,
-                        forKey: Self.shortcutMigrationVersionKey
-                    )
-                    rules = migratedRules
-                } catch {
-                    rules = storedRules
-                    lastError = "升级默认快捷键失败：\(error.localizedDescription)"
-                }
-            } else {
-                rules = storedRules
-            }
-        } else {
-            rules = DefaultShortcutRules.make()
-            do {
-                try persistence.saveRules(rules)
-                preferences.set(
-                    DefaultShortcutRules.currentMigrationVersion,
-                    forKey: Self.shortcutMigrationVersionKey
-                )
-            } catch {
-                lastError = "保存默认快捷键失败：\(error.localizedDescription)"
-            }
-        }
+        let startup = loadShortcutStartup(store: store, preferencesStore: appPreferencesStore,
+            persistence: persistence, preferences: preferences, keys: .init(migration: Self.shortcutMigrationVersionKey,
+                holdDuration: Self.shortcutGuideHoldDurationKey, favorites: Self.shortcutGuideFavoriteIDsKey))
+        appPreferences = startup.preferences
+        rules = startup.rules
+        legacyApplicationTargets = startup.legacyTargets
+        shortcutGuideHoldDuration = startup.holdDuration
+        shortcutGuideFavoriteIDs = startup.favorites
+        lastError = startup.error
         selectedRuleID = rules.first?.id
     }
 

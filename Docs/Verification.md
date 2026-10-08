@@ -260,3 +260,5 @@ Prompt 类型化保存沿用 PromptStorage/PromptModel 回归；补充非有限�
 剪贴板 Store 迁移沿用现有插入、去重、裁剪及复制回归。Rust 单测覆盖维护身份分区/分组拓扑、收藏激活优先且不继续查询历史、分组文本兼容类型；统一交付回归后安装，不追加性能基准。
 
 应用策略沿用 LegacyApplication/Navigation/应用动作和窗口会话回归；核心单测覆盖就绪路由、identifier 优先、已知空清单重开与显示桌面配置禁用/回退。一次统一交付回归和安装，不扩展真实应用窗口矩阵。
+
+快捷操作启动协调复用 `configurationImportFailureKeepsFilesModelSelectionAndNotifications`、`configurationImportRejectsPendingOldRulesAndPreferences` 和 `configurationStartupRecoversPartialPairAndProtectsUnknownJournal` 集成回归；核心检查初始化阶段顺序及升级失败保留已存规则。统一交付一次回归安装。

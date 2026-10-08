@@ -791,3 +791,5 @@ mod identity_index;
 mod clipboard_store;
 
 mod app_policy;
+
+mod shortcut_startup;

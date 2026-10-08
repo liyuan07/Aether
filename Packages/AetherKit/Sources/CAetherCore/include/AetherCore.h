@@ -557,4 +557,7 @@ AetherApplicationLaunchPlan aether_application_launch_plan(AetherApplicationLaun
 typedef struct { uint8_t enabled; uint16_t key; uint64_t flags; } AetherDesktopShortcut;
 AetherDesktopShortcut aether_desktop_shortcut_plan(uint8_t record_present, uint8_t explicitly_disabled,
     uint8_t parameters_valid, int64_t key, int64_t flags, uint64_t default_fn);
+// Synchronous native effects return success facts or the stored migration version.
+typedef int64_t (*AetherShortcutStartupEffect)(void *context, uint8_t step);
+uint8_t aether_shortcut_startup(AetherShortcutStartupEffect effect, void *context);
 #endif
