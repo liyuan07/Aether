@@ -97,6 +97,8 @@ pub extern "C" fn aether_guide_update(mut s: Guide, active: u16, event: u8) -> G
 // while storing offsets in the narrowest lossless representation.
 enum Boundaries {
     Implicit,
+    // Short Unicode segments keep exact boundary bits inline, avoiding an offset allocation.
+    Inline([u64; 2]),
     U8(Box<[u8]>),
     U16(Box<[u16]>),
     U32(Box<[u32]>),
@@ -107,7 +109,13 @@ impl Boundaries {
         let Some(&last) = values.last() else {
             return Self::Implicit;
         };
-        if u8::try_from(last).is_ok() {
+        if last < 128 {
+            let mut bits = [0_u64; 2];
+            for &offset in values {
+                bits[offset / 64] |= 1_u64 << (offset % 64);
+            }
+            Self::Inline(bits)
+        } else if u8::try_from(last).is_ok() {
             Self::U8(values.iter().map(|&v| v as u8).collect())
         } else if u16::try_from(last).is_ok() {
             Self::U16(values.iter().map(|&v| v as u16).collect())
@@ -120,15 +128,57 @@ impl Boundaries {
     fn boundary(&self, index: usize) -> usize {
         match self {
             Self::Implicit => index,
+            Self::Inline(bits) => {
+                let lower = bits[0].count_ones() as usize;
+                let (base, mut word, mut rank) = if index < lower {
+                    (0, bits[0], index)
+                } else {
+                    (64, bits[1], index - lower)
+                };
+                while rank != 0 {
+                    word &= word - 1;
+                    rank -= 1;
+                }
+                debug_assert_ne!(word, 0);
+                base + word.trailing_zeros() as usize
+            }
             Self::U8(v) => v[index] as usize,
             Self::U16(v) => v[index] as usize,
             Self::U32(v) => v[index] as usize,
             Self::Native(v) => v[index],
         }
     }
+    fn next_boundary(&self, index: usize, byte: usize) -> usize {
+        if let Self::Inline(bits) = self {
+            let next = byte + 1;
+            let word_index = next / 64;
+            let word = bits[word_index] & (u64::MAX << (next % 64));
+            if word != 0 {
+                return word_index * 64 + word.trailing_zeros() as usize;
+            }
+            debug_assert_eq!(word_index, 0);
+            return 64 + bits[1].trailing_zeros() as usize;
+        }
+        self.boundary(index + 1)
+    }
     fn position(&self, byte: usize) -> Option<usize> {
         match self {
             Self::Implicit => Some(byte),
+            Self::Inline(bits) => {
+                let word_index = byte / 64;
+                let word = *bits.get(word_index)?;
+                let bit = 1_u64 << (byte % 64);
+                if word & bit == 0 {
+                    return None;
+                }
+                Some(
+                    bits[..word_index]
+                        .iter()
+                        .map(|word| word.count_ones() as usize)
+                        .sum::<usize>()
+                        + (word & (bit - 1)).count_ones() as usize,
+                )
+            }
             Self::U8(v) => v.binary_search(&u8::try_from(byte).ok()?).ok(),
             Self::U16(v) => v.binary_search(&u16::try_from(byte).ok()?).ok(),
             Self::U32(v) => v.binary_search(&u32::try_from(byte).ok()?).ok(),
@@ -149,6 +199,12 @@ impl Segment {
     fn character_count(&self) -> usize {
         match &self.boundaries {
             Boundaries::Implicit => self.bytes.len(),
+            Boundaries::Inline(bits) => {
+                bits.iter()
+                    .map(|word| word.count_ones() as usize)
+                    .sum::<usize>()
+                    - 1
+            }
             Boundaries::U8(v) => v.len() - 1,
             Boundaries::U16(v) => v.len() - 1,
             Boundaries::U32(v) => v.len() - 1,
@@ -193,11 +249,14 @@ impl Segment {
         let mut previous = None;
         let mut pairs = 0;
         let max_span = (qn + 8).max(qn * 3);
+        let mut segment_byte = 0;
         for si in 0..sn {
             if first.is_some_and(|f| si - f + 1 > max_span) {
                 return -1;
             }
-            if segment.bytes[segment.boundary(si)..segment.boundary(si + 1)]
+            let start = segment_byte;
+            segment_byte = segment.boundaries.next_boundary(si, start);
+            if segment.bytes[start..segment_byte]
                 != self.bytes[self.boundary(qi)..self.boundary(qi + 1)]
             {
                 continue;
@@ -606,7 +665,17 @@ mod tests {
     }
     #[test]
     fn compact_boundaries_preserve_offsets_at_every_width_transition() {
-        let mut limits = vec![255_usize, 256, 65535, 65536, u32::MAX as usize];
+        let mut limits = vec![
+            63_usize,
+            64,
+            127,
+            128,
+            255,
+            256,
+            65535,
+            65536,
+            u32::MAX as usize,
+        ];
         if usize::BITS > 32 {
             limits.push(u32::MAX as usize + 1);
         }
@@ -616,6 +685,9 @@ mod tests {
             for (index, &offset) in values.iter().enumerate() {
                 assert_eq!(compact.boundary(index), offset);
                 assert_eq!(compact.position(offset), Some(index));
+                if index + 1 < values.len() {
+                    assert_eq!(compact.next_boundary(index, offset), values[index + 1]);
+                }
             }
             assert_eq!(compact.position(2), None);
             assert_eq!(compact.position(last + 1), None);
