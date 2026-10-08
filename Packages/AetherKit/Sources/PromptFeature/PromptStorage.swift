@@ -36,19 +36,34 @@ public final class PromptStorage {
         }
     }
     deinit { aether_prompt_store_destroy(core) }
-    public func loadConfiguration() throws -> PromptConfiguration { try load(slot: 0) }
+    public func loadConfiguration() throws -> PromptConfiguration {
+        try withDecoded(slot: 0) { decoded in
+            let value = aether_prompt_decoded_configuration(decoded)
+            return PromptConfiguration(baseURL: promptRecordText(value.base_url), model: promptRecordText(value.model),
+                systemPrompt: promptRecordText(value.system_prompt), saveHistory: value.save_history != 0,
+                historyLimit: Int(value.history_limit),
+                credentialFingerprint: value.has_fingerprint == 0 ? nil : promptRecordText(value.credential_fingerprint))
+        }
+    }
     public func saveConfiguration(_ configuration: PromptConfiguration) throws { try save(configuration, slot: 0) }
-    public func loadHistory() throws -> [PromptHistoryEntry] { try load(slot: 1) }
+    public func loadHistory() throws -> [PromptHistoryEntry] {
+        try withDecoded(slot: 1) { decoded in
+            try (0..<aether_prompt_decoded_count(decoded)).map { index in
+                let value = aether_prompt_decoded_entry(decoded, index)
+                guard let id = UUID(uuidString: promptRecordText(value.id)) else { throw PromptStorageError.unreadable }
+                return PromptHistoryEntry(id: id, createdAt: Date(timeIntervalSinceReferenceDate: value.created_at),
+                    original: promptRecordText(value.original), optimized: promptRecordText(value.optimized), model: promptRecordText(value.model))
+            }
+        }
+    }
     public func saveHistory(_ history: [PromptHistoryEntry]) throws { try save(history, slot: 1) }
 
-    private func load<T: Decodable>(slot: UInt32) throws -> T {
+    private func withDecoded<T>(slot: UInt32, body: (UnsafeMutableRawPointer?) throws -> T) throws -> T {
         lock.lock(); defer { lock.unlock() }
-        do {
-            return try JSONDecoder().decode(T.self, from: RustBuffer.take(aether_prompt_store_load(core, slot)))
-        } catch let error as RustDiskError {
-            try check(error.status)
-            throw PromptStorageError.unreadable
-        } catch { throw PromptStorageError.unreadable }
+        let decoded = aether_prompt_store_load_decoded(core, slot)
+        defer { aether_prompt_decoded_destroy(decoded) }
+        try check(aether_prompt_decoded_status(decoded))
+        return try body(decoded)
     }
     private func save<T: Encodable>(_ value: T, slot: UInt32) throws {
         lock.lock(); defer { lock.unlock() }
@@ -88,4 +103,9 @@ public final class LocalPromptCredentialStore: PromptCredentialStore {
         do { try RustDisk.write(Data(key.utf8), to: file, privateFile: true, synchronize: true) }
         catch { throw PromptStorageError.credentialWriteFailed }
     }
+}
+
+private func promptRecordText(_ bytes: AetherBytes) -> String {
+    guard bytes.length != 0, let data = bytes.data else { return "" }
+    return String(decoding: UnsafeBufferPointer(start: data, count: bytes.length), as: UTF8.self)
 }

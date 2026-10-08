@@ -496,4 +496,16 @@ void aether_clipboard_resource_cleanup_destroy(void *plan);
 typedef uint8_t (*AetherPromptSettingsStep)(void *context, uint8_t step);
 uint32_t aether_prompt_settings_commit(uint8_t instruction_valid, AetherPromptSettingsStep step, void *context);
 uint8_t aether_prompt_settings_trim_required(uint8_t save_history, size_t count, size_t limit);
+// Owned Prompt read snapshot. All returned text spans expire when decoded_destroy is called.
+typedef struct {
+    AetherBytes base_url, model, system_prompt, credential_fingerprint;
+    int64_t history_limit; uint8_t save_history, has_fingerprint;
+} AetherPromptConfigurationView;
+typedef struct { AetherBytes id, original, optimized, model; double created_at; } AetherPromptHistoryView;
+void *aether_prompt_store_load_decoded(void *store, uint32_t slot);
+uint32_t aether_prompt_decoded_status(const void *snapshot);
+AetherPromptConfigurationView aether_prompt_decoded_configuration(const void *snapshot);
+size_t aether_prompt_decoded_count(const void *snapshot);
+AetherPromptHistoryView aether_prompt_decoded_entry(const void *snapshot, size_t index);
+void aether_prompt_decoded_destroy(void *snapshot);
 #endif
