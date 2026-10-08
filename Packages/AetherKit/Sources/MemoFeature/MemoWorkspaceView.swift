@@ -119,7 +119,7 @@ struct MemoWorkspaceView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 10)
-        .overlay(alignment: .bottom) { Divider().frame(height: 1) }
+        .overlay(alignment: .bottom) { Color.primary.opacity(0.1).frame(height: 0.5) }
     }
 
     private func add() {

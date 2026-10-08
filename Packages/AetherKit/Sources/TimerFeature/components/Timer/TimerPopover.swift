@@ -169,7 +169,7 @@ private struct EyeCareStatusCard: View {
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider().frame(height: 1) }
+        .overlay(alignment: .top) { Color.primary.opacity(0.1).frame(height: 0.5) }
         .accessibilityElement(children: .contain)
     }
 

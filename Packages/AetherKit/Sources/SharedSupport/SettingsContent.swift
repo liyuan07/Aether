@@ -119,6 +119,29 @@ public struct SettingsRow<Content: View>: View {
     }
 }
 
+/// Keep numeric values next to their stepper instead of depending on Form label layout.
+public struct SettingsStepperRow: View {
+    private let title: String
+    private let display: String
+    @Binding private var value: Int
+    private let range: ClosedRange<Int>
+    private let step: Int
+    public init(_ title: String, display: String, value: Binding<Int>, in range: ClosedRange<Int>, step: Int = 1) {
+        self.title = title
+        self.display = display
+        self._value = value
+        self.range = range
+        self.step = step
+    }
+    public var body: some View {
+        SettingsRow(title) {
+            Text(display).monospacedDigit().foregroundStyle(.secondary)
+            Stepper(title, value: $value, in: range, step: step)
+                .labelsHidden().accessibilityValue(display)
+        }
+    }
+}
+
 /// Shared chrome. The application supplies navigation; each feature supplies its actions.
 public struct PanelToolbar<Actions: View>: View {
     private let title: String

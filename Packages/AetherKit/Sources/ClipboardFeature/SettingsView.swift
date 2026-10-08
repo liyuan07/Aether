@@ -35,12 +35,8 @@ struct ClipboardSettingsView: View {
             SettingsForm {
                 SettingsGroup("记录") {
                     Toggle("记录剪贴板历史", isOn: $monitoringEnabled)
-                    Stepper(value: $historyLimit, in: 50...20_000, step: 50) {
-                        LabeledContent("记录上限", value: "\(historyLimit) 条")
-                    }
-                    Stepper(value: $expirationDays, in: 0...365) {
-                        LabeledContent("保留时间", value: expirationDays == 0 ? "永久保留" : "\(expirationDays) 天")
-                    }
+                    SettingsStepperRow("记录上限", display: "\(historyLimit) 条", value: $historyLimit, in: 50...20_000, step: 50)
+                    SettingsStepperRow("保留时间", display: expirationDays == 0 ? "永久保留" : "\(expirationDays) 天", value: $expirationDays, in: 0...365)
                     LabeledContent("存储位置") {
                         Button("显示数据文件夹") {
                             NSWorkspace.shared.activateFileViewerSelecting([ClipboardStorage.archiveDirectory])
@@ -62,13 +58,10 @@ struct ClipboardSettingsView: View {
 
                 SettingsGroup {
                     Toggle("输入停顿后搜索", isOn: $searchDebounceEnabled)
-                    Stepper(
-                        value: $searchDebounceMilliseconds,
-                        in: ClipboardSearchDebounce.supportedMilliseconds,
-                        step: ClipboardSearchDebounce.stepMilliseconds
-                    ) {
-                        LabeledContent("等待时间", value: "\(searchDebounceMilliseconds) 毫秒")
-                    }
+                    SettingsStepperRow("等待时间", display: "\(searchDebounceMilliseconds) 毫秒",
+                                       value: $searchDebounceMilliseconds,
+                                       in: ClipboardSearchDebounce.supportedMilliseconds,
+                                       step: ClipboardSearchDebounce.stepMilliseconds)
                     .disabled(!searchDebounceEnabled)
                 } header: { Text("搜索") }
                 footer: { Text("关闭后，每次输入都会立即更新搜索结果。") }

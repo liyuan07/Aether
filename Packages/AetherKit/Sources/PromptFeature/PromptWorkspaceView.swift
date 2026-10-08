@@ -29,8 +29,8 @@ struct PromptWorkspaceView: View {
                     .accessibilityLabel("新建提示词")
                     .accessibilityIdentifier("prompt.new")
                     Button { AppRouter.shared.send(.settings(.prompt)) } label: { Image(systemName: "gearshape") }
-                        .help("Prompt 优化设置")
-                        .accessibilityLabel("Prompt 优化设置")
+                        .help("提示词优化设置")
+                        .accessibilityLabel("提示词优化设置")
                         .accessibilityIdentifier("prompt.openSettings")
                 }.buttonStyle(.borderless)
                 Picker("提示词页面", selection: $page) {

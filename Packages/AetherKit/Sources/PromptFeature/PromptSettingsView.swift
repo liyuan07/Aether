@@ -41,14 +41,12 @@ struct PromptSettingsView: View {
                 SettingsGroup {
                     Toggle("保存历史提示词", isOn: $model.draftConfiguration.saveHistory)
                         .accessibilityIdentifier("prompt.settings.saveHistory")
-                    HStack {
-                        Text("最多保留")
+                    SettingsRow("最多保留") {
                         TextField("历史记录条数", value: $model.draftConfiguration.historyLimit, format: .number.grouping(.never))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder).frame(width: 72)
                             .accessibilityIdentifier("prompt.settings.historyLimit")
                         Text("条（1–1000）").foregroundStyle(.secondary)
-                        Spacer()
                         Stepper("调整历史记录条数", value: $model.draftConfiguration.historyLimit, in: 1...1000)
                             .labelsHidden()
                     }
