@@ -116,3 +116,37 @@ mod tests {
         );
     }
 }
+
+// Optional preference codes: 0 absent, 1 false, 2 true.
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_migration_login(
+    existing: u8,
+    timer: u8,
+    clipboard: u8,
+    shortcuts: u8,
+) -> u8 {
+    if existing != 0 {
+        return u8::from(existing == 2);
+    }
+    let choices = [timer, clipboard, shortcuts];
+    u8::from(choices.iter().all(|&v| v == 0) || choices.contains(&2))
+}
+// Destination codes: 0 app, 1 clipboard, 2 shortcuts.
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_migration_destination(clipboard: u8, shortcuts: u8) -> u8 {
+    if clipboard != 0 {
+        1
+    } else if shortcuts != 0 {
+        2
+    } else {
+        0
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_migration_preference(
+    general: u8,
+    login_key: u8,
+    permission_key: u8,
+) -> u8 {
+    u8::from(permission_key == 0 && (login_key == 0 || general != 0))
+}

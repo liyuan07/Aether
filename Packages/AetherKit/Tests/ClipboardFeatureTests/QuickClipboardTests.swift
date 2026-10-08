@@ -25,6 +25,11 @@ final class QuickClipboardTests: XCTestCase {
         try storage.save(collections)
 
         XCTAssertEqual(try storage.load(), collections)
+        let original = try Data(contentsOf: storage.fileURL)
+        let invalid = QuickClipboardCollection(name: "无效", entries: [QuickClipboardEntry(key: "日期", value: "合成", createdAt: Date(timeIntervalSince1970: .infinity))])
+        XCTAssertThrowsError(try storage.save(collections + [invalid]))
+        XCTAssertEqual(try Data(contentsOf: storage.fileURL), original)
+        XCTAssertEqual(try storage.load(), collections)
         let directoryMode = try permissions(at: directory)
         let fileMode = try permissions(at: storage.fileURL)
         XCTAssertEqual(directoryMode & 0o777, 0o700)

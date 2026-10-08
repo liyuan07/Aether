@@ -80,15 +80,40 @@ final class QuickClipboardStorage {
 
     func load() throws -> [QuickClipboardCollection] {
         lock.lock(); defer { lock.unlock() }
-        let collections: [QuickClipboardCollection] = try decode(aether_quick_load(core))
+        try check(aether_quick_load_records(core))
+        let collections = try records()
         try installComparisons(collections)
         return collections
     }
     func save(_ collections: [QuickClipboardCollection]) throws {
         lock.lock(); defer { lock.unlock() }
-        let data = try encode(collections)
-        try check(data.withUnsafeBytes { aether_quick_save(core, span($0)) })
-        try installComparisons(collections)
+        let writer = aether_quick_writer_create()
+        defer { aether_quick_writer_destroy(writer) }
+        for collection in collections {
+            try check(withQuickText(collection.id.uuidString) { id in
+                withQuickText(collection.name) { name in
+                    withQuickText(normalizedQuickClipboardName(collection.name)) { comparison in
+                        aether_quick_writer_collection(writer, .init(id: id, name: name,
+                            created_at: collection.createdAt.timeIntervalSince1970 * 1000,
+                            updated_at: collection.updatedAt.timeIntervalSince1970 * 1000, entry_count: 0), comparison)
+                    }
+                }
+            })
+            for entry in collection.entries {
+                try check(withQuickText(entry.id.uuidString) { id in
+                    withQuickText(entry.key) { key in
+                        withQuickText(entry.value) { value in
+                            withQuickText(canonicalQuickClipboardKey(entry.key)) { comparison in
+                                aether_quick_writer_entry(writer, .init(id: id, key: key, value: value,
+                                    created_at: entry.createdAt.timeIntervalSince1970 * 1000,
+                                    updated_at: entry.updatedAt.timeIntervalSince1970 * 1000), comparison)
+                            }
+                        }
+                    }
+                })
+            }
+        }
+        try check(aether_quick_save_records(core, writer))
     }
     fileprivate func apply(_ command: QuickClipboardCommand) throws -> QuickClipboardReply {
         lock.lock(); defer { lock.unlock() }
@@ -96,11 +121,35 @@ final class QuickClipboardStorage {
         return try data.withUnsafeBytes { try decode(aether_quick_apply(core, span($0))) }
     }
     private func installComparisons(_ collections: [QuickClipboardCollection]) throws {
-        struct Comparisons: Encodable { let name: String; let keys: [String] }
-        let data = try encode(collections.map {
-            Comparisons(name: normalizedQuickClipboardName($0.name), keys: $0.entries.map { canonicalQuickClipboardKey($0.key) })
-        })
-        try check(data.withUnsafeBytes { aether_quick_comparisons(core, span($0)) })
+        for (index, collection) in collections.enumerated() {
+            try check(withQuickText(normalizedQuickClipboardName(collection.name)) {
+                aether_quick_set_comparison(core, index, -1, $0)
+            })
+            for (entryIndex, entry) in collection.entries.enumerated() {
+                try check(withQuickText(canonicalQuickClipboardKey(entry.key)) {
+                    aether_quick_set_comparison(core, index, entryIndex, $0)
+                })
+            }
+        }
+    }
+    private func records() throws -> [QuickClipboardCollection] {
+        guard core != nil else { throw QuickClipboardStorageError.unreadable }
+        return try (0..<aether_quick_count(core)).map { index in
+            var view = AetherQuickCollectionView()
+            guard aether_quick_collection_record(core, index, &view) != 0,
+                  let id = UUID(uuidString: clipboardArchiveText(view.id)) else { throw QuickClipboardStorageError.unreadable }
+            let entries = try (0..<view.entry_count).map { entryIndex in
+                var entry = AetherQuickEntryView()
+                guard aether_quick_entry_record(core, index, entryIndex, &entry) != 0,
+                      let id = UUID(uuidString: clipboardArchiveText(entry.id)) else { throw QuickClipboardStorageError.unreadable }
+                return QuickClipboardEntry(id: id, key: clipboardArchiveText(entry.key), value: clipboardArchiveText(entry.value),
+                    createdAt: Date(timeIntervalSince1970: entry.created_at / 1000),
+                    updatedAt: Date(timeIntervalSince1970: entry.updated_at / 1000))
+            }
+            return QuickClipboardCollection(id: id, name: clipboardArchiveText(view.name),
+                createdAt: Date(timeIntervalSince1970: view.created_at / 1000),
+                updatedAt: Date(timeIntervalSince1970: view.updated_at / 1000), entries: entries)
+        }
     }
     private func span(_ bytes: UnsafeRawBufferPointer) -> AetherBytes {
         AetherBytes(data: bytes.bindMemory(to: UInt8.self).baseAddress, length: bytes.count)
@@ -414,4 +463,9 @@ private func normalizedQuickClipboardSearchText(_ value: String) -> String {
             options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
             locale: .current
         )
+}
+
+private func withQuickText<T>(_ text: String, _ body: (AetherBytes) -> T) -> T {
+    if let result = text.utf8.withContiguousStorageIfAvailable({ body(.init(data: $0.baseAddress, length: $0.count)) }) { return result }
+    return Array(text.utf8).withUnsafeBufferPointer { body(.init(data: $0.baseAddress, length: $0.count)) }
 }

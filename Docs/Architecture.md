@@ -254,3 +254,7 @@ SharedSupport.AppRoutePolicy 将类型化路由及应用就绪事实送入 Rust�
 ### 端口快照聚合与兼容历史
 
 `RustPortSnapshot` 持有端口快照聚合与兼容历史；Rust 按输入顺序累加功率、按端口保留最后 60 个读数，缺失端口不删除旧样本。Swift 保留 Observation 发布，兼容历史通过修订值跟踪观察并按需生成原生日期/样本。分段图表 `PortHistory` 保持独立且语义不变。
+
+### 共享偏好与常用剪贴板记录桥接
+
+`MigrationPreferencePolicy` 只接收可选布尔与原生字符串比较结果，Rust 决定登录项优先级、目标域和键筛选；Swift 保留 UserDefaults 操作。常用剪贴板读取借用核心记录、锁内复制原生 DTO；单次 writer 逐集合/条目构建、统一校验写入后发布，失败不发布部分记录。比较字符串仍由 Foundation 归一化，直接安装进 Rust。编辑命令与小范围回复继续使用原 JSON ABI。

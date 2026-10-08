@@ -1,6 +1,18 @@
 import XCTest
 @testable import SharedSupport
 final class MigrationTests: XCTestCase {
+    func testPreferencePolicyPreservesExistingLoginAndSkipsPermissionFlags() {
+        XCTAssertTrue(MigrationPreferencePolicy.launchAtLogin(existing: nil, timer: nil, clipboard: nil, shortcuts: nil))
+        XCTAssertFalse(MigrationPreferencePolicy.launchAtLogin(existing: false, timer: true, clipboard: nil, shortcuts: true))
+        XCTAssertFalse(MigrationPreferencePolicy.launchAtLogin(existing: nil, timer: false, clipboard: nil, shortcuts: false))
+        XCTAssertTrue(MigrationPreferencePolicy.launchAtLogin(existing: nil, timer: false, clipboard: true, shortcuts: nil))
+        XCTAssertFalse(MigrationPreferencePolicy.includes(key: "launchAtLogin", source: "Timer"))
+        XCTAssertTrue(MigrationPreferencePolicy.includes(key: "launchAtLogin", source: "General"))
+        XCTAssertFalse(MigrationPreferencePolicy.includes(key: "didRequestAccessibility", source: "General"))
+        XCTAssertTrue(MigrationPreferencePolicy.includes(key: "historyLimit", source: "Clipboard"))
+        XCTAssertEqual(MigrationPreferencePolicy.destination(for: "Shortcuts"), .shortcuts)
+        XCTAssertEqual(MigrationPreferencePolicy.destination(for: "unknown"), .app)
+    }
     func testExistingDestinationWithoutReceiptIsNeverOverwritten() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

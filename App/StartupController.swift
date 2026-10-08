@@ -34,8 +34,8 @@ import Foundation
         let preferenceURL = support.appendingPathComponent("ShortcutHelper/preferences.json")
         let preferenceObject = (try? Data(contentsOf: preferenceURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         let shortcutLogin = (preferenceObject?["app"] as? [String: Any])?["launchAtLogin"] as? Bool
-        let choices = [timer["launchAtLogin"] as? Bool, clipboard["launchAtLogin"] as? Bool, shortcutLogin].compactMap { $0 }
-        let login = defaults.object(forKey: "launchAtLogin") as? Bool ?? (choices.isEmpty || choices.contains(true))
+        let login = MigrationPreferencePolicy.launchAtLogin(existing: defaults.object(forKey: "launchAtLogin") as? Bool,
+            timer: timer["launchAtLogin"] as? Bool, clipboard: clipboard["launchAtLogin"] as? Bool, shortcuts: shortcutLogin)
         let sources: [DataMigration.Source]
         do {
             sources = try [
@@ -56,12 +56,12 @@ import Foundation
                     try ShortcutsModule.validateMigration(at: root.appendingPathComponent("Shortcuts"))
                 }, applyPreferences: { name, values in
                     let destination: UserDefaults
-                    switch name {
-                    case "Clipboard": destination = AppEnvironment.clipboardDefaults
-                    case "Shortcuts": destination = AppEnvironment.shortcutsDefaults
-                    default: destination = AppEnvironment.appDefaults
+                    switch MigrationPreferencePolicy.destination(for: name) {
+                    case .clipboard: destination = AppEnvironment.clipboardDefaults
+                    case .shortcuts: destination = AppEnvironment.shortcutsDefaults
+                    case .app: destination = AppEnvironment.appDefaults
                     }
-                    for (key, value) in values where (key != "launchAtLogin" || name == "General") && !key.hasPrefix("didRequest") {
+                    for (key, value) in values where MigrationPreferencePolicy.includes(key: key, source: name) {
                         destination.set(value, forKey: key)
                     }
                     destination.synchronize()

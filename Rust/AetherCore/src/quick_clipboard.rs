@@ -584,3 +584,227 @@ pub unsafe extern "C" fn aether_quick_search(
     }
     results.len()
 }
+
+#[repr(C)]
+pub struct CollectionView {
+    id: Bytes,
+    name: Bytes,
+    created_at: f64,
+    updated_at: f64,
+    entry_count: usize,
+}
+#[repr(C)]
+pub struct EntryView {
+    id: Bytes,
+    key: Bytes,
+    value: Bytes,
+    created_at: f64,
+    updated_at: f64,
+}
+fn view(value: &str) -> Bytes {
+    Bytes {
+        data: value.as_ptr(),
+        length: value.len(),
+    }
+}
+pub struct Writer {
+    collections: Vec<Collection>,
+    failed: bool,
+}
+/// # Safety
+/// Store is live and exclusively borrowed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_load_records(store: *mut Store) -> u32 {
+    let Some(store) = (unsafe { store.as_mut() }) else {
+        return 2;
+    };
+    store.load().err().unwrap_or(0)
+}
+/// # Safety
+/// Store is live and not concurrently mutated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_count(store: *const Store) -> usize {
+    unsafe { store.as_ref() }.map_or(0, |s| s.collections.len())
+}
+/// # Safety
+/// Store is live, output writable; copy borrowed bytes before store mutation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_collection_record(
+    store: *const Store,
+    index: usize,
+    output: *mut CollectionView,
+) -> u8 {
+    let Some(c) = (unsafe { store.as_ref() }).and_then(|s| s.collections.get(index)) else {
+        return 0;
+    };
+    let Some(out) = (unsafe { output.as_mut() }) else {
+        return 0;
+    };
+    *out = CollectionView {
+        id: view(&c.id),
+        name: view(&c.name),
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        entry_count: c.entries.len(),
+    };
+    1
+}
+/// # Safety
+/// Store is live, output writable; copy borrowed bytes before store mutation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_entry_record(
+    store: *const Store,
+    collection: usize,
+    index: usize,
+    output: *mut EntryView,
+) -> u8 {
+    let Some(e) = (unsafe { store.as_ref() })
+        .and_then(|s| s.collections.get(collection))
+        .and_then(|c| c.entries.get(index))
+    else {
+        return 0;
+    };
+    let Some(out) = (unsafe { output.as_mut() }) else {
+        return 0;
+    };
+    *out = EntryView {
+        id: view(&e.id),
+        key: view(&e.key),
+        value: view(&e.value),
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+    };
+    1
+}
+/// # Safety
+/// Store is live and exclusively borrowed; text is readable for the call. usize::MAX selects collection name.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_set_comparison(
+    store: *mut Store,
+    collection: usize,
+    entry: usize,
+    text: Bytes,
+) -> u32 {
+    let Some(c) = (unsafe { store.as_mut() }).and_then(|s| s.collections.get_mut(collection))
+    else {
+        return 3;
+    };
+    let Some(text) = (unsafe { text.text() }) else {
+        return 3;
+    };
+    if entry == usize::MAX {
+        c.comparison = text.to_owned();
+    } else {
+        let Some(e) = Arc::make_mut(&mut c.entries).get_mut(entry) else {
+            return 3;
+        };
+        e.comparison = text.to_owned();
+    }
+    0
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn aether_quick_writer_create() -> *mut Writer {
+    Box::into_raw(Box::new(Writer {
+        collections: vec![],
+        failed: false,
+    }))
+}
+/// # Safety
+/// Writer is live and exclusively borrowed; view and comparison bytes are readable for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_writer_collection(
+    writer: *mut Writer,
+    value: CollectionView,
+    comparison: Bytes,
+) -> u32 {
+    let Some(w) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if w.failed {
+        return 3;
+    }
+    let make = || -> Option<Collection> {
+        let c = Collection {
+            id: unsafe { value.id.text()? }.to_owned(),
+            name: unsafe { value.name.text()? }.to_owned(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            entries: Arc::new(vec![]),
+            comparison: unsafe { comparison.text()? }.to_owned(),
+        };
+        c.valid().then_some(c)
+    };
+    match make() {
+        Some(c) => {
+            w.collections.push(c);
+            0
+        }
+        None => {
+            w.failed = true;
+            3
+        }
+    }
+}
+/// # Safety
+/// Writer is live and exclusively borrowed; view and comparison bytes are readable for this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_writer_entry(
+    writer: *mut Writer,
+    value: EntryView,
+    comparison: Bytes,
+) -> u32 {
+    let Some(w) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if w.failed {
+        return 3;
+    }
+    let make = || -> Option<Entry> {
+        let e = Entry {
+            id: unsafe { value.id.text()? }.to_owned(),
+            key: unsafe { value.key.text()? }.to_owned(),
+            value: Arc::from(unsafe { value.value.text()? }),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            comparison: unsafe { comparison.text()? }.to_owned(),
+        };
+        (versioned::valid_uuid(&e.id) && e.created_at.is_finite() && e.updated_at.is_finite())
+            .then_some(e)
+    };
+    match (make(), w.collections.last_mut()) {
+        (Some(e), Some(c)) => {
+            Arc::make_mut(&mut c.entries).push(e);
+            0
+        }
+        _ => {
+            w.failed = true;
+            3
+        }
+    }
+}
+/// # Safety
+/// Store and writer are live, distinct and exclusively borrowed. Writer is single-use.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_save_records(store: *mut Store, writer: *mut Writer) -> u32 {
+    let Some(s) = (unsafe { store.as_mut() }) else {
+        return 3;
+    };
+    let Some(w) = (unsafe { writer.as_mut() }) else {
+        return 3;
+    };
+    if w.failed {
+        return 3;
+    }
+    w.failed = true;
+    s.save(std::mem::take(&mut w.collections))
+        .err()
+        .unwrap_or(0)
+}
+/// # Safety
+/// Writer is destroyed exactly once after all its borrowers finish.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aether_quick_writer_destroy(writer: *mut Writer) {
+    if !writer.is_null() {
+        drop(unsafe { Box::from_raw(writer) });
+    }
+}
