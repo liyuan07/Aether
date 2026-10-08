@@ -571,4 +571,11 @@ AetherDesktopShortcut aether_desktop_shortcut_plan(uint8_t record_present, uint8
 // Synchronous native effects return success facts or the stored migration version.
 typedef int64_t (*AetherShortcutStartupEffect)(void *context, uint8_t step);
 uint8_t aether_shortcut_startup(AetherShortcutStartupEffect effect, void *context);
+typedef struct { int64_t id; double watts; uint8_t active, has_power, incoming; } AetherPortSnapshotReading;
+typedef struct { size_t active_count; double watts_in, watts_out; } AetherPortSnapshotSummary;
+typedef struct { int64_t id; double timestamp, watts; } AetherPortSnapshotSample;
+void *aether_port_snapshot_create(void);
+void aether_port_snapshot_destroy(void *core);
+AetherPortSnapshotSummary aether_port_snapshot_apply(void *core, const AetherPortSnapshotReading *readings, size_t count, double now);
+size_t aether_port_snapshot_samples(const void *core, AetherPortSnapshotSample *output, size_t capacity);
 #endif

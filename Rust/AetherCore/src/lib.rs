@@ -797,3 +797,5 @@ mod clipboard_store;
 mod app_policy;
 
 mod shortcut_startup;
+
+mod port_snapshot;

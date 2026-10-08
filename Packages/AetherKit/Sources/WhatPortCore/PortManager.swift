@@ -83,8 +83,17 @@ public final class PortManager: @unchecked Sendable {
     // proven before that logic exists.
     public private(set) var controllerPower: ControllerPowerInput?
 
-    // Power history for sparkline graphs (per port ID)
-    public private(set) var powerHistory: [Int: [PowerSample]] = [:]
+    // Compatibility history is materialized only when requested; live charts use PortHistory.
+    @ObservationIgnored private let snapshotCore = RustPortSnapshot()
+    private var powerHistoryRevision: UInt64 = 0
+    public var powerHistory: [Int: [PowerSample]] {
+        _ = powerHistoryRevision
+        return snapshotCore.samples()
+    }
+    public private(set) var activePortCount: Int = 0
+    // Incoming and outgoing power are reported separately, never netted together.
+    public private(set) var totalWattsIn: Double = 0
+    public private(set) var totalWattsOut: Double = 0
 
     // Per-port connection-lifecycle phase, derived from IOAccessoryManager
     // signals (see PortLifecycleStateMachine). Absence of an entry means
@@ -100,9 +109,6 @@ public final class PortManager: @unchecked Sendable {
     // fail-closed drop of PD attribution still happens on every snapshot
     // regardless of whether the disagreement gets logged.
     private var loggedPDDisagreements: Set<String> = []
-
-    // 60 samples at the 1s poll interval = the 60s window the sparkline labels.
-    private let maxPowerSamples = 60
 
     // Port recorder: stores long-running history and events.
     // When nil, recording is disabled (no-op). Set by the Pro plugin
@@ -183,16 +189,11 @@ public final class PortManager: @unchecked Sendable {
 
         ports = correlated
 
-        for port in correlated {
-            if let power = port.power {
-                var history = powerHistory[port.id] ?? []
-                history.append(PowerSample(timestamp: snapshot.timestamp, watts: power.watts))
-                if history.count > maxPowerSamples {
-                    history.removeFirst(history.count - maxPowerSamples)
-                }
-                powerHistory[port.id] = history
-            }
-        }
+        let summary = snapshotCore.apply(correlated, at: snapshot.timestamp)
+        activePortCount = summary.active_count
+        totalWattsIn = summary.watts_in
+        totalWattsOut = summary.watts_out
+        powerHistoryRevision &+= 1
     }
 
     // Called by the IOKit layer whenever a lifecycle notification decodes to
@@ -223,24 +224,6 @@ public final class PortManager: @unchecked Sendable {
         if updatedPhases != lifecyclePhases {
             lifecyclePhases = updatedPhases
         }
-    }
-
-    public var activePortCount: Int {
-        ports.filter { $0.isActive }.count
-    }
-
-    // Total power flowing INTO the Mac (chargers, powered docks).
-    public var totalWattsIn: Double {
-        ports.compactMap { $0.power }
-            .filter { $0.direction == .incoming }
-            .reduce(0) { $0 + $1.watts }
-    }
-
-    // Total power the Mac is sourcing OUT to bus-powered devices.
-    public var totalWattsOut: Double {
-        ports.compactMap { $0.power }
-            .filter { $0.direction == .outgoing }
-            .reduce(0) { $0 + $1.watts }
     }
 }
 
