@@ -50,6 +50,7 @@ public final class RustSearchSegment: @unchecked Sendable {
 /// borrowed pointer span remains after initialization.
 public final class RustSearchDocument: @unchecked Sendable {
     fileprivate let handle: UnsafeMutableRawPointer?
+    fileprivate init(taking handle: UnsafeMutableRawPointer) { self.handle = handle }
     public init(segments: [RustSearchSegment]) {
         handle = withExtendedLifetime(segments) {
             segments.map { $0.handle.map(UnsafeRawPointer.init) }.withUnsafeBufferPointer {
@@ -65,4 +66,26 @@ public final class RustSearchDocument: @unchecked Sendable {
         }
     }
     deinit { aether_search_document_destroy(handle) }
+}
+
+/// Confine this mutable cache to one actor/executor. Returned documents are immutable and
+/// independently owned; removing a cache entry never invalidates a reader.
+public final class RustSearchDocumentCache {
+    private let handle = aether_search_cache_create()
+    public init() {}
+    deinit { aether_search_cache_destroy(handle) }
+    public func beginSourceUpdate() { aether_search_cache_begin(handle) }
+    public func retainSource(_ id: UUID) { aether_search_cache_mark(handle, .init(bytes: id.uuid)) }
+    public func finishSourceUpdate() { aether_search_cache_prune(handle) }
+    public func document(for id: UUID) -> RustSearchDocument? {
+        guard let document = aether_search_cache_get(handle, .init(bytes: id.uuid)) else { return nil }
+        return RustSearchDocument(taking: document)
+    }
+    public func score(query: RustSearchSegment, for id: UUID) -> (found: Bool, score: Int?) {
+        let result = withExtendedLifetime(query) { aether_search_cache_score(handle, .init(bytes: id.uuid), query.handle) }
+        return (result.found != 0, result.score < 0 ? nil : Int(result.score))
+    }
+    public func insert(_ document: RustSearchDocument, for id: UUID) {
+        withExtendedLifetime(document) { aether_search_cache_insert(handle, .init(bytes: id.uuid), document.handle) }
+    }
 }

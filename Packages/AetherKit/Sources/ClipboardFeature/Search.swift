@@ -114,7 +114,7 @@ struct ClipboardSearchSnapshot: Sendable {
 actor ClipboardSearchIndex {
     static let shared = ClipboardSearchIndex()
 
-    private var itemDocuments: [UUID: ClipboardIndexedDocument] = [:]
+    private let itemDocuments = RustSearchDocumentCache()
     private var vocabulary = ClipboardSearchVocabulary()
 
     func search(
@@ -133,19 +133,19 @@ actor ClipboardSearchIndex {
         }
 
         let allItems = history + pinnedItems
-        let groupItems = groups.flatMap(\.items)
-        let activeIDs = Set((allItems + groupItems).map(\.id))
-        itemDocuments = itemDocuments.filter { activeIDs.contains($0.key) }
+        itemDocuments.beginSourceUpdate()
+        for item in allItems { itemDocuments.retainSource(item.id) }
+        for group in groups { for item in group.items { itemDocuments.retainSource(item.id) } }
+        itemDocuments.finishSourceUpdate()
 
         var rankedItems = ClipboardRankedSources(capacity: allItems.count)
         for (offset, item) in allItems.enumerated() {
             if offset.isMultiple(of: 32) {
                 try Task.checkCancellation()
             }
-            let document = indexedDocument(for: item)
-            if let score = query.core.score(document: document.core) {
-                rankedItems.append(offset, score: score, timestamp: item.timestamp)
-            }
+            let cached = itemDocuments.score(query: query.core, for: item.id)
+            let score = cached.found ? cached.score : query.core.score(document: indexedDocument(for: item).core)
+            if let score { rankedItems.append(offset, score: score, timestamp: item.timestamp) }
         }
         var rankedGroups = ClipboardRankedSources(capacity: groups.count)
         for (offset, group) in groups.enumerated() {
@@ -173,11 +173,11 @@ actor ClipboardSearchIndex {
     private func indexedDocument(
         for item: ClipboardItem
     ) -> ClipboardIndexedDocument {
-        if let cached = itemDocuments[item.id] {
-            return cached
+        if let cached = itemDocuments.document(for: item.id) {
+            return ClipboardIndexedDocument(core: cached)
         }
         let document = ClipboardIndexedDocument(item: item, typeSegment: vocabulary.segment(for: item.type))
-        itemDocuments[item.id] = document
+        itemDocuments.insert(document.core, for: item.id)
         return document
     }
 }
@@ -480,6 +480,7 @@ struct ClipboardSearchVocabulary {
 
 struct ClipboardIndexedDocument {
     let core: RustSearchDocument
+    init(core: RustSearchDocument) { self.core = core }
     init(item: ClipboardItem, typeSegment: RustSearchSegment) {
         core = RustSearchDocument(segments: item.searchableSegments.map {
             $0 == item.type.displayName ? typeSegment : ClipboardIndexedSegment($0).core

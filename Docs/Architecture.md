@@ -230,3 +230,7 @@ Prompt 设置提交的顺序、未改变凭证的跳过、配置失败回滚及�
 Prompt 配置/历史读取返回 Rust 拥有的已解码快照与借用字段视图；Swift 在同步锁内装配 UUID/Date/String 展示 DTO 并销毁快照，不再把 Rust 记录重新编码为 JSON 后交给 JSONDecoder。快照独立于存储句柄和后续磁盘变更，文本仅在快照销毁前有效；原生返回值已经复制全部需要的字节。缺失默认值、nil/空摘要、日期参考基准、文件格式/版本/覆盖保护与错误文案沿用既有存储器。旧 JSON 读取 ABI 保留为兼容/性能参照，保存仍沿用既有原生 DTO 编码及 Rust 验证/写入。配置和历史的长期展示快照仍由原生模型持有，此步不宣称整应用内存减少。
 
 共享层 `DataMigration` 通过同步 C ABI 调用 Rust 迁移协调器；核心决定完成跳过、恢复校验、分阶段复制/校验/发布及按收据来源应用偏好的顺序。Swift 的单次 effects 上下文执行 FileManager、Property List、原生偏好回调和原错误传递；句柄与闭包不会被核心保留，临时目录在调用结束清理。`SharedSupport` 只依赖公共 C ABI，不访问功能模块。
+
+剪贴板搜索 actor 独占 `RustSearchDocumentCache`，核心 HashMap 持有不可变 document 的 Arc。源更新通过 begin/逐项标记/prune 清除失效索引，历史、收藏及分组条目均参与标记；不创建原生 active-ID 集合或缓存字典副本。缓存命中返回独立持有的 document，删除缓存及 actor 销毁不使正在使用的 document 失效。Document 创建/合并/销毁的 C ABI 签名不变，内部所有权统一为 Arc，片段依然共享。
+
+条目缓存命中直接在 Rust 内评分，不创建新的原生 document 包装；缓存未命中时才调用 Foundation 归一化并构建索引。

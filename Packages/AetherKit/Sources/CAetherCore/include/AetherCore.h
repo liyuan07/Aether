@@ -512,4 +512,14 @@ void aether_prompt_decoded_destroy(void *snapshot);
 typedef struct { size_t value; uint8_t failed; } AetherMigrationEffectResult;
 typedef AetherMigrationEffectResult (*AetherMigrationEffect)(void *context, uint8_t step, size_t index);
 uint8_t aether_data_migration_run(AetherMigrationEffect effect, void *context);
+// Mutable cache is caller-serialized; returned documents own independent references.
+void *aether_search_cache_create(void);
+void aether_search_cache_begin(void *cache);
+void aether_search_cache_mark(void *cache, AetherUUID id);
+void aether_search_cache_prune(void *cache);
+void *aether_search_cache_get(const void *cache, AetherUUID id);
+typedef struct { int32_t score; uint8_t found; } AetherCachedSearchScore;
+AetherCachedSearchScore aether_search_cache_score(const void *cache, AetherUUID id, const void *query);
+void aether_search_cache_insert(void *cache, AetherUUID id, const void *document);
+void aether_search_cache_destroy(void *cache);
 #endif

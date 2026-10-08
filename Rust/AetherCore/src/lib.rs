@@ -383,7 +383,9 @@ pub unsafe extern "C" fn aether_search_document_create(
             std::sync::Arc::from_raw(segment)
         })
         .collect();
-    Box::into_raw(Box::new(SearchDocument(owned))).cast()
+    std::sync::Arc::into_raw(std::sync::Arc::new(SearchDocument(owned)))
+        .cast_mut()
+        .cast()
 }
 
 /// # Safety
@@ -406,7 +408,9 @@ pub unsafe extern "C" fn aether_search_document_merge(
         .filter(|p| !p.is_null())
         .flat_map(|p| unsafe { (&*p.cast::<SearchDocument>()).0.iter().cloned() })
         .collect();
-    Box::into_raw(Box::new(SearchDocument(owned))).cast()
+    std::sync::Arc::into_raw(std::sync::Arc::new(SearchDocument(owned)))
+        .cast_mut()
+        .cast()
 }
 
 /// # Safety
@@ -414,7 +418,7 @@ pub unsafe extern "C" fn aether_search_document_merge(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn aether_search_document_destroy(document: *mut c_void) {
     if !document.is_null() {
-        drop(unsafe { Box::from_raw(document.cast::<SearchDocument>()) });
+        drop(unsafe { std::sync::Arc::from_raw(document.cast::<SearchDocument>()) });
     }
 }
 
@@ -779,3 +783,5 @@ mod configuration_store;
 mod clipboard_codec;
 
 mod data_migration;
+
+mod search_cache;
