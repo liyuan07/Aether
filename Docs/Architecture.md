@@ -244,3 +244,5 @@ ClipboardStore 的激活计划由核心优先查询收藏，再在未命中时�
 SharedSupport.AppRoutePolicy 将类型化路由及应用就绪事实送入 Rust，应用层按返回计划顺序执行目标捕获、菜单/剪贴板隐藏与窗口呈现。LegacyApplication 保留平台身份常量与 Swift String 规范等价比较，核心决定 identifier 优先且未知 identifier 不回退路径。应用启动决策基于运行/URL/屏幕及窗口报告事实：激活现有立即执行，只有已知空窗口清单才允许重开，新建窗口后只在报告安全时跟进布局。系统显示桌面配置由原生解码 NSNumber/偏好字典，Rust 决定禁用、合法键或默认 F11+平台 Fn 标记。
 
 快捷操作初始化通过同步 Rust startup 协调器执行恢复、偏好加载/默认保存、指南偏好读取、规则加载/升级及成功后的版本更新。Swift effects 只持有本次原生 DTO、UserDefaults 和存储适配，核心不会保留回调；AppModel 最后装配发布状态，原有失败中文文案及优先级保持不变。升级保存失败继续使用已存规则，默认规则保存失败依然保留原显示默认规则。
+
+不可变 SearchDocument 的片段引用集合与 Segment 的 UTF-8 字节使用 Box<[T]>，创建后不保留 Vec 的可增长容量字段。ASCII 快速拒绝使用 64 位 bloom 掩码；碰撞仅可能增加完整字符比较的候选，不能产生肯定匹配或改变评分。Unicode 边界存储、Arc 共享和所有 C ABI 签名不变。

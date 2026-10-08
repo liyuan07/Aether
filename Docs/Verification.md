@@ -262,3 +262,5 @@ Prompt 类型化保存沿用 PromptStorage/PromptModel 回归；补充非有限�
 应用策略沿用 LegacyApplication/Navigation/应用动作和窗口会话回归；核心单测覆盖就绪路由、identifier 优先、已知空清单重开与显示桌面配置禁用/回退。一次统一交付回归和安装，不扩展真实应用窗口矩阵。
 
 快捷操作启动协调复用 `configurationImportFailureKeepsFilesModelSelectionAndNotifications`、`configurationImportRejectsPendingOldRulesAndPreferences` 和 `configurationStartupRecoversPartialPairAndProtectsUnknownJournal` 集成回归；核心检查初始化阶段顺序及升级失败保留已存规则。统一交付一次回归安装。
+
+紧凑搜索存储沿用 Rust search_contract 与既有 RustSearchParityTests/SearchTests：UTF-8、字符边界、评分、排序、取消和来源行为继续通过原生参照回归。原有核心契约补充掩码碰撞拒绝，统一交付回归安装，不新增基准。

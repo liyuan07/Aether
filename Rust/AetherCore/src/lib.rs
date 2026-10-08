@@ -138,10 +138,12 @@ impl Boundaries {
 }
 
 struct Segment {
-    bytes: Vec<u8>,
+    bytes: Box<[u8]>,
     boundaries: Boundaries,
     character_count: usize,
-    mask: u128,
+    // A 64-bit ASCII bloom mask is only a rejection accelerator. Collisions may fall
+    // through to exact grapheme comparison, but can never create a positive score.
+    mask: u64,
     numeric: bool,
 }
 impl Segment {
@@ -263,9 +265,9 @@ pub unsafe extern "C" fn aether_search_create(
     let mask = bytes
         .iter()
         .filter(|b| **b < 128)
-        .fold(0, |mask, b| mask | (1_u128 << b));
+        .fold(0, |mask, b| mask | (1_u64 << (b & 63)));
     std::sync::Arc::into_raw(std::sync::Arc::new(Segment {
-        bytes: bytes.to_vec(),
+        bytes: bytes.into(),
         boundaries: Boundaries::new(&owned_boundaries),
         character_count,
         mask,
@@ -316,7 +318,7 @@ pub unsafe extern "C" fn aether_search_best_score(
         .max()
         .unwrap_or(-1)
 }
-struct SearchDocument(Vec<std::sync::Arc<Segment>>);
+struct SearchDocument(Box<[std::sync::Arc<Segment>]>);
 
 #[repr(C)]
 pub struct SearchRankEntry {
@@ -473,10 +475,10 @@ mod tests {
     }
     fn ascii(s: &str, numeric: bool) -> Segment {
         Segment {
-            bytes: s.as_bytes().to_vec(),
+            bytes: s.as_bytes().into(),
             boundaries: Boundaries::Implicit,
             character_count: s.len(),
-            mask: s.bytes().fold(0, |m, b| m | 1_u128 << b),
+            mask: s.bytes().fold(0, |m, b| m | 1_u64 << (b & 63)),
             numeric,
         }
     }
@@ -489,6 +491,8 @@ mod tests {
         assert_eq!(ascii("123", true).score(&ascii("1x2x3", false)), -1);
         assert_eq!(ascii("abc", false).score(&ascii("abcde", false)), 19_995);
         assert_eq!(ascii("abc", false).score(&ascii("xxabc", false)), 14_998);
+        // ASCII a/! collide in the compact rejection mask; full matching still rejects.
+        assert_eq!(ascii("a", false).score(&ascii("!", false)), -1);
     }
     #[test]
     fn ranking_is_stable_and_refuses_invalid_spans_without_writes() {
