@@ -787,3 +787,5 @@ mod data_migration;
 mod search_cache;
 
 mod identity_index;
+
+mod clipboard_store;

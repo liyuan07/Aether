@@ -371,12 +371,15 @@ final class ClipboardStore: ObservableObject {
     func activateItem(_ item: ClipboardItem) -> Bool {
         guard copyToClipboard(item) else { return false }
 
-        if let index = pinnedItems.firstIndex(where: { $0.id == item.id }) {
+        let plan = clipboardActivationPlan(id: item.id, pinned: pinnedItems, history: history)
+        if plan.section == 0 {
+            let index = plan.index
             var updated = pinnedItems
             let promoted = updated.remove(at: index)
             updated.insert(promoted, at: 0)
             pinnedItems = updated
-        } else if let index = history.firstIndex(where: { $0.id == item.id }) {
+        } else if plan.section == 1 {
+            let index = plan.index
             var updated = history
             let promoted = updated.remove(at: index)
             updated.insert(promoted, at: 0)
@@ -388,10 +391,7 @@ final class ClipboardStore: ObservableObject {
 
     @discardableResult
     func copyGroupToClipboard(_ group: ClipboardGroup) -> Bool {
-        let textCompatible = group.items.allSatisfy {
-            [.text, .url, .rtf, .unknown].contains($0.type)
-                && $0.stringData != nil
-        }
+        let textCompatible = clipboardGroupCopiesText(group.items)
         let prepared: [NSPasteboardItem]
         if textCompatible,
            let combined = combinedTextPasteboardItem(for: group.items) {
@@ -474,17 +474,17 @@ final class ClipboardStore: ObservableObject {
                 guard !Task.isCancelled, let self else { return }
                 guard aether_clipboard_maintenance_current(workCore, pendingGeneration) != 0 else { return }
                 defer { maintenanceTask = nil }
-                guard archiveIdentity(currentArchive) == sourceIdentity else {
+                guard archiveIdentity(currentArchive).matches(sourceIdentity) else {
                     return
                 }
-                let maintainedIdentity = archiveIdentity(maintained)
-                if maintainedIdentity.historyIDs != sourceIdentity.historyIDs {
+                let changes = archiveIdentity(maintained).changes(from: sourceIdentity)
+                if changes.history != 0 {
                     history = maintained.history
                 }
-                if maintainedIdentity.pinnedIDs != sourceIdentity.pinnedIDs {
+                if changes.pinned != 0 {
                     pinnedItems = maintained.pinnedItems
                 }
-                if maintainedIdentity.groups != sourceIdentity.groups {
+                if changes.groups != 0 {
                     groups = maintained.groups ?? []
                 }
                 saveArchive(cleanup: true)
@@ -726,19 +726,8 @@ final class ClipboardStore: ObservableObject {
         )
     }
 
-    private func archiveIdentity(
-        _ archive: ClipboardArchive
-    ) -> ClipboardArchiveIdentity {
-        ClipboardArchiveIdentity(
-            historyIDs: archive.history.map(\.id),
-            pinnedIDs: archive.pinnedItems.map(\.id),
-            groups: (archive.groups ?? []).map {
-                ClipboardArchiveIdentity.Group(
-                    id: $0.id,
-                    itemIDs: $0.items.map(\.id)
-                )
-            }
-        )
+    private func archiveIdentity(_ archive: ClipboardArchive) -> RustClipboardArchiveIdentity {
+        RustClipboardArchiveIdentity(archive)
     }
 
     private func loadArchive() {
@@ -747,15 +736,4 @@ final class ClipboardStore: ObservableObject {
         pinnedItems = archive.pinnedItems
         groups = archive.groups ?? []
     }
-}
-
-private struct ClipboardArchiveIdentity: Equatable {
-    struct Group: Equatable {
-        let id: UUID
-        let itemIDs: [UUID]
-    }
-
-    let historyIDs: [UUID]
-    let pinnedIDs: [UUID]
-    let groups: [Group]
 }

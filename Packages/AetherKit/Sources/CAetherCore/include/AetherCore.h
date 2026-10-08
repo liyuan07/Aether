@@ -538,4 +538,14 @@ typedef struct { uint64_t generation, revision; } AetherSearchFlow;
 AetherSearchFlow aether_search_flow_begin(AetherSearchFlow state);
 uint8_t aether_search_flow_current(AetherSearchFlow state, uint64_t generation, uint8_t cancelled);
 AetherSearchFlow aether_search_flow_publish(AetherSearchFlow state, uint8_t increment);
+// Exact immutable archive identities after native construction completes.
+void *aether_clipboard_identity_create(void);
+uint8_t aether_clipboard_identity_append(void *identity, uint8_t section, AetherUUID id);
+typedef struct { uint8_t history, pinned, groups; } AetherClipboardIdentityChanges;
+AetherClipboardIdentityChanges aether_clipboard_identity_changes(const void *left, const void *right);
+void aether_clipboard_identity_destroy(void *identity);
+typedef struct { uint8_t section; intptr_t index; } AetherClipboardActivation;
+typedef intptr_t (*AetherClipboardFind)(void *context, uint8_t section);
+AetherClipboardActivation aether_clipboard_activation_plan(AetherClipboardFind find, void *context);
+uint8_t aether_clipboard_group_copy_text(const AetherClipboardRow *rows, size_t count);
 #endif
