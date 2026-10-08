@@ -39,7 +39,6 @@ struct SettingsView: View {
             SettingsToggleRow("启用 20-20-20 护眼循环", description: "手动开始，不会在应用启动时自动计时", isOn: $eyeCareEnabled)
 
             if eyeCareEnabled {
-                Divider()
 
                 HStack(spacing: 10) {
                     EyeCareDurationStepper(
@@ -72,8 +71,6 @@ struct SettingsView: View {
     private var timerSettingsCard: some View {
         SettingsCard(title: "常规", systemImage: "gearshape") {
             SettingsToggleRow("同步 macOS“时钟”计时器", description: "显示在系统“时钟”App 中启动的计时器", isOn: $mirrorSystemTimer)
-
-            Divider()
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
